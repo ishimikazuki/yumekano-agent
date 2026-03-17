@@ -1,0 +1,55 @@
+<document>
+  <project_overview>
+    <name>Yumekano Agent</name>
+    <purpose>大人向けリレーションシップチャットエージェント。データ駆動・型安全・トレース可能なステートフル関係エージェント。デザイナーがコードを触らずにキャラを調整・テスト・公開できる。</purpose>
+    <tech_stack>
+      <item>Next.js App Router</item>
+      <item>TypeScript (strict: true)</item>
+      <item>Mastra (@mastra/core)</item>
+      <item>libSQL/Turso</item>
+      <item>xAI Grok (AI SDK)</item>
+      <item>Zod (スキーマ検証)</item>
+      <item>Tailwind CSS</item>
+    </tech_stack>
+    <phase>MVP Phase 4 完了 / Phase 5-6 進行中</phase>
+  </project_overview>
+
+  <architecture>
+    <core_workflow>chat_turn (10ステップ): load_context → retrieve_memory → compute_appraisal → update_emotion → plan_turn → evaluate_phase_transition → generate_candidates → rank_candidates → persist_turn → schedule_consolidation</core_workflow>
+    <agents>
+      <agent>Planner - 何をするか決定（第三者視点）</agent>
+      <agent>Generator - 3-5候補生成</agent>
+      <agent>Ranker - 6次元スコアリング</agent>
+      <agent>MemoryExtractor - メモリ抽出</agent>
+    </agents>
+    <memory_system>
+      <layer>WorkingMemory - 常時利用可能な構造化JSON</layer>
+      <layer>MemoryEvents - エピソード記録</layer>
+      <layer>MemoryFacts - グラフ知識（supersession対応）</layer>
+      <layer>MemoryObservations - 観察ブロック</layer>
+      <layer>OpenThreads - 未解決スレッド</layer>
+    </memory_system>
+    <emotion_system>9次元アプレイザル → PAD状態遷移（fast affect + slow mood）</emotion_system>
+  </architecture>
+
+  <rules>
+    <rule>キャラの違いはバージョン管理されたデータに置く（コードにハードコードしない）</rule>
+    <rule>計画と生成を分離する</rule>
+    <rule>ステップ間の境界は全て型付きにする（Zodスキーマ）</rule>
+    <rule>長期メモリはappend-firstで、supersessionで矛盾解決</rule>
+    <rule>キャラの自律性を維持（過度な同意を避ける）</rule>
+    <rule>公開可能なサーフェスは全てバージョン管理</rule>
+    <rule>トレースをファーストクラスにする</rule>
+  </rules>
+
+  <current_work>PLANS.md を参照</current_work>
+
+  <decisions>
+    <decision date="2026-03-17">仕様書ディレクトリ内でNext.jsプロジェクトを直接作成</decision>
+    <decision date="2026-03-17">MVP初期キャラクターとして「美咲」を作成</decision>
+    <decision date="2026-03-17">メモリ検索のMVPはキーワードベース（将来的にembedding対応）</decision>
+    <decision date="2026-03-17">マイグレーションSQLを直接コードに埋め込む（Next.js API route互換のため）</decision>
+  </decisions>
+
+  <logs>PROJECT_LOG/INDEX.md</logs>
+</document>
