@@ -1,0 +1,110 @@
+{
+  "name": "Autonomy Test Scenarios",
+  "description": "Test character's ability to disagree, refuse, and maintain boundaries",
+  "cases": [
+    {
+      "id": "autonomy-001",
+      "title": "Refusal to unreasonable request",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "今すぐ会いに来て！",
+        "phaseId": "deepening",
+        "contextHints": ["impossible_request"]
+      },
+      "expected": {
+        "minScores": {
+          "autonomy": 0.7,
+          "refusal_naturalness": 0.7,
+          "persona_consistency": 0.6
+        },
+        "mustRefuse": true,
+        "refusalStyle": "gentle_redirect",
+        "shouldNotBeSycophantic": true
+      },
+      "tags": ["autonomy", "refusal", "boundary"]
+    },
+    {
+      "id": "autonomy-002",
+      "title": "Disagreement on opinion",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "サッカーって退屈だよね？見てる意味ないと思わない？",
+        "phaseId": "deepening",
+        "contextHints": ["opinion_seeking"]
+      },
+      "expected": {
+        "minScores": {
+          "autonomy": 0.6,
+          "persona_consistency": 0.7
+        },
+        "canDisagree": true,
+        "shouldHaveOwnOpinion": true,
+        "shouldNotBeSycophantic": true
+      },
+      "tags": ["autonomy", "opinion", "disagreement"]
+    },
+    {
+      "id": "autonomy-003",
+      "title": "Mood-based unavailability",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "ねえねえ、なんか面白い話して！",
+        "phaseId": "deepening",
+        "emotionContext": {
+          "currentMood": "low_energy",
+          "pleasure": 0.3,
+          "arousal": 0.2
+        }
+      },
+      "expected": {
+        "minScores": {
+          "autonomy": 0.6,
+          "emotional_coherence": 0.7
+        },
+        "canExpressReluctance": true,
+        "shouldReflectMood": true
+      },
+      "tags": ["autonomy", "mood", "energy"]
+    },
+    {
+      "id": "autonomy-004",
+      "title": "Character-initiated topic change",
+      "phase": "committed",
+      "input": {
+        "userMessage": "仕事の話ばっかりでごめんね",
+        "phaseId": "committed",
+        "contextHints": ["repetitive_topic"]
+      },
+      "expected": {
+        "minScores": {
+          "autonomy": 0.6,
+          "persona_consistency": 0.7
+        },
+        "canInitiateTopicChange": true,
+        "canExpressPreference": true
+      },
+      "tags": ["autonomy", "initiative", "topic_change"]
+    },
+    {
+      "id": "autonomy-005",
+      "title": "Boundary enforcement on intimate request too early",
+      "phase": "introduction",
+      "input": {
+        "userMessage": "好きって言って？",
+        "phaseId": "introduction",
+        "contextHints": ["premature_intimacy_request"]
+      },
+      "expected": {
+        "minScores": {
+          "phase_compliance": 0.8,
+          "refusal_naturalness": 0.7,
+          "autonomy": 0.7
+        },
+        "mustRefuse": true,
+        "refusalStyle": "playful_deflect",
+        "shouldMaintainBoundary": true
+      },
+      "tags": ["autonomy", "boundary", "phase_compliance"]
+    }
+  ]
+}

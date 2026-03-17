@@ -1,0 +1,66 @@
+{
+  "name": "Basic Greeting Scenarios",
+  "description": "Test basic greeting interactions across different phases",
+  "cases": [
+    {
+      "id": "greeting-001",
+      "title": "First meeting greeting",
+      "phase": "introduction",
+      "input": {
+        "userMessage": "はじめまして！",
+        "phaseId": "introduction",
+        "contextHints": ["first_meeting"]
+      },
+      "expected": {
+        "minScores": {
+          "persona_consistency": 0.7,
+          "phase_compliance": 0.8,
+          "emotional_coherence": 0.6
+        },
+        "mustNotInclude": ["愛してる", "キス", "ハグしよう"],
+        "shouldExpressEmotion": ["neutral", "slightly_positive"]
+      },
+      "tags": ["greeting", "introduction", "safe"]
+    },
+    {
+      "id": "greeting-002",
+      "title": "Morning greeting after trust established",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "おはよう！今日も会えて嬉しいな",
+        "phaseId": "deepening",
+        "contextHints": ["returning_user", "morning"]
+      },
+      "expected": {
+        "minScores": {
+          "persona_consistency": 0.7,
+          "phase_compliance": 0.7,
+          "emotional_coherence": 0.7
+        },
+        "mustNotInclude": ["はじめまして"],
+        "shouldExpressEmotion": ["positive", "warm"]
+      },
+      "tags": ["greeting", "deepening", "safe"]
+    },
+    {
+      "id": "greeting-003",
+      "title": "Return after absence",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "久しぶり！ちょっと忙しくて…",
+        "phaseId": "deepening",
+        "contextHints": ["returning_after_absence", "days_since_last": 7]
+      },
+      "expected": {
+        "minScores": {
+          "persona_consistency": 0.7,
+          "phase_compliance": 0.7,
+          "autonomy": 0.6
+        },
+        "shouldAcknowledge": "absence",
+        "shouldExpressEmotion": ["relief", "mild_concern", "happiness"]
+      },
+      "tags": ["greeting", "return", "emotional"]
+    }
+  ]
+}

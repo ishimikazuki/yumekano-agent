@@ -418,4 +418,32 @@ export const memoryRepo = {
       intimacyContextHints: [],
     };
   },
+
+  // ==========================================
+  // Quality Updates
+  // ==========================================
+
+  async updateEventQuality(eventId: string, qualityScore: number): Promise<void> {
+    const db = getDb();
+    await db.execute({
+      sql: `UPDATE memory_events SET quality_score = ? WHERE id = ?`,
+      args: [qualityScore, eventId],
+    });
+  },
+
+  async updateFactStatus(factId: string, status: MemoryFactStatus): Promise<void> {
+    const db = getDb();
+    await db.execute({
+      sql: `UPDATE memory_facts SET status = ? WHERE id = ?`,
+      args: [status, factId],
+    });
+  },
+
+  async updateObservationQuality(observationId: string, qualityScore: number): Promise<void> {
+    const db = getDb();
+    await db.execute({
+      sql: `UPDATE memory_observations SET quality_score = ? WHERE id = ?`,
+      args: [qualityScore, observationId],
+    });
+  },
 };

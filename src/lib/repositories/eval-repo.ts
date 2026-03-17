@@ -298,4 +298,33 @@ export const evalRepo = {
       })
     );
   },
+
+  // Alias methods for workflow compatibility
+  getCasesBySet(scenarioSetId: string) {
+    return this.getScenarioCasesBySet(scenarioSetId);
+  },
+
+  createRun(input: {
+    scenarioSetId: string;
+    characterVersionId: string;
+    modelRegistrySnapshot: unknown;
+  }) {
+    return this.createEvalRun(input);
+  },
+
+  updateRunStatus(
+    id: string,
+    status: EvalRunStatus,
+    summary?: { totalCases: number; passed: number; failed: number; avgScore: number }
+  ) {
+    const formattedSummary = summary
+      ? {
+          totalCases: summary.totalCases,
+          passedCases: summary.passed,
+          failedCases: summary.failed,
+          averageScores: { overall: summary.avgScore },
+        }
+      : undefined;
+    return this.updateEvalRunStatus(id, status, formattedSummary);
+  },
 };

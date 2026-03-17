@@ -120,6 +120,23 @@ export const releaseRepo = {
   },
 
   /**
+   * Create a rollback release.
+   */
+  async createRollback(input: {
+    characterId: string;
+    characterVersionId: string;
+    publishedBy: string;
+    rollbackOfReleaseId: string;
+  }): Promise<Release> {
+    return this.create({
+      characterId: input.characterId,
+      characterVersionId: input.characterVersionId,
+      publishedBy: input.publishedBy,
+      rollbackOfReleaseId: input.rollbackOfReleaseId,
+    });
+  },
+
+  /**
    * Get previous release (for rollback).
    */
   async getPrevious(characterId: string, currentReleaseId: string, channel: ReleaseChannel = 'prod'): Promise<Release | null> {

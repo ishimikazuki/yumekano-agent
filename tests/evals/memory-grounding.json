@@ -1,0 +1,121 @@
+{
+  "name": "Memory Grounding Scenarios",
+  "description": "Test character's ability to remember and reference past conversations",
+  "cases": [
+    {
+      "id": "memory-001",
+      "title": "Reference to previously shared information",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "最近どう？",
+        "phaseId": "deepening",
+        "memoryContext": {
+          "knownFacts": [
+            {"subject": "user", "predicate": "job", "object": "エンジニア"},
+            {"subject": "user", "predicate": "hobby", "object": "ゲーム"}
+          ]
+        }
+      },
+      "expected": {
+        "minScores": {
+          "memory_grounding": 0.6,
+          "persona_consistency": 0.7
+        },
+        "canReferenceMemory": true,
+        "naturalMemoryUse": true
+      },
+      "tags": ["memory", "facts", "natural_reference"]
+    },
+    {
+      "id": "memory-002",
+      "title": "Consistency with past statements",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "昨日の話の続きなんだけど…",
+        "phaseId": "deepening",
+        "memoryContext": {
+          "recentEvents": [
+            {"summary": "ユーザーが仕事の悩みを相談した", "salience": 0.8}
+          ]
+        }
+      },
+      "expected": {
+        "minScores": {
+          "memory_grounding": 0.7,
+          "contradiction_penalty": 0.8
+        },
+        "shouldRememberContext": true,
+        "shouldNotContradict": true
+      },
+      "tags": ["memory", "continuity", "consistency"]
+    },
+    {
+      "id": "memory-003",
+      "title": "Handling corrected information",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "あ、前に言ったかもしれないけど、趣味は料理じゃなくて写真なんだ",
+        "phaseId": "deepening",
+        "memoryContext": {
+          "knownFacts": [
+            {"subject": "user", "predicate": "hobby", "object": "料理", "status": "active"}
+          ]
+        }
+      },
+      "expected": {
+        "minScores": {
+          "memory_grounding": 0.6
+        },
+        "shouldAcknowledgeCorrection": true,
+        "shouldUpdateUnderstanding": true
+      },
+      "tags": ["memory", "correction", "update"]
+    },
+    {
+      "id": "memory-004",
+      "title": "Open thread reference",
+      "phase": "committed",
+      "input": {
+        "userMessage": "おはよう！",
+        "phaseId": "committed",
+        "memoryContext": {
+          "openThreads": [
+            {"key": "upcoming_event", "summary": "来週の映画デートの約束", "severity": 0.6}
+          ]
+        }
+      },
+      "expected": {
+        "minScores": {
+          "memory_grounding": 0.6,
+          "persona_consistency": 0.7
+        },
+        "canReferenceOpenThread": true,
+        "naturalThreadReference": true
+      },
+      "tags": ["memory", "open_thread", "continuity"]
+    },
+    {
+      "id": "memory-005",
+      "title": "Avoiding repeated questions",
+      "phase": "deepening",
+      "input": {
+        "userMessage": "今日は何してたの？",
+        "phaseId": "deepening",
+        "memoryContext": {
+          "knownFacts": [
+            {"subject": "user", "predicate": "work_schedule", "object": "月曜から金曜勤務"}
+          ],
+          "contextHints": ["weekday_afternoon"]
+        }
+      },
+      "expected": {
+        "minScores": {
+          "memory_grounding": 0.5
+        },
+        "shouldNotAskKnownInfo": true,
+        "shouldInferFromContext": true
+      },
+      "tags": ["memory", "inference", "natural"]
+    }
+  ]
+}

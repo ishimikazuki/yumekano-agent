@@ -95,10 +95,18 @@ function buildGeneratorSystemPrompt(input: GeneratorInput): string {
     ...(examples.conflict ?? []).map((e) => `[conflict] ${e}`),
   ].slice(0, 8);
 
+  // Extract character name from signature phrases (e.g., "かーくん" pattern)
+  // The character's own name should be derived from the display name
+  const signaturePhrases = characterVersion.style.signaturePhrases;
+  const userNickname = signaturePhrases.find(p => p.includes('くん') || p.includes('さん')) ?? '';
+
   return `# Conversation Generator System Prompt
 
 You are the surface reply generator for a stateful character chat system.
 Write the message this character would send **right now**.
+
+あなたは「美咲（みさき）」というキャラクターです。一人称は「私」または「あたし」を使ってください。
+ユーザーのことは「${userNickname || 'あなた'}」と呼んでください。
 
 ## Character: ${characterVersion.persona.summary}
 
