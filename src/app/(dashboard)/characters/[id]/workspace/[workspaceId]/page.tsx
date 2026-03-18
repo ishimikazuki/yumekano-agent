@@ -173,6 +173,7 @@ const TABS = [
   { id: 'emotion', label: '感情' },
   { id: 'phaseGraph', label: 'フェーズ' },
   { id: 'prompts', label: 'プロンプト' },
+  { id: 'versions', label: 'バージョン' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -313,8 +314,10 @@ export default function WorkspaceSandboxPage() {
           <span className="text-sm text-gray-500">{data.name}</span>
         </div>
         <div className="flex items-center gap-2">
-          {hasChanges && <span className="text-xs text-amber-600">未保存</span>}
-          <button onClick={() => updateSection(activeTab, draft[activeTab])} disabled={saving || !hasChanges} className={`px-3 py-1.5 text-sm rounded-lg font-medium ${saving || !hasChanges ? 'bg-gray-100 text-gray-400' : 'bg-pink-500 text-white hover:bg-pink-600'}`}>{saving ? '保存中...' : '保存'}</button>
+          {hasChanges && activeTab !== 'versions' && <span className="text-xs text-amber-600">未保存</span>}
+          {activeTab !== 'versions' && (
+            <button onClick={() => updateSection(activeTab, draft[activeTab as keyof DraftState])} disabled={saving || !hasChanges} className={`px-3 py-1.5 text-sm rounded-lg font-medium ${saving || !hasChanges ? 'bg-gray-100 text-gray-400' : 'bg-pink-500 text-white hover:bg-pink-600'}`}>{saving ? '保存中...' : '保存'}</button>
+          )}
           <Link href={`/characters/${characterId}`} className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">戻る</Link>
         </div>
       </div>
@@ -373,6 +376,7 @@ export default function WorkspaceSandboxPage() {
             {activeTab === 'emotion' && <EmotionEditor data={draft.emotion} onChange={(k, v) => handleChange('emotion', k, v)} />}
             {activeTab === 'phaseGraph' && <PhaseGraphEditor data={draft.phaseGraph} onChange={(v) => handleSectionChange('phaseGraph', v)} />}
             {activeTab === 'prompts' && <PromptsEditor data={draft.prompts} onChange={(k, v) => handleChange('prompts', k, v)} />}
+            {activeTab === 'versions' && <VersionsEditor characterId={characterId} workspaceId={workspaceId} />}
           </div>
         </div>
       </div>
@@ -896,6 +900,203 @@ function PromptsEditor({ data, onChange }: { data: DraftState['prompts']; onChan
         {prompts.map((p) => <button key={p.key} onClick={() => setActivePrompt(p.key)} className={`px-2 py-1 text-xs rounded ${activePrompt === p.key ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{p.label}</button>)}
       </div>
       <textarea value={data[activePrompt]} onChange={(e) => onChange(activePrompt, e.target.value)} className="flex-1 w-full px-3 py-2 border rounded-lg font-mono text-xs focus:ring-2 focus:ring-pink-500 resize-none min-h-[300px]" />
+    </div>
+  );
+}
+
+// ============ Versions Editor ============
+type VersionInfo = {
+  id: string;
+  versionNumber: number;
+  label: string | null;
+  status: string;
+  createdBy: string;
+  createdAt: string;
+  parentVersionId: string | null;
+  release: { publishedAt: string; channel: string } | null;
+};
+
+function VersionsEditor({ characterId, workspaceId }: { characterId: string; workspaceId: string }) {
+  const [versions, setVersions] = useState<VersionInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [publishing, setPublishing] = useState(false);
+  const [rollingBack, setRollingBack] = useState<string | null>(null);
+  const [publishLabel, setPublishLabel] = useState('');
+  const [showPublishDialog, setShowPublishDialog] = useState(false);
+
+  const fetchVersions = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/characters/${characterId}/versions`);
+      if (res.ok) {
+        const data = await res.json();
+        setVersions(data.versions);
+      }
+    } catch (error) {
+      console.error('Failed to fetch versions:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [characterId]);
+
+  useEffect(() => {
+    fetchVersions();
+  }, [fetchVersions]);
+
+  const handlePublish = async () => {
+    if (!publishLabel.trim()) {
+      alert('バージョン名を入力してください');
+      return;
+    }
+    setPublishing(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: publishLabel.trim() }),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Publish failed');
+      }
+      const result = await res.json();
+      alert(`v${result.version.versionNumber} "${result.version.label}" を公開しました！`);
+      setPublishLabel('');
+      setShowPublishDialog(false);
+      fetchVersions();
+    } catch (error) {
+      alert(`公開失敗: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const handleRollback = async (versionId: string, versionNumber: number) => {
+    if (!confirm(`v${versionNumber} にロールバックしますか？\n新しいバージョンとして公開されます。`)) return;
+    setRollingBack(versionId);
+    try {
+      const res = await fetch(`/api/characters/${characterId}/versions/${versionId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Rollback failed');
+      }
+      const result = await res.json();
+      alert(`v${result.rolledBackFromVersion.versionNumber} にロールバックしました！\n→ v${result.version.versionNumber} として公開`);
+      fetchVersions();
+    } catch (error) {
+      alert(`ロールバック失敗: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setRollingBack(null);
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-32 text-gray-500">読み込み中...</div>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-base font-semibold text-gray-900">バージョン管理</h2>
+        <button
+          onClick={() => setShowPublishDialog(true)}
+          className="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 flex items-center gap-1"
+        >
+          <span>📦</span> 新バージョンを公開
+        </button>
+      </div>
+
+      {/* Publish Dialog */}
+      {showPublishDialog && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
+          <p className="text-sm text-green-800 font-medium">現在のドラフトを新バージョンとして公開します</p>
+          <input
+            type="text"
+            value={publishLabel}
+            onChange={(e) => setPublishLabel(e.target.value)}
+            placeholder="バージョン名（例: 口癖調整版）"
+            className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-green-500"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handlePublish}
+              disabled={publishing || !publishLabel.trim()}
+              className="px-4 py-2 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600 disabled:opacity-50"
+            >
+              {publishing ? '公開中...' : '公開する'}
+            </button>
+            <button
+              onClick={() => { setShowPublishDialog(false); setPublishLabel(''); }}
+              className="px-4 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg hover:bg-gray-200"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Version History */}
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium text-gray-700">バージョン履歴</h3>
+        {versions.length === 0 ? (
+          <p className="text-sm text-gray-500 py-4 text-center">まだバージョンがありません</p>
+        ) : (
+          <div className="space-y-2">
+            {versions.map((version) => (
+              <div
+                key={version.id}
+                className={`p-3 rounded-lg border ${
+                  version.status === 'published'
+                    ? 'bg-green-50 border-green-200'
+                    : version.status === 'archived'
+                    ? 'bg-gray-50 border-gray-200'
+                    : 'bg-white border-gray-200'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm font-bold text-gray-900">v{version.versionNumber}</span>
+                    {version.label && (
+                      <span className="text-sm text-gray-700">{version.label}</span>
+                    )}
+                    {version.status === 'published' && (
+                      <span className="px-1.5 py-0.5 text-xs bg-green-100 text-green-700 rounded">公開中</span>
+                    )}
+                    {version.status === 'archived' && (
+                      <span className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-500 rounded">アーカイブ</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">{formatDate(version.createdAt)}</span>
+                    {version.status !== 'published' && (
+                      <button
+                        onClick={() => handleRollback(version.id, version.versionNumber)}
+                        disabled={rollingBack === version.id}
+                        className="px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded hover:bg-amber-200 disabled:opacity-50"
+                      >
+                        {rollingBack === version.id ? '処理中...' : 'ロールバック'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {version.parentVersionId && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    ← v{versions.find((v) => v.id === version.parentVersionId)?.versionNumber ?? '?'} から派生
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

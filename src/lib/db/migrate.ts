@@ -361,6 +361,20 @@ CREATE TABLE IF NOT EXISTS sandbox_working_memory (
 `;
 
 /**
+ * Migration 003: Version labels and parent tracking for git-like versioning
+ */
+const MIGRATION_003_VERSION_LABELS = `
+-- Add label column to character_versions for human-readable names
+ALTER TABLE character_versions ADD COLUMN label TEXT;
+
+-- Add parent_version_id for tracking version history
+ALTER TABLE character_versions ADD COLUMN parent_version_id TEXT REFERENCES character_versions(id);
+
+-- Index for finding children of a version
+CREATE INDEX IF NOT EXISTS idx_character_versions_parent ON character_versions(parent_version_id);
+`;
+
+/**
  * Run all migrations.
  */
 export async function runMigrations() {
@@ -417,6 +431,7 @@ export async function runMigrations() {
   // Run migrations in order
   await runMigration('001_initial.sql', MIGRATION_001_INITIAL);
   await runMigration('002_workspaces.sql', MIGRATION_002_WORKSPACES);
+  await runMigration('003_version_labels.sql', MIGRATION_003_VERSION_LABELS);
 
   console.log('All migrations completed');
 }

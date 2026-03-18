@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>MVP Phase 4 完了 / Phase 5-6 進行中</phase>
+    <phase>MVP Phase 6 完了 / Git風バージョン管理実装済み</phase>
   </project_overview>
 
   <architecture>
@@ -49,6 +49,8 @@
     <decision date="2026-03-17">MVP初期キャラクターとして「美咲」を作成</decision>
     <decision date="2026-03-17">メモリ検索のMVPはキーワードベース（将来的にembedding対応）</decision>
     <decision date="2026-03-17">マイグレーションSQLを直接コードに埋め込む（Next.js API route互換のため）</decision>
+    <decision date="2026-03-19">ロールバックは破壊的操作ではなく、新バージョン作成として実装</decision>
+    <decision date="2026-03-19">バージョンステータスは draft/published/archived の3状態</decision>
   </decisions>
 
   <logs>PROJECT_LOG/INDEX.md</logs>

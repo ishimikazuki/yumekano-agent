@@ -115,6 +115,7 @@ export const CharacterVersionSchema = z.object({
   id: z.string().uuid(),
   characterId: z.string().uuid(),
   versionNumber: z.number().int().positive(),
+  label: z.string().optional().describe('Human-readable version name (e.g., "口癖調整版")'),
   status: CharacterVersionStatusSchema,
   persona: PersonaSpecSchema,
   style: StyleSpecSchema,
@@ -125,6 +126,7 @@ export const CharacterVersionSchema = z.object({
   promptBundleVersionId: z.string().uuid(),
   createdBy: z.string(),
   createdAt: z.coerce.date(),
+  parentVersionId: z.string().uuid().nullable().optional().describe('Previous version this was based on'),
 });
 export type CharacterVersion = z.infer<typeof CharacterVersionSchema>;
 
