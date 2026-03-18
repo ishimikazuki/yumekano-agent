@@ -731,9 +731,150 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
             <span className="text-sm text-gray-700">すべての条件を満たす必要あり</span>
           </div>
           <TextArea label="ビート（演出ノート）" value={selectedEdge.authoredBeat || ''} onChange={(v) => updateEdge(selectedEdge.id, { authoredBeat: v || undefined })} rows={2} />
-          <div className="text-xs text-gray-500">※ 条件の詳細編集は今後実装予定</div>
+
+          {/* Conditions Editor */}
+          <ConditionsEditor
+            conditions={selectedEdge.conditions}
+            onChange={(conditions) => updateEdge(selectedEdge.id, { conditions })}
+          />
         </div>
       )}
+    </div>
+  );
+}
+
+// ============ Conditions Editor ============
+function ConditionsEditor({ conditions, onChange }: { conditions: TransitionCondition[]; onChange: (c: TransitionCondition[]) => void }) {
+  const addCondition = (type: TransitionCondition['type']) => {
+    let newCondition: TransitionCondition;
+    switch (type) {
+      case 'metric':
+        newCondition = { type: 'metric', field: 'trust', op: '>=', value: 0.5 };
+        break;
+      case 'topic':
+        newCondition = { type: 'topic', topicKey: 'dream', minCount: 1 };
+        break;
+      case 'event':
+        newCondition = { type: 'event', eventKey: 'first_meeting', exists: true };
+        break;
+      case 'emotion':
+        newCondition = { type: 'emotion', field: 'pleasure', op: '>=', value: 0.3 };
+        break;
+      case 'openThread':
+        newCondition = { type: 'openThread', threadKey: 'conflict', status: 'resolved' };
+        break;
+      case 'time':
+        newCondition = { type: 'time', field: 'turnsSinceLastTransition', op: '>=', value: 5 };
+        break;
+      default:
+        return;
+    }
+    onChange([...conditions, newCondition]);
+  };
+
+  const updateCondition = (index: number, updates: Partial<TransitionCondition>) => {
+    onChange(conditions.map((c, i) => i === index ? { ...c, ...updates } : c));
+  };
+
+  const removeCondition = (index: number) => {
+    onChange(conditions.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-gray-700">遷移条件</label>
+        <div className="flex gap-1">
+          <button onClick={() => addCondition('metric')} className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">+数値</button>
+          <button onClick={() => addCondition('topic')} className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded hover:bg-green-200">+トピック</button>
+          <button onClick={() => addCondition('emotion')} className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded hover:bg-purple-200">+感情</button>
+          <button onClick={() => addCondition('time')} className="text-xs px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded hover:bg-orange-200">+時間</button>
+        </div>
+      </div>
+
+      {conditions.length === 0 && (
+        <div className="text-xs text-gray-400 py-2">条件がありません（常に遷移可能）</div>
+      )}
+
+      {conditions.map((cond, i) => (
+        <div key={i} className="flex items-center gap-2 p-2 bg-white rounded border text-xs">
+          {cond.type === 'metric' && (
+            <>
+              <select value={cond.field} onChange={(e) => updateCondition(i, { field: e.target.value })} className="px-1 py-0.5 border rounded">
+                <option value="trust">trust</option>
+                <option value="affinity">affinity</option>
+                <option value="intimacy_readiness">intimacy</option>
+                <option value="conflict">conflict</option>
+              </select>
+              <select value={cond.op} onChange={(e) => updateCondition(i, { op: e.target.value })} className="px-1 py-0.5 border rounded">
+                <option value=">=">≥</option>
+                <option value="<=">≤</option>
+              </select>
+              <input type="number" step="0.1" min="0" max="1" value={cond.value} onChange={(e) => updateCondition(i, { value: parseFloat(e.target.value) })} className="w-16 px-1 py-0.5 border rounded" />
+            </>
+          )}
+
+          {cond.type === 'topic' && (
+            <>
+              <span className="text-gray-500">トピック</span>
+              <input type="text" value={cond.topicKey} onChange={(e) => updateCondition(i, { topicKey: e.target.value })} className="flex-1 px-1 py-0.5 border rounded" placeholder="topicKey" />
+              <span>≥</span>
+              <input type="number" min="1" value={cond.minCount ?? 1} onChange={(e) => updateCondition(i, { minCount: parseInt(e.target.value) })} className="w-12 px-1 py-0.5 border rounded" />
+              <span className="text-gray-500">回</span>
+            </>
+          )}
+
+          {cond.type === 'event' && (
+            <>
+              <span className="text-gray-500">イベント</span>
+              <input type="text" value={cond.eventKey} onChange={(e) => updateCondition(i, { eventKey: e.target.value })} className="flex-1 px-1 py-0.5 border rounded" placeholder="eventKey" />
+              <select value={cond.exists ? 'true' : 'false'} onChange={(e) => updateCondition(i, { exists: e.target.value === 'true' })} className="px-1 py-0.5 border rounded">
+                <option value="true">発生済み</option>
+                <option value="false">未発生</option>
+              </select>
+            </>
+          )}
+
+          {cond.type === 'emotion' && (
+            <>
+              <select value={cond.field} onChange={(e) => updateCondition(i, { field: e.target.value })} className="px-1 py-0.5 border rounded">
+                <option value="pleasure">pleasure</option>
+                <option value="arousal">arousal</option>
+                <option value="dominance">dominance</option>
+              </select>
+              <select value={cond.op} onChange={(e) => updateCondition(i, { op: e.target.value })} className="px-1 py-0.5 border rounded">
+                <option value=">=">≥</option>
+                <option value="<=">≤</option>
+              </select>
+              <input type="number" step="0.1" min="-1" max="1" value={cond.value} onChange={(e) => updateCondition(i, { value: parseFloat(e.target.value) })} className="w-16 px-1 py-0.5 border rounded" />
+            </>
+          )}
+
+          {cond.type === 'openThread' && (
+            <>
+              <span className="text-gray-500">スレッド</span>
+              <input type="text" value={cond.threadKey} onChange={(e) => updateCondition(i, { threadKey: e.target.value })} className="flex-1 px-1 py-0.5 border rounded" placeholder="threadKey" />
+              <select value={cond.status} onChange={(e) => updateCondition(i, { status: e.target.value })} className="px-1 py-0.5 border rounded">
+                <option value="open">open</option>
+                <option value="resolved">resolved</option>
+              </select>
+            </>
+          )}
+
+          {cond.type === 'time' && (
+            <>
+              <select value={cond.field} onChange={(e) => updateCondition(i, { field: e.target.value })} className="px-1 py-0.5 border rounded">
+                <option value="turnsSinceLastTransition">ターン経過</option>
+                <option value="daysSinceEntry">日数経過</option>
+              </select>
+              <span>≥</span>
+              <input type="number" min="1" value={cond.value} onChange={(e) => updateCondition(i, { value: parseInt(e.target.value) })} className="w-16 px-1 py-0.5 border rounded" />
+            </>
+          )}
+
+          <button onClick={() => removeCondition(i)} className="text-red-400 hover:text-red-600 ml-auto">×</button>
+        </div>
+      ))}
     </div>
   );
 }
