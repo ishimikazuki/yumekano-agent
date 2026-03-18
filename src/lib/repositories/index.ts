@@ -6,3 +6,4 @@ export { releaseRepo } from './release-repo';
 export { evalRepo } from './eval-repo';
 export { phaseGraphRepo } from './phase-graph-repo';
 export { promptBundleRepo } from './prompt-bundle-repo';
+export { workspaceRepo } from './workspace-repo';

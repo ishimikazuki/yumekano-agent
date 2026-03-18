@@ -107,7 +107,7 @@ export default function ReleasesPage() {
     <div className="px-4 sm:px-0">
       <div className="sm:flex sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Releases</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">リリース</h1>
           <p className="mt-2 text-sm text-gray-700">
             キャラクターバージョンの公開・ロールバック管理
           </p>
@@ -207,7 +207,7 @@ export default function ReleasesPage() {
                         disabled={rollingBack === release.id}
                         className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50"
                       >
-                        {rollingBack === release.id ? 'Rolling back...' : 'Rollback'}
+                        {rollingBack === release.id ? 'ロールバック中...' : 'ロールバック'}
                       </button>
                     )}
                   </div>

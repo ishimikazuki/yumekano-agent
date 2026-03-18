@@ -102,19 +102,19 @@ export default function MemoryPage() {
             href={`/characters/${characterId}`}
             className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
           >
-            Overview
+            概要
           </Link>
           <Link
             href={`/characters/${characterId}/phases`}
             className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
           >
-            Phases
+            フェーズ
           </Link>
           <Link
             href={`/characters/${characterId}/memory`}
             className="px-3 py-2 text-sm font-medium text-pink-600 border-b-2 border-pink-600"
           >
-            Memory
+            メモリ
           </Link>
         </nav>
       </div>
@@ -205,11 +205,11 @@ export default function MemoryPage() {
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Subject</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Predicate</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Object</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Confidence</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">主語</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">述語</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">目的語</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">確信度</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">状態</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">

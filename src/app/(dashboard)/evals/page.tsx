@@ -82,7 +82,7 @@ export default function EvalsPage() {
     <div className="px-4 sm:px-0">
       <div className="sm:flex sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Evaluations</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">評価</h1>
           <p className="mt-2 text-sm text-gray-700">
             シナリオパックを実行してキャラクターの品質を評価
           </p>
@@ -170,16 +170,16 @@ export default function EvalsPage() {
                   {run.summary && (
                     <div className="flex items-center gap-4 mt-2 text-sm">
                       <span className="text-gray-600">
-                        Total: {run.summary.totalCases}
+                        合計: {run.summary.totalCases}
                       </span>
                       <span className="text-green-600">
-                        Pass: {run.summary.passed}
+                        成功: {run.summary.passed}
                       </span>
                       <span className="text-red-600">
-                        Fail: {run.summary.failed}
+                        失敗: {run.summary.failed}
                       </span>
                       <span className="text-blue-600">
-                        Avg: {(run.summary.avgScore * 100).toFixed(1)}%
+                        平均: {(run.summary.avgScore * 100).toFixed(1)}%
                       </span>
                     </div>
                   )}
@@ -213,7 +213,7 @@ export default function EvalsPage() {
 
       {/* Coming Soon Notice */}
       <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-        <h3 className="text-sm font-medium text-yellow-900 mb-2">Coming Soon</h3>
+        <h3 className="text-sm font-medium text-yellow-900 mb-2">開発中</h3>
         <p className="text-sm text-yellow-700">
           評価システムは現在開発中です。シナリオセットの作成、自動評価実行、
           結果の詳細表示機能が今後追加される予定です。

@@ -26,7 +26,7 @@ export default function CharactersPage() {
       try {
         const res = await fetch('/api/characters');
         const data = await res.json();
-        setCharacters(data.characters || []);
+        setCharacters(Array.isArray(data) ? data : data.characters || []);
       } catch (error) {
         console.error('Failed to fetch characters:', error);
       } finally {
@@ -48,7 +48,7 @@ export default function CharactersPage() {
     <div className="px-4 sm:px-0">
       <div className="sm:flex sm:items-center">
         <div className="sm:flex-auto">
-          <h1 className="text-2xl font-semibold text-gray-900">Characters</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">キャラクター</h1>
           <p className="mt-2 text-sm text-gray-700">
             キャラクター設定の管理。ペルソナ、スタイル、自律性、感情などを調整できます。
           </p>

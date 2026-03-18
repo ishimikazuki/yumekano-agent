@@ -144,7 +144,7 @@ export default function TraceViewerPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Trace Viewer</h1>
+            <h1 className="text-2xl font-semibold text-gray-900">トレースビューア</h1>
             <p className="text-sm text-gray-500 font-mono">{trace.id}</p>
           </div>
           <Link
@@ -161,14 +161,14 @@ export default function TraceViewerPage() {
 
       {/* Messages */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Messages</h2>
+        <h2 className="text-lg font-medium text-gray-900 mb-4">メッセージ</h2>
         <div className="space-y-4">
           <div className="p-3 bg-blue-50 rounded-lg">
-            <p className="text-xs font-medium text-blue-600 mb-1">User</p>
+            <p className="text-xs font-medium text-blue-600 mb-1">ユーザー</p>
             <p className="text-sm text-gray-900">{trace.userMessage}</p>
           </div>
           <div className="p-3 bg-pink-50 rounded-lg">
-            <p className="text-xs font-medium text-pink-600 mb-1">Character</p>
+            <p className="text-xs font-medium text-pink-600 mb-1">キャラクター</p>
             <p className="text-sm text-gray-900">{trace.assistantMessage}</p>
           </div>
         </div>
@@ -177,7 +177,7 @@ export default function TraceViewerPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Phase Transition */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Phase</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">フェーズ</h2>
           <div className="flex items-center gap-4">
             <div className="px-3 py-2 bg-gray-100 rounded text-sm font-mono">
               {trace.phaseIdBefore}
@@ -197,18 +197,18 @@ export default function TraceViewerPage() {
 
         {/* Emotion (PAD) */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Emotion (PAD)</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">感情 (PAD)</h2>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Before:</span>
+              <span className="text-gray-500">変化前:</span>
               <span className="font-mono">{formatPAD(trace.emotionBefore)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">After:</span>
+              <span className="text-gray-500">変化後:</span>
               <span className="font-mono">{formatPAD(trace.emotionAfter)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Change:</span>
+              <span className="text-gray-500">差分:</span>
               <span className="font-mono text-pink-600">
                 {getPADChange(trace.emotionBefore, trace.emotionAfter)}
               </span>
@@ -218,7 +218,7 @@ export default function TraceViewerPage() {
 
         {/* Appraisal */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Appraisal Vector</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">アプレイザルベクトル</h2>
           <div className="grid grid-cols-2 gap-2 text-sm">
             {Object.entries(trace.appraisal).map(([key, value]) => (
               <div key={key} className="flex justify-between">
@@ -231,7 +231,7 @@ export default function TraceViewerPage() {
 
         {/* Plan */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Turn Plan</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">ターンプラン</h2>
           <dl className="space-y-2 text-sm">
             <div>
               <dt className="text-gray-500">Stance</dt>
@@ -264,7 +264,7 @@ export default function TraceViewerPage() {
 
         {/* Retrieved Memory */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Retrieved Memory</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">取得されたメモリ</h2>
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between">
               <dt className="text-gray-500">Events:</dt>
@@ -287,9 +287,9 @@ export default function TraceViewerPage() {
 
         {/* Memory Writes */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Memory Writes</h2>
+          <h2 className="text-lg font-medium text-gray-900 mb-4">メモリ書き込み</h2>
           {trace.memoryWrites.length === 0 ? (
-            <p className="text-sm text-gray-500">No memory writes</p>
+            <p className="text-sm text-gray-500">メモリ書き込みなし</p>
           ) : (
             <ul className="space-y-2">
               {trace.memoryWrites.map((write, i) => (
@@ -308,7 +308,7 @@ export default function TraceViewerPage() {
       {/* Candidates */}
       <div className="mt-6 bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">
-          Candidates ({trace.candidates.length})
+          候補 ({trace.candidates.length})
         </h2>
         <div className="space-y-4">
           {trace.candidates.map((candidate) => (
@@ -324,15 +324,15 @@ export default function TraceViewerPage() {
             >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Candidate {candidate.index}</span>
+                  <span className="text-sm font-medium">候補 {candidate.index}</span>
                   {candidate.index === trace.winnerIndex && (
                     <span className="px-2 py-0.5 bg-green-500 text-white text-xs rounded">
-                      WINNER
+                      採用
                     </span>
                   )}
                   {candidate.rejected && (
                     <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded">
-                      REJECTED
+                      却下
                     </span>
                   )}
                 </div>
@@ -342,7 +342,7 @@ export default function TraceViewerPage() {
               </div>
               <p className="text-sm text-gray-900 mb-3">{candidate.text}</p>
               {candidate.rejectionReason && (
-                <p className="text-sm text-red-600 mb-2">Reason: {candidate.rejectionReason}</p>
+                <p className="text-sm text-red-600 mb-2">理由: {candidate.rejectionReason}</p>
               )}
               <div className="flex flex-wrap gap-2 text-xs">
                 {Object.entries(candidate.scores)
@@ -369,7 +369,7 @@ export default function TraceViewerPage() {
 
       {/* Model Info */}
       <div className="mt-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-medium text-gray-900 mb-4">Model IDs</h2>
+        <h2 className="text-lg font-medium text-gray-900 mb-4">モデル情報</h2>
         <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
             <dt className="text-gray-500">Planner</dt>

@@ -1,5 +1,5 @@
 import { runMigrations } from './migrate';
-import { characterRepo, phaseGraphRepo, promptBundleRepo, releaseRepo } from '../repositories';
+import { characterRepo, phaseGraphRepo, promptBundleRepo, releaseRepo, workspaceRepo } from '../repositories';
 import type {
   PersonaSpec,
   StyleSpec,
@@ -8,6 +8,7 @@ import type {
   MemoryPolicySpec,
   PhaseGraph,
 } from '../schemas';
+import { createSeiraDraftState, seiraPhaseGraph, seiraPrompts } from './seed-seira';
 
 /**
  * Seed character: Misaki (美咲)
@@ -385,59 +386,134 @@ export async function seed() {
   // Check if character already exists
   const existing = await characterRepo.getBySlug('misaki');
   if (existing) {
-    console.log('Seed character already exists, skipping...');
-    return;
+    console.log('Misaki already exists, skipping...');
+  } else {
+    // Create character
+    const character = await characterRepo.create({
+      slug: 'misaki',
+      displayName: '美咲',
+    });
+    console.log(`Created character: ${character.displayName} (${character.id})`);
+
+    // Create phase graph version
+    const phaseGraphVersion = await phaseGraphRepo.create({
+      characterId: character.id,
+      graph: misakiPhaseGraph,
+    });
+    console.log(`Created phase graph version: ${phaseGraphVersion.id}`);
+
+    // Create prompt bundle version
+    const promptBundleVersion = await promptBundleRepo.create({
+      characterId: character.id,
+      plannerMd: plannerPrompt,
+      generatorMd: generatorPrompt,
+      extractorMd: extractorPrompt,
+      reflectorMd: reflectorPrompt,
+      rankerMd: rankerPrompt,
+    });
+    console.log(`Created prompt bundle version: ${promptBundleVersion.id}`);
+
+    // Create character version
+    const version = await characterRepo.createVersion({
+      characterId: character.id,
+      persona: misakiPersona,
+      style: misakiStyle,
+      autonomy: misakiAutonomy,
+      emotion: misakiEmotion,
+      memory: misakiMemoryPolicy,
+      phaseGraphVersionId: phaseGraphVersion.id,
+      promptBundleVersionId: promptBundleVersion.id,
+      createdBy: 'system',
+      status: 'published',
+    });
+    console.log(`Created character version: ${version.id}`);
+
+    // Create release
+    const release = await releaseRepo.create({
+      characterId: character.id,
+      characterVersionId: version.id,
+      publishedBy: 'system',
+    });
+    console.log(`Created release: ${release.id}`);
   }
 
-  // Create character
-  const character = await characterRepo.create({
-    slug: 'misaki',
-    displayName: '美咲',
-  });
-  console.log(`Created character: ${character.displayName} (${character.id})`);
+  // ==========================================
+  // Seed Seira
+  // ==========================================
+  console.log('\nCreating seed character: Seira...');
 
-  // Create phase graph version
-  const phaseGraphVersion = await phaseGraphRepo.create({
-    characterId: character.id,
-    graph: misakiPhaseGraph,
-  });
-  console.log(`Created phase graph version: ${phaseGraphVersion.id}`);
+  const existingSeira = await characterRepo.getBySlug('seira');
+  if (existingSeira) {
+    console.log('Seira already exists, skipping...');
+  } else {
+    // Create character
+    const seiraChar = await characterRepo.create({
+      slug: 'seira',
+      displayName: '蒼井セイラ',
+    });
+    console.log(`Created character: ${seiraChar.displayName} (${seiraChar.id})`);
 
-  // Create prompt bundle version
-  const promptBundleVersion = await promptBundleRepo.create({
-    characterId: character.id,
-    plannerMd: plannerPrompt,
-    generatorMd: generatorPrompt,
-    extractorMd: extractorPrompt,
-    reflectorMd: reflectorPrompt,
-    rankerMd: rankerPrompt,
-  });
-  console.log(`Created prompt bundle version: ${promptBundleVersion.id}`);
+    // Create phase graph version
+    const seiraPhaseGraphVersion = await phaseGraphRepo.create({
+      characterId: seiraChar.id,
+      graph: seiraPhaseGraph,
+    });
+    console.log(`Created phase graph version: ${seiraPhaseGraphVersion.id}`);
 
-  // Create character version
-  const version = await characterRepo.createVersion({
-    characterId: character.id,
-    persona: misakiPersona,
-    style: misakiStyle,
-    autonomy: misakiAutonomy,
-    emotion: misakiEmotion,
-    memory: misakiMemoryPolicy,
-    phaseGraphVersionId: phaseGraphVersion.id,
-    promptBundleVersionId: promptBundleVersion.id,
-    createdBy: 'system',
-    status: 'published',
-  });
-  console.log(`Created character version: ${version.id}`);
+    // Create prompt bundle version
+    const seiraPromptBundleVersion = await promptBundleRepo.create({
+      characterId: seiraChar.id,
+      plannerMd: seiraPrompts.plannerMd,
+      generatorMd: seiraPrompts.generatorMd,
+      extractorMd: seiraPrompts.extractorMd,
+      reflectorMd: seiraPrompts.reflectorMd,
+      rankerMd: seiraPrompts.rankerMd,
+    });
+    console.log(`Created prompt bundle version: ${seiraPromptBundleVersion.id}`);
 
-  // Create release
-  const release = await releaseRepo.create({
-    characterId: character.id,
-    characterVersionId: version.id,
-    publishedBy: 'system',
-  });
-  console.log(`Created release: ${release.id}`);
+    // Get Seira draft state for persona/style/etc
+    const seiraDraft = createSeiraDraftState();
 
-  console.log('Seed completed successfully!');
+    // Create character version
+    const seiraVersion = await characterRepo.createVersion({
+      characterId: seiraChar.id,
+      persona: seiraDraft.persona,
+      style: seiraDraft.style,
+      autonomy: seiraDraft.autonomy,
+      emotion: seiraDraft.emotion,
+      memory: seiraDraft.memory,
+      phaseGraphVersionId: seiraPhaseGraphVersion.id,
+      promptBundleVersionId: seiraPromptBundleVersion.id,
+      createdBy: 'system',
+      status: 'published',
+    });
+    console.log(`Created character version: ${seiraVersion.id}`);
+
+    // Create release
+    const seiraRelease = await releaseRepo.create({
+      characterId: seiraChar.id,
+      characterVersionId: seiraVersion.id,
+      publishedBy: 'system',
+    });
+    console.log(`Created release: ${seiraRelease.id}`);
+
+    // Create workspace for Seira (for dashboard editing)
+    const seiraWorkspace = await workspaceRepo.create({
+      characterId: seiraChar.id,
+      name: 'Default Workspace',
+      createdBy: 'system',
+    });
+    console.log(`Created workspace: ${seiraWorkspace.id}`);
+
+    // Initialize workspace with draft state
+    await workspaceRepo.initDraft(seiraWorkspace.id, {
+      ...seiraDraft,
+      baseVersionId: seiraVersion.id,
+    });
+    console.log(`Initialized workspace draft state`);
+  }
+
+  console.log('\nSeed completed successfully!');
 }
 
 // Run if called directly

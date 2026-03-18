@@ -119,19 +119,19 @@ export default function PhasesPage() {
             href={`/characters/${characterId}`}
             className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
           >
-            Overview
+            概要
           </Link>
           <Link
             href={`/characters/${characterId}/phases`}
             className="px-3 py-2 text-sm font-medium text-pink-600 border-b-2 border-pink-600"
           >
-            Phases
+            フェーズ
           </Link>
           <Link
             href={`/characters/${characterId}/memory`}
             className="px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
           >
-            Memory
+            メモリ
           </Link>
         </nav>
       </div>

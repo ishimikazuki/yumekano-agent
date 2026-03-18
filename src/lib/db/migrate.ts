@@ -263,6 +263,104 @@ CREATE TABLE IF NOT EXISTS working_memory (
 `;
 
 /**
+ * Migration 002: Workspace tables for draft authoring
+ */
+const MIGRATION_002_WORKSPACES = `
+-- Character workspaces for draft editing
+CREATE TABLE IF NOT EXISTS character_workspaces (
+  id TEXT PRIMARY KEY,
+  character_id TEXT NOT NULL REFERENCES characters(id),
+  name TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspaces_character ON character_workspaces(character_id);
+
+-- Draft state - complete editable state
+CREATE TABLE IF NOT EXISTS workspace_draft_state (
+  workspace_id TEXT PRIMARY KEY REFERENCES character_workspaces(id),
+  identity_json TEXT NOT NULL,
+  persona_json TEXT NOT NULL,
+  style_json TEXT NOT NULL,
+  autonomy_json TEXT NOT NULL,
+  emotion_json TEXT NOT NULL,
+  memory_policy_json TEXT NOT NULL,
+  phase_graph_json TEXT NOT NULL,
+  planner_md TEXT NOT NULL,
+  generator_md TEXT NOT NULL,
+  extractor_md TEXT NOT NULL,
+  reflector_md TEXT NOT NULL,
+  ranker_md TEXT NOT NULL,
+  base_version_id TEXT REFERENCES character_versions(id),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Autosave history
+CREATE TABLE IF NOT EXISTS workspace_autosaves (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES character_workspaces(id),
+  section TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_autosaves_workspace ON workspace_autosaves(workspace_id, created_at DESC);
+
+-- Editor context for resume
+CREATE TABLE IF NOT EXISTS workspace_editor_context (
+  workspace_id TEXT PRIMARY KEY REFERENCES character_workspaces(id),
+  context_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Playground sessions for sandbox testing
+CREATE TABLE IF NOT EXISTS playground_sessions (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL REFERENCES character_workspaces(id),
+  user_id TEXT NOT NULL,
+  is_sandbox INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_playground_sessions_workspace ON playground_sessions(workspace_id);
+
+-- Playground turns
+CREATE TABLE IF NOT EXISTS playground_turns (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  user_message_text TEXT NOT NULL,
+  assistant_message_text TEXT NOT NULL,
+  trace_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_playground_turns_session ON playground_turns(session_id, created_at);
+
+-- Sandbox pair state (isolated from production)
+CREATE TABLE IF NOT EXISTS sandbox_pair_state (
+  session_id TEXT PRIMARY KEY REFERENCES playground_sessions(id),
+  active_phase_id TEXT NOT NULL,
+  affinity REAL NOT NULL DEFAULT 50,
+  trust REAL NOT NULL DEFAULT 50,
+  intimacy_readiness REAL NOT NULL DEFAULT 0,
+  conflict REAL NOT NULL DEFAULT 0,
+  pad_json TEXT NOT NULL,
+  appraisal_json TEXT NOT NULL,
+  open_thread_count INTEGER NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Sandbox working memory (isolated from production)
+CREATE TABLE IF NOT EXISTS sandbox_working_memory (
+  session_id TEXT PRIMARY KEY REFERENCES playground_sessions(id),
+  data_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+`;
+
+/**
  * Run all migrations.
  */
 export async function runMigrations() {
@@ -281,41 +379,44 @@ export async function runMigrations() {
   const applied = await db.execute('SELECT name FROM _migrations');
   const appliedNames = new Set(applied.rows.map((r) => r.name as string));
 
-  // Migration 001
-  const migrationName = '001_initial.sql';
-  if (!appliedNames.has(migrationName)) {
-    console.log(`Running migration: ${migrationName}`);
+  // Helper to run a migration
+  const runMigration = async (name: string, sql: string) => {
+    if (!appliedNames.has(name)) {
+      console.log(`Running migration: ${name}`);
 
-    // Remove comments and split by semicolon
-    const cleanedSql = MIGRATION_001_INITIAL
-      .split('\n')
-      .map((line) => {
-        // Remove single-line comments
-        const commentIndex = line.indexOf('--');
-        return commentIndex >= 0 ? line.slice(0, commentIndex) : line;
-      })
-      .join('\n');
+      // Remove comments and split by semicolon
+      const cleanedSql = sql
+        .split('\n')
+        .map((line) => {
+          const commentIndex = line.indexOf('--');
+          return commentIndex >= 0 ? line.slice(0, commentIndex) : line;
+        })
+        .join('\n');
 
-    const statements = cleanedSql
-      .split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0);
+      const statements = cleanedSql
+        .split(';')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
 
-    for (const statement of statements) {
-      console.log(`Executing: ${statement.slice(0, 50)}...`);
-      await db.execute(statement);
+      for (const statement of statements) {
+        console.log(`Executing: ${statement.slice(0, 50)}...`);
+        await db.execute(statement);
+      }
+
+      await db.execute({
+        sql: 'INSERT INTO _migrations (name) VALUES (?)',
+        args: [name],
+      });
+
+      console.log(`Migration ${name} completed`);
+    } else {
+      console.log(`Migration ${name} already applied`);
     }
+  };
 
-    // Record migration
-    await db.execute({
-      sql: 'INSERT INTO _migrations (name) VALUES (?)',
-      args: [migrationName],
-    });
-
-    console.log(`Migration ${migrationName} completed`);
-  } else {
-    console.log(`Migration ${migrationName} already applied`);
-  }
+  // Run migrations in order
+  await runMigration('001_initial.sql', MIGRATION_001_INITIAL);
+  await runMigration('002_workspaces.sql', MIGRATION_002_WORKSPACES);
 
   console.log('All migrations completed');
 }
