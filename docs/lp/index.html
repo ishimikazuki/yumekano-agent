@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yumekano キャラクター編集ガイド</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --pink: #ec4899;
+      --pink-light: #fce7f3;
+      --pink-dark: #be185d;
+      --gray-50: #f9fafb;
+      --gray-100: #f3f4f6;
+      --gray-200: #e5e7eb;
+      --gray-500: #6b7280;
+      --gray-700: #374151;
+      --gray-900: #111827;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Noto Sans JP', sans-serif;
+      color: var(--gray-700);
+      line-height: 1.8;
+      background: var(--gray-50);
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    /* Hero */
+    .hero {
+      background: linear-gradient(135deg, var(--pink) 0%, var(--pink-dark) 100%);
+      color: white;
+      padding: 80px 20px;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+
+    .hero p {
+      font-size: 1.2rem;
+      opacity: 0.9;
+    }
+
+    .badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.2);
+      padding: 8px 16px;
+      border-radius: 9999px;
+      font-size: 0.875rem;
+      margin-bottom: 24px;
+    }
+
+    /* TOC */
+    .toc {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      margin: -40px 20px 40px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      position: relative;
+    }
+
+    .toc h2 {
+      font-size: 1.25rem;
+      color: var(--gray-900);
+      margin-bottom: 16px;
+    }
+
+    .toc ol {
+      padding-left: 24px;
+    }
+
+    .toc li {
+      margin-bottom: 8px;
+    }
+
+    .toc a {
+      color: var(--pink);
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      text-decoration: underline;
+    }
+
+    /* Section */
+    section {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      margin-bottom: 32px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    }
+
+    section h2 {
+      font-size: 1.5rem;
+      color: var(--gray-900);
+      margin-bottom: 24px;
+      padding-bottom: 12px;
+      border-bottom: 3px solid var(--pink-light);
+    }
+
+    section h3 {
+      font-size: 1.125rem;
+      color: var(--gray-900);
+      margin: 24px 0 12px;
+    }
+
+    section p {
+      margin-bottom: 16px;
+    }
+
+    /* Image */
+    .img-wrapper {
+      margin: 24px 0;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+
+    .img-wrapper img {
+      width: 100%;
+      display: block;
+    }
+
+    .img-caption {
+      background: var(--gray-100);
+      padding: 12px 16px;
+      font-size: 0.875rem;
+      color: var(--gray-500);
+      text-align: center;
+    }
+
+    /* Table */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+    }
+
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--gray-200);
+    }
+
+    th {
+      background: var(--gray-50);
+      font-weight: 500;
+      color: var(--gray-900);
+    }
+
+    /* Code */
+    code {
+      background: var(--pink-light);
+      color: var(--pink-dark);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    pre {
+      background: var(--gray-900);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+
+    pre code {
+      background: none;
+      color: inherit;
+      padding: 0;
+    }
+
+    /* Tips */
+    .tip {
+      background: var(--pink-light);
+      border-left: 4px solid var(--pink);
+      padding: 16px 20px;
+      border-radius: 0 8px 8px 0;
+      margin: 16px 0;
+    }
+
+    .tip strong {
+      color: var(--pink-dark);
+    }
+
+    /* Flow */
+    .flow {
+      background: var(--gray-50);
+      padding: 24px;
+      border-radius: 12px;
+      text-align: center;
+      margin: 24px 0;
+    }
+
+    .flow-item {
+      display: inline-block;
+      background: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      margin: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+
+    .flow-arrow {
+      color: var(--pink);
+      font-size: 1.5rem;
+      margin: 0 8px;
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--gray-500);
+      font-size: 0.875rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      .hero h1 {
+        font-size: 1.75rem;
+      }
+
+      section {
+        padding: 24px;
+      }
+
+      .flow-item {
+        display: block;
+        margin: 8px auto;
+      }
+
+      .flow-arrow {
+        display: block;
+        transform: rotate(90deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Hero -->
+  <header class="hero">
+    <div class="container">
+      <span class="badge">Designer Guide</span>
+      <h1>Yumekano キャラクター編集ガイド</h1>
+      <p>コードを書かずにキャラクターの性格や話し方を調整できます</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- TOC -->
+    <nav class="toc">
+      <h2>目次</h2>
+      <ol>
+        <li><a href="#step1">キャラクター一覧を開く</a></li>
+        <li><a href="#step2">キャラクター詳細を確認する</a></li>
+        <li><a href="#step3">編集ページを開く</a></li>
+        <li><a href="#step4">各項目を編集する</a></li>
+        <li><a href="#step5">サンドボックスでテストする</a></li>
+      </ol>
+    </nav>
+
+    <!-- Step 1 -->
+    <section id="step1">
+      <h2>1. キャラクター一覧を開く</h2>
+      <p>ブラウザで <code>http://localhost:3000/characters</code> を開きます。</p>
+
+      <div class="img-wrapper">
+        <img src="images/01-character-list.png" alt="キャラクター一覧画面">
+        <div class="img-caption">登録されているキャラクターがカード形式で表示されます</div>
+      </div>
+
+      <p>編集したいキャラクターをクリックしてください。</p>
+    </section>
+
+    <!-- Step 2 -->
+    <section id="step2">
+      <h2>2. キャラクター詳細を確認する</h2>
+      <p>キャラクターをクリックすると、詳細画面が開きます。</p>
+
+      <div class="img-wrapper">
+        <img src="images/02-character-detail.png" alt="キャラクター詳細画面">
+        <div class="img-caption">ペルソナ、スタイル、自律性、感情などが一覧で確認できます</div>
+      </div>
+
+      <h3>表示される情報</h3>
+      <table>
+        <tr>
+          <th>セクション</th>
+          <th>内容</th>
+        </tr>
+        <tr>
+          <td><strong>ペルソナ</strong></td>
+          <td>サマリー、価値観、欠点、好き/嫌いなもの</td>
+        </tr>
+        <tr>
+          <td><strong>スタイル</strong></td>
+          <td>敬語レベル、話し方のパラメータ、口癖</td>
+        </tr>
+        <tr>
+          <td><strong>自律性</strong></td>
+          <td>ユーザーの要求に対する反応傾向</td>
+        </tr>
+        <tr>
+          <td><strong>感情ベースライン</strong></td>
+          <td>基本的な感情状態 (PAD値)</td>
+        </tr>
+      </table>
+    </section>
+
+    <!-- Step 3 -->
+    <section id="step3">
+      <h2>3. 編集ページを開く</h2>
+
+      <h3>ステップ1: ワークスペースタブをクリック</h3>
+      <div class="img-wrapper">
+        <img src="images/03-workspace-tab.png" alt="ワークスペースタブ">
+        <div class="img-caption">ワークスペース一覧が表示されます</div>
+      </div>
+
+      <h3>ステップ2: 「編集」ボタンをクリック</h3>
+      <p>ワークスペース（Default Workspace）の「編集」ボタンをクリックします。</p>
+    </section>
+
+    <!-- Step 4 -->
+    <section id="step4">
+      <h2>4. 各項目を編集する</h2>
+      <p>編集ページでは、タブを切り替えて各項目を編集できます。</p>
+
+      <h3>アイデンティティ</h3>
+      <p>キャラクターの基本情報を設定します。</p>
+
+      <div class="img-wrapper">
+        <img src="images/04-edit-identity.png" alt="アイデンティティ編集">
+        <div class="img-caption">表示名、年齢、一人称、二人称、職業を設定</div>
+      </div>
+
+      <table>
+        <tr><th>項目</th><th>説明</th></tr>
+        <tr><td><strong>表示名</strong></td><td>キャラクターの名前</td></tr>
+        <tr><td><strong>年齢</strong></td><td>設定上の年齢</td></tr>
+        <tr><td><strong>一人称</strong></td><td>自分のことをどう呼ぶか（わたし、僕、など）</td></tr>
+        <tr><td><strong>二人称</strong></td><td>ユーザーをどう呼ぶか（○○さん、きみ、など）</td></tr>
+        <tr><td><strong>職業・役割</strong></td><td>何をしている人か</td></tr>
+      </table>
+
+      <h3>ペルソナ</h3>
+      <p>キャラクターの性格を設定します。</p>
+
+      <div class="img-wrapper">
+        <img src="images/05-edit-persona.png" alt="ペルソナ編集">
+        <div class="img-caption">価値観、欠点、好きなもの等をタグ形式で編集</div>
+      </div>
+
+      <div class="tip">
+        <strong>タグの追加:</strong> テキストを入力して「追加」ボタンをクリック（またはEnterキー）<br>
+        <strong>タグの削除:</strong> タグの「×」をクリック
+      </div>
+
+      <h3>スタイル</h3>
+      <p>話し方のスタイルを設定します。</p>
+
+      <div class="img-wrapper">
+        <img src="images/06-edit-style.png" alt="スタイル編集">
+        <div class="img-caption">スライダーで細かく調整できます</div>
+      </div>
+
+      <table>
+        <tr><th>項目</th><th>低い場合</th><th>高い場合</th></tr>
+        <tr><td><strong>簡潔さ</strong></td><td>丁寧に説明</td><td>短く端的に</td></tr>
+        <tr><td><strong>直接性</strong></td><td>遠回しに</td><td>ストレートに</td></tr>
+        <tr><td><strong>遊び心</strong></td><td>真面目に</td><td>冗談を交えて</td></tr>
+        <tr><td><strong>からかい</strong></td><td>からかわない</td><td>よくからかう</td></tr>
+        <tr><td><strong>主導性</strong></td><td>受け身</td><td>積極的に話題を振る</td></tr>
+      </table>
+
+      <h3>プロンプト（上級者向け）</h3>
+      <p>AIへの指示文を直接編集できます。</p>
+
+      <div class="img-wrapper">
+        <img src="images/07-edit-prompts.png" alt="プロンプト編集">
+        <div class="img-caption">Generator, Planner, Extractor, Reflector, Ranker</div>
+      </div>
+
+      <div class="tip">
+        <strong>注意:</strong> プロンプトの編集は上級者向けです。わからない場合は触らなくてOKです。
+      </div>
+    </section>
+
+    <!-- Step 5 -->
+    <section id="step5">
+      <h2>5. サンドボックスでテストする</h2>
+      <p>編集した内容をすぐにテストできます。編集ページ右上の「サンドボックス」ボタンをクリック。</p>
+
+      <div class="img-wrapper">
+        <img src="images/08-sandbox-empty.png" alt="サンドボックス（空）">
+        <div class="img-caption">サンドボックス画面</div>
+      </div>
+
+      <p>メッセージを入力して「送信」をクリック。</p>
+
+      <div class="img-wrapper">
+        <img src="images/09-sandbox-chat.png" alt="サンドボックス（チャット中）">
+        <div class="img-caption">キャラクターが応答します</div>
+      </div>
+
+      <h3>表示される情報</h3>
+      <table>
+        <tr><th>項目</th><th>説明</th></tr>
+        <tr><td><strong>フェーズ</strong></td><td>現在の関係段階</td></tr>
+        <tr><td><strong>PAD</strong></td><td>感情状態（P=快楽、A=覚醒、D=支配）</td></tr>
+        <tr><td><strong>Turn</strong></td><td>ターンID（デバッグ用）</td></tr>
+      </table>
+    </section>
+
+    <!-- Flow Summary -->
+    <section>
+      <h2>編集の流れまとめ</h2>
+      <div class="flow">
+        <span class="flow-item">キャラクター一覧</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-item">詳細画面</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-item">ワークスペース</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-item">編集ページ</span>
+        <span class="flow-arrow">→</span>
+        <span class="flow-item">サンドボックス</span>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section>
+      <h2>よくある質問</h2>
+
+      <h3>Q: 変更を保存するには？</h3>
+      <p>各タブで編集後、画面下の「保存」ボタンをクリックしてください。</p>
+
+      <h3>Q: 元に戻したい場合は？</h3>
+      <p>ページを更新（リロード）すると、最後に保存した状態に戻ります。</p>
+
+      <h3>Q: テストした会話をリセットしたい場合は？</h3>
+      <p>サンドボックス画面右上の「リセット」ボタンをクリックしてください。</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Yumekano Designer Guide</p>
+  </footer>
+</body>
+</html>
