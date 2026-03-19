@@ -571,15 +571,15 @@ function AutonomyEditor({ data, onChange }: { data: DraftState['autonomy']; onCh
     <div className="space-y-5">
       <div><h2 className="text-base font-semibold text-gray-900">自律性</h2><p className="text-xs text-gray-500 mt-1">ユーザーの要求に対する反応傾向</p></div>
       <div className="space-y-3">
-        <SliderField label="異議準備度" value={data.disagreementReadiness} onChange={(v) => onChange('disagreementReadiness', v)} />
-        <SliderField label="拒否準備度" value={data.refusalReadiness} onChange={(v) => onChange('refusalReadiness', v)} />
-        <SliderField label="遅延準備度" value={data.delayReadiness} onChange={(v) => onChange('delayReadiness', v)} />
-        <SliderField label="修復準備度" value={data.repairReadiness} onChange={(v) => onChange('repairReadiness', v)} />
-        <SliderField label="葛藤持続度" value={data.conflictSustain} onChange={(v) => onChange('conflictSustain', v)} />
+        <SliderField label="反論しやすさ" value={data.disagreementReadiness} onChange={(v) => onChange('disagreementReadiness', v)} />
+        <SliderField label="断りやすさ" value={data.refusalReadiness} onChange={(v) => onChange('refusalReadiness', v)} />
+        <SliderField label="待たせやすさ" value={data.delayReadiness} onChange={(v) => onChange('delayReadiness', v)} />
+        <SliderField label="仲直りしやすさ" value={data.repairReadiness} onChange={(v) => onChange('repairReadiness', v)} />
+        <SliderField label="引きずりやすさ" value={data.conflictSustain} onChange={(v) => onChange('conflictSustain', v)} />
       </div>
       <div className="flex items-center gap-2 pt-3 border-t">
         <input type="checkbox" id="intimacy" checked={data.intimacyNotOnDemand} onChange={(e) => onChange('intimacyNotOnDemand', e.target.checked)} className="w-4 h-4 text-pink-500 rounded" />
-        <label htmlFor="intimacy" className="text-sm text-gray-700">親密さはオンデマンド不可</label>
+        <label htmlFor="intimacy" className="text-sm text-gray-700">甘えさせない</label>
       </div>
     </div>
   );

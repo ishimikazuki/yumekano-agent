@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { LabelWithTooltip, Tooltip, PARAM_DESCRIPTIONS } from '@/components/Tooltip';
 
 interface CharacterVersion {
   id: string;
@@ -238,11 +239,15 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <h2 className="text-lg font-medium text-gray-900 mb-4">ペルソナ</h2>
         <dl className="space-y-3">
           <div>
-            <dt className="text-sm font-medium text-gray-500">サマリー</dt>
+            <dt className="text-sm font-medium">
+              <LabelWithTooltip label="サマリー" paramKey="summary" className="text-gray-500" />
+            </dt>
             <dd className="text-sm text-gray-900 mt-1">{version.persona.summary}</dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">価値観</dt>
+            <dt className="text-sm font-medium">
+              <LabelWithTooltip label="価値観" paramKey="values" className="text-gray-500" />
+            </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
               {version.persona.values.map((value, i) => (
                 <span key={i} className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">
@@ -252,7 +257,9 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">欠点</dt>
+            <dt className="text-sm font-medium">
+              <LabelWithTooltip label="欠点" paramKey="flaws" className="text-gray-500" />
+            </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
               {version.persona.flaws.map((flaw, i) => (
                 <span key={i} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
@@ -262,7 +269,9 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">好きなもの</dt>
+            <dt className="text-sm font-medium">
+              <LabelWithTooltip label="好きなもの" paramKey="likes" className="text-gray-500" />
+            </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
               {version.persona.likes.map((like, i) => (
                 <span key={i} className="px-2 py-1 bg-pink-100 text-pink-700 text-xs rounded">
@@ -272,7 +281,9 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
             </dd>
           </div>
           <div>
-            <dt className="text-sm font-medium text-gray-500">嫌いなもの</dt>
+            <dt className="text-sm font-medium">
+              <LabelWithTooltip label="嫌いなもの" paramKey="dislikes" className="text-gray-500" />
+            </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
               {version.persona.dislikes.map((d, i) => (
                 <span key={i} className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
@@ -289,7 +300,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <h2 className="text-lg font-medium text-gray-900 mb-4">スタイル</h2>
         <div className="space-y-4">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-500">敬語レベル</span>
+            <LabelWithTooltip label="敬語レベル" paramKey="politenessDefault" className="text-gray-500" />
             <span className="text-gray-900">{version.style.politenessDefault}</span>
           </div>
           {[
@@ -302,7 +313,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           ].map(({ key, label }) => (
             <div key={key}>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{label}</span>
+                <LabelWithTooltip label={label} paramKey={key} className="text-gray-500" />
                 <span className="text-gray-900">
                   {(version.style[key] * 100).toFixed(0)}%
                 </span>
@@ -316,7 +327,9 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
             </div>
           ))}
           <div>
-            <dt className="text-sm font-medium text-gray-500 mt-4">シグネチャフレーズ</dt>
+            <dt className="text-sm font-medium text-gray-500 mt-4">
+              <LabelWithTooltip label="シグネチャフレーズ" paramKey="signaturePhrases" className="text-gray-500" />
+            </dt>
             <dd className="flex flex-wrap gap-1 mt-2">
               {version.style.signaturePhrases.map((p, i) => (
                 <span key={i} className="px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded">
@@ -333,15 +346,15 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <h2 className="text-lg font-medium text-gray-900 mb-4">自律性</h2>
         <div className="space-y-4">
           {[
-            { key: 'disagreeReadiness' as const, label: '異議準備度' },
-            { key: 'refusalReadiness' as const, label: '拒否準備度' },
-            { key: 'delayReadiness' as const, label: '遅延準備度' },
-            { key: 'repairReadiness' as const, label: '修復準備度' },
-            { key: 'conflictCarryover' as const, label: '葛藤持続度' },
+            { key: 'disagreeReadiness' as const, label: '反論しやすさ' },
+            { key: 'refusalReadiness' as const, label: '断りやすさ' },
+            { key: 'delayReadiness' as const, label: '待たせやすさ' },
+            { key: 'repairReadiness' as const, label: '仲直りしやすさ' },
+            { key: 'conflictCarryover' as const, label: '引きずりやすさ' },
           ].map(({ key, label }) => (
             <div key={key}>
               <div className="flex justify-between text-sm">
-                <span className="text-gray-500">{label}</span>
+                <LabelWithTooltip label={label} paramKey={key} className="text-gray-500" />
                 <span className="text-gray-900">
                   {(version.autonomy[key] * 100).toFixed(0)}%
                 </span>
@@ -355,7 +368,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
             </div>
           ))}
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-            <span className="text-sm text-gray-500">親密さはオンデマンド不可</span>
+            <LabelWithTooltip label="親密さはオンデマンド不可" paramKey="intimacyNeverOnDemand" className="text-sm text-gray-500" />
             <span className={`px-2 py-1 rounded text-xs ${
               version.autonomy.intimacyNeverOnDemand
                 ? 'bg-green-100 text-green-700'
@@ -373,7 +386,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <div className="space-y-4">
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-500">Pleasure (快楽)</span>
+              <LabelWithTooltip label="Pleasure (快)" paramKey="pleasure" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.pleasure.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -385,7 +398,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-500">Arousal (覚醒)</span>
+              <LabelWithTooltip label="Arousal (興奮)" paramKey="arousal" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.arousal.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -397,7 +410,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-500">Dominance (支配)</span>
+              <LabelWithTooltip label="Dominance (支配感)" paramKey="dominance" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.dominance.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -416,22 +429,30 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           <h2 className="text-lg font-medium text-gray-900 mb-4">インナーワールド</h2>
           <dl className="grid grid-cols-2 gap-4">
             <div>
-              <dt className="text-sm font-medium text-gray-500">コア欲求</dt>
+              <dt className="text-sm font-medium">
+                <LabelWithTooltip label="コア欲求" paramKey="coreDesire" className="text-gray-500" />
+              </dt>
               <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.coreDesire}</dd>
             </div>
             <div>
-              <dt className="text-sm font-medium text-gray-500">恐れ</dt>
+              <dt className="text-sm font-medium">
+                <LabelWithTooltip label="恐れ" paramKey="fear" className="text-gray-500" />
+              </dt>
               <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.fear}</dd>
             </div>
             {version.persona.innerWorld.wound && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">傷</dt>
+                <dt className="text-sm font-medium">
+                  <LabelWithTooltip label="傷" paramKey="wound" className="text-gray-500" />
+                </dt>
                 <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.wound}</dd>
               </div>
             )}
             {version.persona.innerWorld.coping && (
               <div>
-                <dt className="text-sm font-medium text-gray-500">対処法</dt>
+                <dt className="text-sm font-medium">
+                  <LabelWithTooltip label="対処法" paramKey="coping" className="text-gray-500" />
+                </dt>
                 <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.coping}</dd>
               </div>
             )}
