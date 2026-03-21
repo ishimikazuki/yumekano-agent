@@ -24,7 +24,7 @@ export default function ReleasesPage() {
   const [releases, setReleases] = useState<Release[]>([]);
   const [currentRelease, setCurrentRelease] = useState<Release | null>(null);
   const [loading, setLoading] = useState(true);
-  const [publishing, setPublishing] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
   const [rollingBack, setRollingBack] = useState<string | null>(null);
 
   // Fetch characters
@@ -52,12 +52,17 @@ export default function ReleasesPage() {
 
     const fetchReleases = async () => {
       try {
+        setDataLoading(true);
         const res = await fetch(`/api/releases?characterId=${selectedCharacterId}`);
         const data = await res.json();
         setReleases(data.releases || []);
         setCurrentRelease(data.currentRelease);
       } catch (error) {
         console.error('Failed to fetch releases:', error);
+        setReleases([]);
+        setCurrentRelease(null);
+      } finally {
+        setDataLoading(false);
       }
     };
     fetchReleases();
@@ -133,7 +138,11 @@ export default function ReleasesPage() {
       </div>
 
       {/* Current Release */}
-      {currentRelease && (
+      {dataLoading ? (
+        <div className="mb-6 p-6 bg-gray-50 rounded-lg border border-gray-200 text-sm text-gray-500">
+          リリース情報を読み込み中...
+        </div>
+      ) : currentRelease && (
         <div className="mb-6 p-6 bg-green-50 rounded-lg border border-green-200">
           <div className="flex items-center justify-between">
             <div>
@@ -159,7 +168,11 @@ export default function ReleasesPage() {
           <h2 className="text-lg font-medium text-gray-900">リリース履歴</h2>
         </div>
 
-        {releases.length === 0 ? (
+        {dataLoading ? (
+          <div className="p-6 text-center text-gray-500">
+            リリース履歴を読み込み中...
+          </div>
+        ) : releases.length === 0 ? (
           <div className="p-6 text-center text-gray-500">
             リリース履歴がありません
           </div>

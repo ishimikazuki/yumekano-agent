@@ -1,7 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+
+interface Character {
+  id: string;
+  slug: string;
+  displayName: string;
+}
+
+interface ScenarioSet {
+  key: string;
+  name: string;
+  description: string;
+  caseCount: number;
+}
 
 interface EvalRun {
   id: string;
@@ -17,35 +29,44 @@ interface EvalRun {
   createdAt: string;
 }
 
-interface ScenarioSet {
+interface EvalCaseResult {
   id: string;
-  characterId: string;
-  name: string;
-  description: string;
-  version: number;
+  scenarioCaseId: string;
+  passed: boolean;
+  traceId: string;
+  failureReasons: string[];
+  scores: Record<string, number>;
+  createdAt: string;
 }
 
-interface Character {
+interface CurrentVersion {
   id: string;
-  slug: string;
-  displayName: string;
+  versionNumber: number;
+  label: string | null;
+  status: string;
 }
 
 export default function EvalsPage() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
-  const [evalRuns, setEvalRuns] = useState<EvalRun[]>([]);
   const [scenarioSets, setScenarioSets] = useState<ScenarioSet[]>([]);
+  const [evalRuns, setEvalRuns] = useState<EvalRun[]>([]);
+  const [currentVersion, setCurrentVersion] = useState<CurrentVersion | null>(null);
+  const [latestCaseResults, setLatestCaseResults] = useState<EvalCaseResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
+  const [runningScenarioKey, setRunningScenarioKey] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCharacters = async () => {
       try {
         const res = await fetch('/api/characters');
         const data = await res.json();
-        setCharacters(data.characters || []);
-        if (data.characters && data.characters.length > 0) {
-          setSelectedCharacterId(data.characters[0].id);
+        const nextCharacters = data.characters || [];
+        setCharacters(nextCharacters);
+        if (nextCharacters.length > 0) {
+          setSelectedCharacterId(nextCharacters[0].id);
         }
       } catch (error) {
         console.error('Failed to fetch characters:', error);
@@ -53,8 +74,122 @@ export default function EvalsPage() {
         setLoading(false);
       }
     };
+
     fetchCharacters();
   }, []);
+
+  const fetchEvalData = useCallback(async () => {
+    if (!selectedCharacterId) {
+      return;
+    }
+
+    try {
+      setDataLoading(true);
+      const res = await fetch(`/api/evals?characterId=${selectedCharacterId}`);
+      if (!res.ok) {
+        throw new Error('Failed to fetch eval data');
+      }
+
+      const data = await res.json();
+      const nextEvalRuns = data.evalRuns || [];
+      setScenarioSets(data.scenarioSets || []);
+      setEvalRuns(nextEvalRuns);
+      setCurrentVersion(data.currentVersion ?? null);
+      setLatestCaseResults(data.latestCaseResults || []);
+
+      const hasInFlightRun = nextEvalRuns.some(
+        (run: EvalRun) => run.status === 'pending' || run.status === 'running'
+      );
+
+      if (!hasInFlightRun) {
+        setRunningScenarioKey(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch eval data:', error);
+      setScenarioSets([]);
+      setEvalRuns([]);
+      setCurrentVersion(null);
+    } finally {
+      setDataLoading(false);
+    }
+  }, [selectedCharacterId]);
+
+  useEffect(() => {
+    void fetchEvalData();
+  }, [fetchEvalData]);
+
+  useEffect(() => {
+    const hasInFlightRun = evalRuns.some(
+      (run) => run.status === 'pending' || run.status === 'running'
+    );
+
+    if (!hasInFlightRun || !selectedCharacterId) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void fetchEvalData();
+    }, 5000);
+
+    return () => window.clearInterval(intervalId);
+  }, [evalRuns, fetchEvalData, selectedCharacterId]);
+
+  const selectedCharacter = useMemo(
+    () => characters.find((character) => character.id === selectedCharacterId) ?? null,
+    [characters, selectedCharacterId]
+  );
+
+  const handleRun = async (scenarioSetKey: string) => {
+    if (!selectedCharacterId) {
+      return;
+    }
+
+    setRunError(null);
+    setRunningScenarioKey(scenarioSetKey);
+
+    try {
+      const res = await fetch('/api/evals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          characterId: selectedCharacterId,
+          scenarioSetKey,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Eval run failed');
+      }
+
+      if (data.evalRun) {
+        setEvalRuns((prev) => [data.evalRun, ...prev.filter((run) => run.id !== data.evalRun.id)]);
+      }
+
+      await fetchEvalData();
+    } catch (error) {
+      console.error('Eval run failed:', error);
+      setRunError(error instanceof Error ? error.message : 'Eval run failed');
+      setRunningScenarioKey(null);
+    }
+  };
+
+  const hasInFlightRun = evalRuns.some(
+    (run) => run.status === 'pending' || run.status === 'running'
+  );
+
+  const getStatusBadge = (status: EvalRun['status']) => {
+    switch (status) {
+      case 'completed':
+        return <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">完了</span>;
+      case 'running':
+        return <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">実行中</span>;
+      case 'failed':
+        return <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">失敗</span>;
+      default:
+        return <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">待機中</span>;
+    }
+  };
 
   if (loading) {
     return (
@@ -63,20 +198,6 @@ export default function EvalsPage() {
       </div>
     );
   }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <span className="px-2 py-1 bg-green-100 text-green-700 text-xs rounded">完了</span>;
-      case 'running':
-        return <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">実行中</span>;
-      case 'failed':
-        return <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">失敗</span>;
-      case 'pending':
-      default:
-        return <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">待機中</span>;
-    }
-  };
 
   return (
     <div className="px-4 sm:px-0">
@@ -87,15 +208,20 @@ export default function EvalsPage() {
             シナリオパックを実行してキャラクターの品質を評価
           </p>
         </div>
-        <button
-          disabled
-          className="mt-4 sm:mt-0 px-4 py-2 bg-pink-600 text-white rounded-lg hover:bg-pink-700 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          新規Eval実行
-        </button>
+        <div className="mt-4 sm:mt-0 text-sm text-gray-600">
+          {dataLoading ? (
+            <span>評価データを読み込み中...</span>
+          ) : selectedCharacter && currentVersion ? (
+            <span>
+              {selectedCharacter.displayName} / v{currentVersion.versionNumber}
+              {currentVersion.label ? ` - ${currentVersion.label}` : ''}
+            </span>
+          ) : (
+            <span>公開済みバージョンが必要です</span>
+          )}
+        </div>
       </div>
 
-      {/* Character Selector */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">
           キャラクター選択
@@ -113,31 +239,44 @@ export default function EvalsPage() {
         </select>
       </div>
 
-      {/* Scenario Sets */}
       <div className="mb-8">
         <h2 className="text-lg font-medium text-gray-900 mb-4">シナリオセット</h2>
+        {hasInFlightRun && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            評価をバックグラウンド実行中です。履歴は自動更新されます。
+          </div>
+        )}
+        {runError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {runError}
+          </div>
+        )}
         <div className="bg-white rounded-lg shadow">
-          {scenarioSets.length === 0 ? (
-            <div className="p-6 text-center">
-              <p className="text-gray-500 mb-4">シナリオセットがありません</p>
-              <p className="text-sm text-gray-400">
-                シナリオセットを作成するには、<code className="bg-gray-100 px-1 rounded">tests/evals/</code> ディレクトリにケースを追加してください
-              </p>
+          {dataLoading ? (
+            <div className="p-6 text-center text-gray-500">
+              評価データを読み込み中...
+            </div>
+          ) : scenarioSets.length === 0 ? (
+            <div className="p-6 text-center text-gray-500">
+              シナリオセットがありません
             </div>
           ) : (
             <div className="divide-y divide-gray-200">
               {scenarioSets.map((set) => (
-                <div key={set.id} className="p-4 flex items-center justify-between">
+                <div key={set.key} className="p-4 flex items-center justify-between gap-4">
                   <div>
                     <h3 className="font-medium text-gray-900">{set.name}</h3>
                     <p className="text-sm text-gray-500">{set.description}</p>
-                    <p className="text-xs text-gray-400 mt-1">v{set.version}</p>
+                    <p className="text-xs text-gray-400 mt-1">{set.caseCount} ケース</p>
                   </div>
                   <button
-                    disabled
-                    className="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 rounded disabled:opacity-50"
+                    onClick={() => handleRun(set.key)}
+                    disabled={!currentVersion || hasInFlightRun}
+                    className="px-3 py-1.5 text-sm bg-pink-600 text-white rounded hover:bg-pink-700 disabled:opacity-50"
                   >
-                    実行
+                    {runningScenarioKey === set.key || (hasInFlightRun && runningScenarioKey === null)
+                      ? '実行中...'
+                      : '実行'}
                   </button>
                 </div>
               ))}
@@ -146,11 +285,14 @@ export default function EvalsPage() {
         </div>
       </div>
 
-      {/* Eval Runs History */}
-      <div>
+      <div className="mb-8">
         <h2 className="text-lg font-medium text-gray-900 mb-4">実行履歴</h2>
         <div className="bg-white rounded-lg shadow">
-          {evalRuns.length === 0 ? (
+          {dataLoading ? (
+            <div className="p-6 text-center text-gray-500">
+              実行履歴を読み込み中...
+            </div>
+          ) : evalRuns.length === 0 ? (
             <div className="p-6 text-center text-gray-500">
               評価実行履歴がありません
             </div>
@@ -168,16 +310,10 @@ export default function EvalsPage() {
                     </span>
                   </div>
                   {run.summary && (
-                    <div className="flex items-center gap-4 mt-2 text-sm">
-                      <span className="text-gray-600">
-                        合計: {run.summary.totalCases}
-                      </span>
-                      <span className="text-green-600">
-                        成功: {run.summary.passed}
-                      </span>
-                      <span className="text-red-600">
-                        失敗: {run.summary.failed}
-                      </span>
+                    <div className="flex flex-wrap items-center gap-4 mt-2 text-sm">
+                      <span className="text-gray-600">合計: {run.summary.totalCases}</span>
+                      <span className="text-green-600">成功: {run.summary.passed}</span>
+                      <span className="text-red-600">失敗: {run.summary.failed}</span>
                       <span className="text-blue-600">
                         平均: {(run.summary.avgScore * 100).toFixed(1)}%
                       </span>
@@ -190,7 +326,49 @@ export default function EvalsPage() {
         </div>
       </div>
 
-      {/* Scorer Info */}
+      {latestCaseResults.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">直近の完了ケース結果</h2>
+          <div className="bg-white rounded-lg shadow divide-y divide-gray-200">
+            {latestCaseResults.map((result) => (
+              <div key={result.id} className="p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-sm text-gray-700">
+                    {result.scenarioCaseId.slice(0, 8)}...
+                  </span>
+                  <span
+                    className={`px-2 py-1 text-xs rounded ${
+                      result.passed
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}
+                  >
+                    {result.passed ? 'PASS' : 'FAIL'}
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {Object.entries(result.scores).map(([key, value]) => (
+                    <span key={key} className="px-2 py-1 text-xs bg-gray-100 rounded text-gray-700">
+                      {key}: {(value * 100).toFixed(0)}%
+                    </span>
+                  ))}
+                </div>
+                {result.failureReasons.length > 0 && (
+                  <ul className="mt-3 list-disc list-inside text-sm text-red-700 space-y-1">
+                    {result.failureReasons.map((reason, index) => (
+                      <li key={`${result.id}-${index}`}>{reason}</li>
+                    ))}
+                  </ul>
+                )}
+                <p className="mt-3 text-xs text-gray-500">
+                  Trace: {result.traceId}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-8 bg-white rounded-lg shadow p-6">
         <h2 className="text-lg font-medium text-gray-900 mb-4">利用可能なスコアラー</h2>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -209,15 +387,6 @@ export default function EvalsPage() {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Coming Soon Notice */}
-      <div className="mt-6 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-        <h3 className="text-sm font-medium text-yellow-900 mb-2">開発中</h3>
-        <p className="text-sm text-yellow-700">
-          評価システムは現在開発中です。シナリオセットの作成、自動評価実行、
-          結果の詳細表示機能が今後追加される予定です。
-        </p>
       </div>
     </div>
   );

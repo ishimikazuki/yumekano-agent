@@ -47,6 +47,8 @@ export default function MemoryPage() {
   const characterId = params.id as string;
 
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState('test-user-1');
+  const [pairId, setPairId] = useState<string | null>(null);
   const [events, setEvents] = useState<MemoryEvent[]>([]);
   const [facts, setFacts] = useState<MemoryFact[]>([]);
   const [threads, setThreads] = useState<OpenThread[]>([]);
@@ -56,27 +58,34 @@ export default function MemoryPage() {
   useEffect(() => {
     const fetchMemory = async () => {
       try {
-        // For demo purposes - in production this would fetch from API
-        // The API would need to accept a userId to get pair-specific memory
+        setLoading(true);
+        const res = await fetch(
+          `/api/characters/${characterId}/memory?userId=${encodeURIComponent(userId)}`
+        );
+
+        if (!res.ok) {
+          throw new Error('Failed to fetch memory');
+        }
+
+        const data = await res.json();
+        setPairId(data.pairId ?? null);
+        setEvents(Array.isArray(data.events) ? data.events : []);
+        setFacts(Array.isArray(data.facts) ? data.facts : []);
+        setThreads(Array.isArray(data.threads) ? data.threads : []);
+        setWorkingMemory(data.workingMemory ?? null);
+      } catch (error) {
+        console.error('Failed to fetch memory:', error);
+        setPairId(null);
         setEvents([]);
         setFacts([]);
         setThreads([]);
-        setWorkingMemory({
-          preferredAddressForm: null,
-          knownLikes: [],
-          knownDislikes: [],
-          activeTensionSummary: null,
-          relationshipStance: null,
-          knownCorrections: [],
-        });
-      } catch (error) {
-        console.error('Failed to fetch memory:', error);
+        setWorkingMemory(null);
       } finally {
         setLoading(false);
       }
     };
     fetchMemory();
-  }, [characterId]);
+  }, [characterId, userId]);
 
   if (loading) {
     return (
@@ -125,6 +134,22 @@ export default function MemoryPage() {
           メモリはユーザー×キャラクターのペアごとに保存されます。
           ここではPlaygroundで作成されたペアのメモリを閲覧できます。
         </p>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="sm:max-w-xs">
+            <label className="block text-xs font-medium text-blue-800 mb-1">
+              ユーザーID
+            </label>
+            <input
+              type="text"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-blue-200 rounded-lg bg-white focus:ring-pink-500 focus:border-pink-500"
+            />
+          </div>
+          <div className="text-xs text-blue-700">
+            {pairId ? `Pair: ${pairId.slice(0, 8)}...` : 'まだこのユーザーのペアはありません'}
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}

@@ -180,6 +180,7 @@ export const characterRepo = {
       id: row.id,
       characterId: row.character_id,
       versionNumber: row.version_number,
+      label: row.label ? String(row.label) : undefined,
       status: row.status,
       persona: JSON.parse(row.persona_json as string),
       style: JSON.parse(row.style_json as string),
@@ -190,6 +191,7 @@ export const characterRepo = {
       promptBundleVersionId: row.prompt_bundle_version_id,
       createdBy: row.created_by,
       createdAt: row.created_at,
+      parentVersionId: row.parent_version_id as string | null,
     });
   },
 
@@ -212,6 +214,7 @@ export const characterRepo = {
       id: row.id,
       characterId: row.character_id,
       versionNumber: row.version_number,
+      label: row.label ? String(row.label) : undefined,
       status: row.status,
       persona: JSON.parse(row.persona_json as string),
       style: JSON.parse(row.style_json as string),
@@ -222,6 +225,7 @@ export const characterRepo = {
       promptBundleVersionId: row.prompt_bundle_version_id,
       createdBy: row.created_by,
       createdAt: row.created_at,
+      parentVersionId: row.parent_version_id as string | null,
     });
   },
 
@@ -251,6 +255,7 @@ export const characterRepo = {
         id: row.id,
         characterId: row.character_id,
         versionNumber: row.version_number,
+        label: row.label ? String(row.label) : undefined,
         status: row.status,
         persona: JSON.parse(row.persona_json as string),
         style: JSON.parse(row.style_json as string),
@@ -261,6 +266,7 @@ export const characterRepo = {
         promptBundleVersionId: row.prompt_bundle_version_id,
         createdBy: row.created_by,
         createdAt: row.created_at,
+        parentVersionId: row.parent_version_id as string | null,
       })
     );
   },

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { releaseRepo, characterRepo } from '@/lib/repositories';
+import { getDb } from '@/lib/db/client';
+import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 
 const PublishRequestSchema = z.object({
@@ -114,16 +116,73 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Create rollback release
+    const targetVersion = await characterRepo.getVersionById(targetRelease.characterVersionId);
+    if (!targetVersion) {
+      return NextResponse.json(
+        { error: 'Target version not found' },
+        { status: 404 }
+      );
+    }
+
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    const maxVersionResult = await db.execute({
+      sql: 'SELECT COALESCE(MAX(version_number), 0) as max_version FROM character_versions WHERE character_id = ?',
+      args: [targetRelease.characterId],
+    });
+    const maxVersion = Number(maxVersionResult.rows[0]?.max_version ?? 0);
+    const newVersionNumber = maxVersion + 1;
+    const newVersionId = uuid();
+    const rollbackLabel = `ロールバック: v${targetVersion.versionNumber}${
+      targetVersion.label ? ` (${targetVersion.label})` : ''
+    }`;
+
+    await db.execute({
+      sql: `INSERT INTO character_versions
+            (id, character_id, version_number, label, status, persona_json, style_json, autonomy_json, emotion_json, memory_policy_json, phase_graph_version_id, prompt_bundle_version_id, created_by, created_at, parent_version_id)
+            VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        newVersionId,
+        targetRelease.characterId,
+        newVersionNumber,
+        rollbackLabel,
+        JSON.stringify(targetVersion.persona),
+        JSON.stringify(targetVersion.style),
+        JSON.stringify(targetVersion.autonomy),
+        JSON.stringify(targetVersion.emotion),
+        JSON.stringify(targetVersion.memory),
+        targetVersion.phaseGraphVersionId,
+        targetVersion.promptBundleVersionId,
+        rolledBackBy,
+        now,
+        targetVersion.id,
+      ],
+    });
+
+    await db.execute({
+      sql: `UPDATE character_versions
+            SET status = 'archived'
+            WHERE character_id = ? AND id != ? AND status = 'published'`,
+      args: [targetRelease.characterId, newVersionId],
+    });
+
     const rollbackRelease = await releaseRepo.createRollback({
       characterId: targetRelease.characterId,
-      characterVersionId: targetRelease.characterVersionId,
+      characterVersionId: newVersionId,
       publishedBy: rolledBackBy,
       rollbackOfReleaseId: targetReleaseId,
     });
 
     return NextResponse.json({
       release: rollbackRelease,
+      version: {
+        id: newVersionId,
+        versionNumber: newVersionNumber,
+        label: rollbackLabel,
+        status: 'published',
+        parentVersionId: targetVersion.id,
+      },
       status: 'rolled_back',
     });
   } catch (error) {

@@ -49,7 +49,7 @@
       "input": {
         "userMessage": "久しぶり！ちょっと忙しくて…",
         "phaseId": "deepening",
-        "contextHints": ["returning_after_absence", "days_since_last": 7]
+        "contextHints": ["returning_after_absence", "days_since_last_7"]
       },
       "expected": {
         "minScores": {

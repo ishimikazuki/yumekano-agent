@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { workspaceRepo, characterRepo } from '@/lib/repositories';
+import { resolveInitialDraftForCharacter } from '@/lib/workspaces/initial-draft';
 import { z } from 'zod';
 
 const CreateWorkspaceSchema = z.object({
@@ -61,11 +62,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const initialDraft = await resolveInitialDraftForCharacter(parsed.data.characterId);
+    if (!initialDraft) {
+      return NextResponse.json(
+        { error: 'No base draft or published version available for this character' },
+        { status: 409 }
+      );
+    }
+
     const workspace = await workspaceRepo.create({
       characterId: parsed.data.characterId,
       name: parsed.data.name,
       createdBy: parsed.data.createdBy,
     });
+
+    await workspaceRepo.initDraft(workspace.id, initialDraft);
 
     return NextResponse.json(workspace, { status: 201 });
   } catch (error) {

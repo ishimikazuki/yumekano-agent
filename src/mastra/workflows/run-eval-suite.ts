@@ -21,6 +21,7 @@ import type {
 export type RunEvalSuiteInput = {
   characterVersionId: string;
   scenarioSetId: string;
+  evalRunId?: string;
 };
 
 export type RunEvalSuiteOutput = {
@@ -45,81 +46,99 @@ export type RunEvalSuiteOutput = {
  * 5. Persist eval run + case traces
  */
 export async function runEvalSuite(input: RunEvalSuiteInput): Promise<RunEvalSuiteOutput> {
-  const { characterVersionId, scenarioSetId } = input;
+  const { characterVersionId, scenarioSetId, evalRunId } = input;
 
-  // Get character version
-  const characterVersion = await characterRepo.getVersionById(characterVersionId);
-  if (!characterVersion) {
-    throw new Error(`Character version ${characterVersionId} not found`);
-  }
+  let activeEvalRunId = evalRunId;
 
-  // Get phase graph
-  const phaseGraph = await phaseGraphRepo.getById(characterVersion.phaseGraphVersionId);
-  if (!phaseGraph) {
-    throw new Error(`Phase graph not found`);
-  }
+  try {
+    // Get character version
+    const characterVersion = await characterRepo.getVersionById(characterVersionId);
+    if (!characterVersion) {
+      throw new Error(`Character version ${characterVersionId} not found`);
+    }
 
-  // Get scenario cases
-  const scenarioCases = await evalRepo.getCasesBySet(scenarioSetId);
-  if (scenarioCases.length === 0) {
-    throw new Error(`No scenario cases found for set ${scenarioSetId}`);
-  }
+    // Get phase graph
+    const phaseGraph = await phaseGraphRepo.getById(characterVersion.phaseGraphVersionId);
+    if (!phaseGraph) {
+      throw new Error(`Phase graph not found`);
+    }
 
-  // Create eval run
-  const evalRun = await evalRepo.createRun({
-    scenarioSetId,
-    characterVersionId,
-    modelRegistrySnapshot: {}, // Would capture current model config
-  });
+    // Get scenario cases
+    const scenarioCases = await evalRepo.getCasesBySet(scenarioSetId);
+    if (scenarioCases.length === 0) {
+      throw new Error(`No scenario cases found for set ${scenarioSetId}`);
+    }
 
-  const results: EvalCaseResult[] = [];
-  let totalScore = 0;
-  let passed = 0;
-  let failed = 0;
+    // Create eval run when not supplied by caller
+    const evalRun = activeEvalRunId
+      ? await evalRepo.getEvalRunById(activeEvalRunId)
+      : await evalRepo.createRun({
+          scenarioSetId,
+          characterVersionId,
+          modelRegistrySnapshot: {}, // Would capture current model config
+        });
 
-  // Run each scenario case
-  for (const scenario of scenarioCases) {
-    try {
-      const caseResult = await runSingleCase({
-        scenario,
-        characterVersion,
-        phaseGraph: phaseGraph.graph,
-        evalRunId: evalRun.id,
-      });
+    if (!evalRun) {
+      throw new Error(`Eval run ${activeEvalRunId} not found`);
+    }
 
-      results.push(caseResult);
-      totalScore += caseResult.overallScore;
+    activeEvalRunId = evalRun.id;
+    await evalRepo.updateRunStatus(evalRun.id, 'running');
 
-      if (caseResult.overallScore >= 0.6) {
-        passed++;
-      } else {
+    const results: EvalCaseResult[] = [];
+    let totalScore = 0;
+    let passed = 0;
+    let failed = 0;
+
+    // Run each scenario case
+    for (const scenario of scenarioCases) {
+      try {
+        const caseResult = await runSingleCase({
+          scenario,
+          characterVersion,
+          phaseGraph: phaseGraph.graph,
+          evalRunId: evalRun.id,
+        });
+
+        results.push(caseResult);
+        totalScore += caseResult.overallScore;
+
+        if (caseResult.overallScore >= 0.6) {
+          passed++;
+        } else {
+          failed++;
+        }
+      } catch (error) {
+        console.error(`Failed to run scenario ${scenario.id}:`, error);
         failed++;
       }
-    } catch (error) {
-      console.error(`Failed to run scenario ${scenario.id}:`, error);
-      failed++;
     }
-  }
 
-  // Update eval run status
-  const avgScore = results.length > 0 ? totalScore / results.length : 0;
-  await evalRepo.updateRunStatus(evalRun.id, 'completed', {
-    totalCases: scenarioCases.length,
-    passed,
-    failed,
-    avgScore,
-  });
-
-  return {
-    evalRunId: evalRun.id,
-    status: 'completed',
-    summary: {
+    // Update eval run status
+    const avgScore = results.length > 0 ? totalScore / results.length : 0;
+    await evalRepo.updateRunStatus(evalRun.id, 'completed', {
       totalCases: scenarioCases.length,
       passed,
       failed,
       avgScore,
-    },
-  };
+    });
+
+    return {
+      evalRunId: evalRun.id,
+      status: 'completed',
+      summary: {
+        totalCases: scenarioCases.length,
+        passed,
+        failed,
+        avgScore,
+      },
+    };
+  } catch (error) {
+    if (activeEvalRunId) {
+      await evalRepo.updateRunStatus(activeEvalRunId, 'failed');
+    }
+    throw error;
+  }
 }
 
 type RunSingleCaseInput = {

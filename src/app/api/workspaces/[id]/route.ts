@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { workspaceRepo } from '@/lib/repositories';
-import { DraftStateSchema } from '@/lib/schemas';
+import { resolveInitialDraftForCharacter } from '@/lib/workspaces/initial-draft';
+import {
+  DraftStateSchema,
+  CharacterIdentitySchema,
+  ExtendedPersonaSpecSchema,
+  StyleSpecSchema,
+  AutonomySpecSchema,
+  EmotionSpecSchema,
+  MemoryPolicySpecSchema,
+  PhaseGraphSchema,
+  PromptBundleContentSchema,
+} from '@/lib/schemas';
 import { z } from 'zod';
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -12,7 +23,32 @@ type RouteParams = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const workspace = await workspaceRepo.getWithDraft(id);
+    let workspace = await workspaceRepo.getWithDraft(id);
+
+    if (!workspace) {
+      const workspaceMeta = await workspaceRepo.getById(id);
+      if (!workspaceMeta) {
+        return NextResponse.json(
+          { error: 'Workspace not found' },
+          { status: 404 }
+        );
+      }
+
+      const initialDraft = await resolveInitialDraftForCharacter(
+        workspaceMeta.characterId,
+        id
+      );
+
+      if (!initialDraft) {
+        return NextResponse.json(
+          { error: 'Workspace draft is not initialized' },
+          { status: 409 }
+        );
+      }
+
+      await workspaceRepo.initDraft(id, initialDraft);
+      workspace = await workspaceRepo.getWithDraft(id);
+    }
 
     if (!workspace) {
       return NextResponse.json(
@@ -64,6 +100,17 @@ const UpdateDraftSectionSchema = z.object({
   value: z.unknown(),
 });
 
+const sectionSchemas = {
+  identity: CharacterIdentitySchema,
+  persona: ExtendedPersonaSpecSchema,
+  style: StyleSpecSchema,
+  autonomy: AutonomySpecSchema,
+  emotion: EmotionSpecSchema,
+  memory: MemoryPolicySpecSchema,
+  phaseGraph: PhaseGraphSchema,
+  prompts: PromptBundleContentSchema,
+} as const;
+
 /**
  * PATCH /api/workspaces/[id]
  * Update a section of the draft state
@@ -86,6 +133,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json(
         { error: 'Workspace not found' },
         { status: 404 }
+      );
+    }
+
+    const sectionSchema = sectionSchemas[parsed.data.section];
+    const valueResult = sectionSchema.safeParse(parsed.data.value);
+    if (!valueResult.success) {
+      return NextResponse.json(
+        {
+          error: `Invalid ${parsed.data.section} payload`,
+          details: valueResult.error.flatten(),
+        },
+        { status: 400 }
       );
     }
 

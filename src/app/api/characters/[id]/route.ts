@@ -19,11 +19,16 @@ export async function GET(
     // Get all versions
     const versions = await characterRepo.listVersions(id);
 
-    // Get latest published version
-    const latestPublished = await characterRepo.getLatestPublished(id);
-
     // Get current release
     const currentRelease = await releaseRepo.getCurrent(id, 'prod');
+
+    // Prefer the live release version for dashboard display.
+    const currentVersion = currentRelease
+      ? await characterRepo.getVersionById(currentRelease.characterVersionId)
+      : null;
+
+    // Fall back to the latest published version when no release exists yet.
+    const latestPublished = currentVersion ?? await characterRepo.getLatestPublished(id);
 
     // Get phase graph for latest version if exists
     let phaseGraph = null;
@@ -33,7 +38,9 @@ export async function GET(
 
     return NextResponse.json({
       character,
-      latestVersion: latestPublished,
+      latestVersion: currentVersion
+        ? { ...currentVersion, status: 'published' }
+        : latestPublished,
       versions,
       currentRelease,
       phaseGraph: phaseGraph?.graph ?? null,

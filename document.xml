@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>MVP Phase 6 完了 / Git風バージョン管理実装済み / 処理フロー視覚化LP公開済み</phase>
+    <phase>MVP Phase 6 完了 / ダッシュボード総合デバッグ完了 / Git風バージョン管理実装済み / 処理フロー視覚化LP公開済み</phase>
   </project_overview>
 
   <architecture>
@@ -52,6 +52,7 @@
     <decision date="2026-03-19">ロールバックは破壊的操作ではなく、新バージョン作成として実装</decision>
     <decision date="2026-03-19">バージョンステータスは draft/published/archived の3状態</decision>
     <decision date="2026-03-21">処理フロー視覚化ドキュメントをHTML/CSSで作成、LPとしてVercelにデプロイ</decision>
+    <decision date="2026-03-21">ダッシュボード総合デバッグで、ワークスペース初期draft生成・メモリ画面実データ化・評価画面非同期実行化を適用</decision>
   </decisions>
 
   <logs>PROJECT_LOG/INDEX.md</logs>

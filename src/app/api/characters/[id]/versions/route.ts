@@ -26,9 +26,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           r.published_at as release_published_at,
           r.channel as release_channel
         FROM character_versions cv
-        LEFT JOIN releases r ON r.character_version_id = cv.id
+        LEFT JOIN releases r ON r.id = (
+          SELECT r2.id
+          FROM releases r2
+          WHERE r2.character_version_id = cv.id
+          ORDER BY r2.published_at DESC
+          LIMIT 1
+        )
         WHERE cv.character_id = ?
-        ORDER BY cv.version_number DESC
+        ORDER BY cv.version_number DESC, cv.created_at DESC
       `,
       args: [characterId],
     });
