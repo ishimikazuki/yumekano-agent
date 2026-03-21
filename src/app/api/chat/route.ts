@@ -35,6 +35,7 @@ export async function POST(request: NextRequest) {
       traceId: result.traceId,
       phaseId: result.phaseId,
       emotion: result.emotion,
+      coe: result.coe,
     });
   } catch (error) {
     console.error('Chat turn error:', error);

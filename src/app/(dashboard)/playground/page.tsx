@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { CoEExplanationCard } from '@/components/CoEExplanationCard';
+import type { CoEExplanation } from '@/lib/rules/coe';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -10,6 +12,7 @@ type Message = {
   traceId?: string;
   turnId?: string;
   phaseId?: string;
+  coe?: CoEExplanation;
   emotion?: {
     pleasure: number;
     arousal: number;
@@ -138,6 +141,7 @@ function PlaygroundContent() {
             turnId: data.turnId,
             phaseId: data.phaseId,
             emotion: data.emotion,
+            coe: data.coe,
           },
         ]);
       } else {
@@ -170,6 +174,7 @@ function PlaygroundContent() {
             traceId: data.traceId,
             phaseId: data.phaseId,
             emotion: data.emotion,
+            coe: data.coe,
           },
         ]);
       }
@@ -291,7 +296,7 @@ function PlaygroundContent() {
             >
               <p className="whitespace-pre-wrap">{message.content}</p>
               {message.role === 'assistant' && (message.traceId || message.turnId) && (
-                <div className="mt-2 text-xs opacity-70 border-t pt-2">
+                <div className="mt-2 border-t pt-2 text-xs text-gray-500">
                   <div>フェーズ: {message.phaseId}</div>
                   {message.emotion && (
                     <div>
@@ -311,6 +316,7 @@ function PlaygroundContent() {
                   {message.turnId && mode === 'sandbox' && (
                     <span className="text-gray-400">Turn: {message.turnId.slice(0, 8)}...</span>
                   )}
+                  {message.coe && <CoEExplanationCard coe={message.coe} className="mt-2" />}
                 </div>
               )}
             </div>

@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { CoEExplanationCard } from '@/components/CoEExplanationCard';
+import { buildCoEExplanation } from '@/lib/rules/coe';
 
 interface PADState {
   pleasure: number;
@@ -67,6 +69,12 @@ interface TurnTrace {
     intimacyDecision: string;
     plannerReasoning: string;
     mustAvoid: string[];
+    emotionDeltaIntent?: {
+      pleasureDelta: number;
+      arousalDelta: number;
+      dominanceDelta: number;
+      reason: string;
+    };
   };
   candidates: Candidate[];
   winnerIndex: number;
@@ -137,6 +145,20 @@ export default function TraceViewerPage() {
 
     return changes.length > 0 ? changes.join(', ') : 'No significant change';
   };
+
+  const coe = buildCoEExplanation({
+    emotionBefore: trace.emotionBefore,
+    emotionAfter: trace.emotionAfter,
+    appraisal: trace.appraisal,
+    intentReason: trace.plan.emotionDeltaIntent?.reason ?? null,
+    intentDelta: trace.plan.emotionDeltaIntent
+      ? {
+          pleasure: trace.plan.emotionDeltaIntent.pleasureDelta,
+          arousal: trace.plan.emotionDeltaIntent.arousalDelta,
+          dominance: trace.plan.emotionDeltaIntent.dominanceDelta,
+        }
+      : null,
+  });
 
   return (
     <div className="px-4 sm:px-0 max-w-6xl mx-auto">
@@ -214,6 +236,7 @@ export default function TraceViewerPage() {
               </span>
             </div>
           </div>
+          <CoEExplanationCard coe={coe} variant="detailed" className="mt-4" />
         </div>
 
         {/* Appraisal */}

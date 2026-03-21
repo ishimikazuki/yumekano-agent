@@ -1,9 +1,3 @@
-import { getDb } from './client';
-
-/**
- * Initial migration SQL - PostgreSQL compatible
- */
-const MIGRATION_001_INITIAL = `
 CREATE TABLE IF NOT EXISTS characters (
   id TEXT PRIMARY KEY,
   slug TEXT UNIQUE NOT NULL,
@@ -25,6 +19,8 @@ CREATE TABLE IF NOT EXISTS character_versions (
   prompt_bundle_version_id TEXT NOT NULL,
   created_by TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  label TEXT,
+  parent_version_id TEXT REFERENCES character_versions(id),
   UNIQUE(character_id, version_number)
 );
 
@@ -235,18 +231,14 @@ CREATE TABLE IF NOT EXISTS turn_traces (
 );
 
 CREATE INDEX IF NOT EXISTS idx_turn_traces_pair ON turn_traces(pair_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_character_versions_parent ON character_versions(parent_version_id);
 
 CREATE TABLE IF NOT EXISTS working_memory (
   pair_id TEXT PRIMARY KEY REFERENCES pairs(id),
   data_json TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-`;
 
-/**
- * Migration 002: Workspace tables for draft authoring
- */
-const MIGRATION_002_WORKSPACES = `
 CREATE TABLE IF NOT EXISTS character_workspaces (
   id TEXT PRIMARY KEY,
   character_id TEXT NOT NULL REFERENCES characters(id),
@@ -331,85 +323,3 @@ CREATE TABLE IF NOT EXISTS sandbox_working_memory (
   data_json TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-`;
-
-/**
- * Migration 003: Version labels and parent tracking for git-like versioning
- */
-const MIGRATION_003_VERSION_LABELS = `
-ALTER TABLE character_versions ADD COLUMN IF NOT EXISTS label TEXT;
-ALTER TABLE character_versions ADD COLUMN IF NOT EXISTS parent_version_id TEXT REFERENCES character_versions(id);
-CREATE INDEX IF NOT EXISTS idx_character_versions_parent ON character_versions(parent_version_id);
-`;
-
-/**
- * Run all migrations.
- */
-export async function runMigrations() {
-  const db = getDb();
-
-  // Create migrations tracking table (PostgreSQL compatible)
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS _migrations (
-      id SERIAL PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL,
-      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-    )
-  `);
-
-  // Get applied migrations
-  const applied = await db.execute('SELECT name FROM _migrations');
-  const appliedNames = new Set(applied.rows.map((r) => r.name as string));
-
-  // Helper to run a migration
-  const runMigration = async (name: string, sql: string) => {
-    if (!appliedNames.has(name)) {
-      console.log(`Running migration: ${name}`);
-
-      // Remove comments and split by semicolon
-      const cleanedSql = sql
-        .split('\n')
-        .map((line) => {
-          const commentIndex = line.indexOf('--');
-          return commentIndex >= 0 ? line.slice(0, commentIndex) : line;
-        })
-        .join('\n');
-
-      const statements = cleanedSql
-        .split(';')
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
-
-      for (const statement of statements) {
-        console.log(`Executing: ${statement.slice(0, 50)}...`);
-        await db.execute(statement);
-      }
-
-      await db.execute({
-        sql: 'INSERT INTO _migrations (name) VALUES ($1)',
-        args: [name],
-      });
-
-      console.log(`Migration ${name} completed`);
-    } else {
-      console.log(`Migration ${name} already applied`);
-    }
-  };
-
-  // Run migrations in order
-  await runMigration('001_initial.sql', MIGRATION_001_INITIAL);
-  await runMigration('002_workspaces.sql', MIGRATION_002_WORKSPACES);
-  await runMigration('003_version_labels.sql', MIGRATION_003_VERSION_LABELS);
-
-  console.log('All migrations completed');
-}
-
-// Run if called directly
-if (require.main === module) {
-  runMigrations()
-    .then(() => process.exit(0))
-    .catch((err) => {
-      console.error('Migration failed:', err);
-      process.exit(1);
-    });
-}

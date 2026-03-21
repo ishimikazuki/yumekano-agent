@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { CoEExplanationCard } from '@/components/CoEExplanationCard';
+import type { CoEExplanation } from '@/lib/rules/coe';
+import { Tooltip } from '@/components/Tooltip';
 
 // ============ Types ============
 
@@ -11,6 +14,7 @@ type Message = {
   content: string;
   turnId?: string;
   phaseId?: string;
+  coe?: CoEExplanation;
   emotion?: { pleasure: number; arousal: number; dominance: number };
 };
 
@@ -135,18 +139,36 @@ type DraftState = {
     signaturePhrases: string[];
   };
   autonomy: {
-    disagreementReadiness: number;
+    disagreeReadiness: number;
     refusalReadiness: number;
     delayReadiness: number;
     repairReadiness: number;
-    conflictSustain: number;
-    intimacyNotOnDemand: boolean;
+    conflictCarryover: number;
+    intimacyNeverOnDemand: boolean;
   };
   emotion: {
-    baseline: { pleasure: number; arousal: number; dominance: number };
-    reactivity: number;
-    recoveryRate: number;
-    volatility: number;
+    baselinePAD: { pleasure: number; arousal: number; dominance: number };
+    recovery: {
+      pleasureHalfLifeTurns: number;
+      arousalHalfLifeTurns: number;
+      dominanceHalfLifeTurns: number;
+    };
+    appraisalSensitivity: {
+      goalCongruence: number;
+      controllability: number;
+      certainty: number;
+      normAlignment: number;
+      attachmentSecurity: number;
+      reciprocity: number;
+      pressureIntrusiveness: number;
+      novelty: number;
+    };
+    externalization: {
+      warmthWeight: number;
+      tersenessWeight: number;
+      directnessWeight: number;
+      teasingWeight: number;
+    };
   };
   phaseGraph: PhaseGraph;
   prompts: {
@@ -177,6 +199,47 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
+
+const PLAYGROUND_HELP_TEXTS: Record<string, string> = {
+  アイデンティティ: '表示名・呼称・基本属性。会話中の呼び方や自己紹介の軸になります。',
+  ペルソナ: '性格や価値観、内面設定。返答の一貫性や世界観を作る中心です。',
+  スタイル: '話し方の調整項目。敬語、簡潔さ、遊び心など文体に直接効きます。',
+  自律性: '同調しすぎないための設定。反論・拒否・保留のしやすさを制御します。',
+  感情: 'PAD基準値と変動特性。反応の温度感や回復スピードに影響します。',
+  フェーズ: '関係進行の段階設計。どの条件で進むか・許可される行動を定義します。',
+  プロンプト: '各エージェントの指示文。高度な調整用で、構造設定より優先度は低めです。',
+  バージョン: '公開履歴とロールバック管理。編集内容の安全な切り替えに使います。',
+  会話テスト: '現在のドラフト設定で対話を試せます。保存後の挙動確認に使います。',
+  基本情報: 'キャラクターの概要情報です。',
+  インナーワールド: '根源的な欲求や恐れなど、行動の深層動機を定義します。',
+  サーフェスループ: '普段・ストレス時など状況別の表出パターンを設定します。',
+  アンカー: '強い感情的意味を持つモチーフ。記憶や反応の優先度に影響します。',
+  トピックパック: '特定話題への反応ルール。トリガー語と返答ヒントを定義します。',
+  リアクションパック: '特定状況で出す定型的反応をまとめた設定です。',
+  フェーズノード: '会話段階そのもの。各段階の許可行動と制約を持ちます。',
+  遷移: 'フェーズ間の移動ルール。条件を満たすと次の段階へ進みます。',
+  開始フェーズ: '新規セッション開始時に使う初期フェーズです。',
+  遷移条件: 'フェーズ遷移に必要な判定式。数値・トピック・時間などで指定します。',
+  すべての条件を満たす必要あり: 'ONならAND条件、OFFならOR条件で遷移判定します。',
+  甘えさせない: 'ONで、ユーザー主導の親密要求にすぐ応じにくくなります。',
+  Generator: '最終発話候補を生成するプロンプトです。',
+  Planner: '次ターンの意図・行動計画を決めるプロンプトです。',
+  Extractor: '会話からメモリ候補を抽出するプロンプトです。',
+  Reflector: '会話を振り返り、関係状態の更新を補助するプロンプトです。',
+  Ranker: '候補発話を評価して採用順を決めるプロンプトです。',
+};
+
+function getHelpText(label: string): string {
+  return PLAYGROUND_HELP_TEXTS[label] ?? `${label} の設定項目です。会話挙動に影響します。`;
+}
+
+function HelpLabel({ label, className = 'text-xs font-medium text-gray-700' }: { label: string; className?: string }) {
+  return (
+    <Tooltip content={getHelpText(label)}>
+      <span className={className}>{label}</span>
+    </Tooltip>
+  );
+}
 
 // ============ Main Component ============
 
@@ -290,7 +353,17 @@ export default function WorkspaceSandboxPage() {
       if (!response.ok) throw new Error((await response.json()).error || 'Draft chat failed');
       const responseData = await response.json();
       if (!sessionId && responseData.sessionId) setSessionId(responseData.sessionId);
-      setMessages((prev) => [...prev, { role: 'assistant', content: responseData.text, turnId: responseData.turnId, phaseId: responseData.phaseId, emotion: responseData.emotion }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: responseData.text,
+          turnId: responseData.turnId,
+          phaseId: responseData.phaseId,
+          emotion: responseData.emotion,
+          coe: responseData.coe,
+        },
+      ]);
     } catch (error) {
       setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${error instanceof Error ? error.message : 'Unknown'}` }]);
     }
@@ -327,7 +400,7 @@ export default function WorkspaceSandboxPage() {
         {/* Left: Chat */}
         <div className="flex flex-col bg-gray-50" style={{ width: `${100 - rightPanelWidth}%` }}>
           <div className="px-4 py-2 border-b bg-white flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">会話テスト</span>
+            <HelpLabel label="会話テスト" className="text-sm font-medium text-gray-700" />
             <button onClick={handleReset} className="text-xs text-gray-500 hover:text-gray-700">リセット</button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -340,6 +413,7 @@ export default function WorkspaceSandboxPage() {
                     <div className="mt-1.5 pt-1.5 border-t border-gray-100 text-xs text-gray-400">
                       <span>Phase: {msg.phaseId}</span>
                       {msg.emotion && <span className="ml-2">P:{msg.emotion.pleasure.toFixed(1)} A:{msg.emotion.arousal.toFixed(1)} D:{msg.emotion.dominance.toFixed(1)}</span>}
+                      {msg.coe && <CoEExplanationCard coe={msg.coe} className="mt-2" />}
                     </div>
                   )}
                 </div>
@@ -364,7 +438,9 @@ export default function WorkspaceSandboxPage() {
           <div className="border-b shrink-0 px-2 overflow-x-auto">
             <nav className="flex gap-1 py-1.5">
               {TABS.map((tab) => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-2 py-1 text-xs font-medium whitespace-nowrap rounded transition-colors ${activeTab === tab.id ? 'bg-pink-100 text-pink-700' : 'text-gray-500 hover:bg-gray-100'}`}>{tab.label}</button>
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-2 py-1 text-xs font-medium whitespace-nowrap rounded transition-colors ${activeTab === tab.id ? 'bg-pink-100 text-pink-700' : 'text-gray-500 hover:bg-gray-100'}`}>
+                  <HelpLabel label={tab.label} className="text-inherit" />
+                </button>
               ))}
             </nav>
           </div>
@@ -548,8 +624,8 @@ function StyleEditor({ data, onChange }: { data: DraftState['style']; onChange: 
     <div className="space-y-5">
       <h2 className="text-base font-semibold text-gray-900">スタイル</h2>
       <div className="grid grid-cols-2 gap-3">
-        <Select label="言語" value={data.language} onChange={(v) => onChange('language', v)} options={[{ value: 'ja', label: '日本語' }, { value: 'en', label: 'English' }]} />
-        <Select label="敬語レベル" value={data.politenessDefault} onChange={(v) => onChange('politenessDefault', v)} options={[{ value: 'casual', label: 'カジュアル' }, { value: 'polite', label: '丁寧' }, { value: 'formal', label: 'フォーマル' }]} />
+        <Select label="言語" value={data.language} onChange={(v) => onChange('language', v)} options={[{ value: 'ja', label: '日本語' }]} />
+        <Select label="敬語レベル" value={data.politenessDefault} onChange={(v) => onChange('politenessDefault', v)} options={[{ value: 'casual', label: 'カジュアル' }, { value: 'mixed', label: 'ミックス' }, { value: 'polite', label: '丁寧' }]} />
       </div>
       <div className="space-y-3">
         <SliderField label="簡潔さ" value={data.terseness} onChange={(v) => onChange('terseness', v)} />
@@ -571,15 +647,17 @@ function AutonomyEditor({ data, onChange }: { data: DraftState['autonomy']; onCh
     <div className="space-y-5">
       <div><h2 className="text-base font-semibold text-gray-900">自律性</h2><p className="text-xs text-gray-500 mt-1">ユーザーの要求に対する反応傾向</p></div>
       <div className="space-y-3">
-        <SliderField label="反論しやすさ" value={data.disagreementReadiness} onChange={(v) => onChange('disagreementReadiness', v)} />
+        <SliderField label="反論しやすさ" value={data.disagreeReadiness} onChange={(v) => onChange('disagreeReadiness', v)} />
         <SliderField label="断りやすさ" value={data.refusalReadiness} onChange={(v) => onChange('refusalReadiness', v)} />
         <SliderField label="待たせやすさ" value={data.delayReadiness} onChange={(v) => onChange('delayReadiness', v)} />
         <SliderField label="仲直りしやすさ" value={data.repairReadiness} onChange={(v) => onChange('repairReadiness', v)} />
-        <SliderField label="引きずりやすさ" value={data.conflictSustain} onChange={(v) => onChange('conflictSustain', v)} />
+        <SliderField label="引きずりやすさ" value={data.conflictCarryover} onChange={(v) => onChange('conflictCarryover', v)} />
       </div>
       <div className="flex items-center gap-2 pt-3 border-t">
-        <input type="checkbox" id="intimacy" checked={data.intimacyNotOnDemand} onChange={(e) => onChange('intimacyNotOnDemand', e.target.checked)} className="w-4 h-4 text-pink-500 rounded" />
-        <label htmlFor="intimacy" className="text-sm text-gray-700">甘えさせない</label>
+        <input type="checkbox" id="intimacy" checked={data.intimacyNeverOnDemand} onChange={(e) => onChange('intimacyNeverOnDemand', e.target.checked)} className="w-4 h-4 text-pink-500 rounded" />
+        <label htmlFor="intimacy">
+          <HelpLabel label="甘えさせない" className="text-sm text-gray-700" />
+        </label>
       </div>
     </div>
   );
@@ -587,19 +665,31 @@ function AutonomyEditor({ data, onChange }: { data: DraftState['autonomy']; onCh
 
 // ============ Emotion Editor ============
 function EmotionEditor({ data, onChange }: { data: DraftState['emotion']; onChange: (k: keyof DraftState['emotion'], v: unknown) => void }) {
-  const updateBaseline = (k: 'pleasure' | 'arousal' | 'dominance', v: number) => onChange('baseline', { ...data.baseline, [k]: v });
+  const baseline = data?.baselinePAD ?? { pleasure: 0, arousal: 0, dominance: 0 };
+  const updateBaseline = (k: 'pleasure' | 'arousal' | 'dominance', v: number) =>
+    onChange('baselinePAD', { ...baseline, [k]: v });
   return (
     <div className="space-y-5">
       <h2 className="text-base font-semibold text-gray-900">感情ベースライン</h2>
       <div className="space-y-3">
-        <SliderField label="Pleasure（快楽）" value={(data.baseline.pleasure + 1) / 2} onChange={(v) => updateBaseline('pleasure', v * 2 - 1)} showValue={data.baseline.pleasure.toFixed(2)} />
-        <SliderField label="Arousal（覚醒）" value={(data.baseline.arousal + 1) / 2} onChange={(v) => updateBaseline('arousal', v * 2 - 1)} showValue={data.baseline.arousal.toFixed(2)} />
-        <SliderField label="Dominance（支配）" value={(data.baseline.dominance + 1) / 2} onChange={(v) => updateBaseline('dominance', v * 2 - 1)} showValue={data.baseline.dominance.toFixed(2)} />
-      </div>
-      <div className="pt-3 border-t space-y-3">
-        <SliderField label="反応性" value={data.reactivity} onChange={(v) => onChange('reactivity', v)} />
-        <SliderField label="回復率" value={data.recoveryRate} onChange={(v) => onChange('recoveryRate', v)} />
-        <SliderField label="変動性" value={data.volatility} onChange={(v) => onChange('volatility', v)} />
+        <SliderField
+          label="Pleasure（快楽）"
+          value={(baseline.pleasure + 1) / 2}
+          onChange={(v) => updateBaseline('pleasure', v * 2 - 1)}
+          showValue={baseline.pleasure.toFixed(2)}
+        />
+        <SliderField
+          label="Arousal（覚醒）"
+          value={(baseline.arousal + 1) / 2}
+          onChange={(v) => updateBaseline('arousal', v * 2 - 1)}
+          showValue={baseline.arousal.toFixed(2)}
+        />
+        <SliderField
+          label="Dominance（支配）"
+          value={(baseline.dominance + 1) / 2}
+          onChange={(v) => updateBaseline('dominance', v * 2 - 1)}
+          showValue={baseline.dominance.toFixed(2)}
+        />
       </div>
     </div>
   );
@@ -660,7 +750,9 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
       {/* Nodes List */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-700">フェーズノード</h3>
+          <h3>
+            <HelpLabel label="フェーズノード" className="text-sm font-medium text-gray-700" />
+          </h3>
           <button onClick={addNode} className="text-xs text-pink-600 hover:text-pink-700">+ 追加</button>
         </div>
         <div className="space-y-1">
@@ -679,7 +771,9 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
       {/* Edges List */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-700">遷移</h3>
+          <h3>
+            <HelpLabel label="遷移" className="text-sm font-medium text-gray-700" />
+          </h3>
           <button onClick={addEdge} disabled={data.nodes.length < 2} className="text-xs text-pink-600 hover:text-pink-700 disabled:text-gray-400">+ 追加</button>
         </div>
         <div className="space-y-1">
@@ -698,7 +792,9 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
 
       {/* Entry Phase */}
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1">開始フェーズ</label>
+        <label className="block mb-1">
+          <HelpLabel label="開始フェーズ" />
+        </label>
         <select value={data.entryPhaseId} onChange={(e) => onChange({ ...data, entryPhaseId: e.target.value })} className="w-full px-3 py-2 text-sm border rounded-lg">
           {data.nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
         </select>
@@ -732,7 +828,7 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
           <Select label="To" value={selectedEdge.to} onChange={(v) => updateEdge(selectedEdge.id, { to: v })} options={data.nodes.map(n => ({ value: n.id, label: n.label }))} />
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={selectedEdge.allMustPass} onChange={(e) => updateEdge(selectedEdge.id, { allMustPass: e.target.checked })} className="w-4 h-4 text-pink-500 rounded" />
-            <span className="text-sm text-gray-700">すべての条件を満たす必要あり</span>
+            <HelpLabel label="すべての条件を満たす必要あり" className="text-sm text-gray-700" />
           </div>
           <TextArea label="ビート（演出ノート）" value={selectedEdge.authoredBeat || ''} onChange={(v) => updateEdge(selectedEdge.id, { authoredBeat: v || undefined })} rows={2} />
 
@@ -787,7 +883,9 @@ function ConditionsEditor({ conditions, onChange }: { conditions: TransitionCond
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-xs font-medium text-gray-700">遷移条件</label>
+        <label>
+          <HelpLabel label="遷移条件" />
+        </label>
         <div className="flex gap-1">
           <button onClick={() => addCondition('metric')} className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">+数値</button>
           <button onClick={() => addCondition('topic')} className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded hover:bg-green-200">+トピック</button>
@@ -897,7 +995,11 @@ function PromptsEditor({ data, onChange }: { data: DraftState['prompts']; onChan
     <div className="space-y-3 h-full flex flex-col">
       <h2 className="text-base font-semibold text-gray-900">プロンプト</h2>
       <div className="flex gap-1 flex-wrap">
-        {prompts.map((p) => <button key={p.key} onClick={() => setActivePrompt(p.key)} className={`px-2 py-1 text-xs rounded ${activePrompt === p.key ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>{p.label}</button>)}
+        {prompts.map((p) => (
+          <button key={p.key} onClick={() => setActivePrompt(p.key)} className={`px-2 py-1 text-xs rounded ${activePrompt === p.key ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            <HelpLabel label={p.label} className="text-inherit" />
+          </button>
+        ))}
       </div>
       <textarea value={data[activePrompt]} onChange={(e) => onChange(activePrompt, e.target.value)} className="flex-1 w-full px-3 py-2 border rounded-lg font-mono text-xs focus:ring-2 focus:ring-pink-500 resize-none min-h-[300px]" />
     </div>
@@ -1106,7 +1208,7 @@ function Section({ title, expanded, onToggle, children }: { title: string; expan
   return (
     <div className="border rounded-lg">
       <button onClick={onToggle} className="w-full px-3 py-2 flex items-center justify-between text-sm font-medium text-gray-700 hover:bg-gray-50">
-        {title}
+        <HelpLabel label={title} className="text-sm font-medium text-gray-700" />
         <span className="text-gray-400">{expanded ? '▼' : '▶'}</span>
       </button>
       {expanded && <div className="px-3 pb-3 space-y-3">{children}</div>}
@@ -1117,7 +1219,9 @@ function Section({ title, expanded, onToggle, children }: { title: string; expan
 function Field({ label, value, onChange, type = 'text', placeholder, className }: { label: string; value: string | number; onChange: (v: string) => void; type?: string; placeholder?: string; className?: string }) {
   return (
     <div className={className}>
-      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block mb-1">
+        <HelpLabel label={label} />
+      </label>
       <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500" />
     </div>
   );
@@ -1126,7 +1230,9 @@ function Field({ label, value, onChange, type = 'text', placeholder, className }
 function TextArea({ label, value, onChange, rows = 2, placeholder }: { label: string; value: string; onChange: (v: string) => void; rows?: number; placeholder?: string }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block mb-1">
+        <HelpLabel label={label} />
+      </label>
       <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={rows} placeholder={placeholder} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500" />
     </div>
   );
@@ -1135,7 +1241,9 @@ function TextArea({ label, value, onChange, rows = 2, placeholder }: { label: st
 function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+      <label className="block mb-1">
+        <HelpLabel label={label} />
+      </label>
       <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500">{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
     </div>
   );
@@ -1146,7 +1254,9 @@ function ArrayEditor({ label, values, onChange }: { label: string; values: strin
   const addValue = () => { if (newValue.trim()) { onChange([...values, newValue.trim()]); setNewValue(''); } };
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1.5">{label}</label>
+      <label className="block mb-1.5">
+        <HelpLabel label={label} />
+      </label>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {values.map((v, i) => <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-pink-50 text-pink-700 rounded-full text-xs">{v}<button onClick={() => onChange(values.filter((_, idx) => idx !== i))} className="text-pink-400 hover:text-pink-600">×</button></span>)}
       </div>
@@ -1161,7 +1271,7 @@ function ArrayEditor({ label, values, onChange }: { label: string; values: strin
 function SliderField({ label, value, onChange, showValue }: { label: string; value: number; onChange: (v: number) => void; showValue?: string }) {
   return (
     <div>
-      <div className="flex justify-between mb-1"><label className="text-xs font-medium text-gray-700">{label}</label><span className="text-xs text-gray-500">{showValue ?? `${Math.round(value * 100)}%`}</span></div>
+      <div className="flex justify-between mb-1"><label><HelpLabel label={label} /></label><span className="text-xs text-gray-500">{showValue ?? `${Math.round(value * 100)}%`}</span></div>
       <input type="range" min="0" max="1" step="0.01" value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg accent-pink-500" />
     </div>
   );

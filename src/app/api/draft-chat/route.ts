@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
       turnId: result.turnId,
       phaseId: result.phaseId,
       emotion: result.emotion,
+      coe: result.coe,
       trace: result.trace,
     });
   } catch (error) {

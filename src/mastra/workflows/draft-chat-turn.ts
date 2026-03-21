@@ -10,6 +10,7 @@ import { workspaceRepo } from '@/lib/repositories';
 import { createPhaseEngine, PhaseEngineContext } from '@/lib/rules/phase-engine';
 import { computeAppraisal } from '@/lib/rules/appraisal';
 import { updatePAD } from '@/lib/rules/pad';
+import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
 import { runPlanner } from '../agents/planner';
 import { runGenerator } from '../agents/generator';
 import { runRanker } from '../agents/ranker';
@@ -17,6 +18,7 @@ import { runMemoryExtractor } from '../agents/memory-extractor';
 import { DraftAssetSource } from '@/lib/sources/draft-source';
 import type {
   PADState,
+  AppraisalVector,
   PhaseNode,
   TurnPlan,
   WorkingMemory,
@@ -40,6 +42,7 @@ export type DraftChatTurnOutput = {
   turnId: string;
   phaseId: string;
   emotion: PADState;
+  coe: CoEExplanation;
   trace: DraftChatTrace;
 };
 
@@ -49,6 +52,7 @@ export type DraftChatTrace = {
   phaseIdAfter: string;
   emotionBefore: PADState;
   emotionAfter: PADState;
+  appraisal: AppraisalVector;
   plan: TurnPlan;
   candidates: Array<{ text: string; scores: Record<string, number> }>;
   winnerIndex: number;
@@ -196,6 +200,17 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
     promptOverride: draft.prompts.plannerMd,
   });
   const plan = plannerResult.plan;
+  const coe = buildCoEExplanation({
+    emotionBefore,
+    emotionAfter,
+    appraisal,
+    intentReason: plan.emotionDeltaIntent.reason,
+    intentDelta: {
+      pleasure: plan.emotionDeltaIntent.pleasureDelta,
+      arousal: plan.emotionDeltaIntent.arousalDelta,
+      dominance: plan.emotionDeltaIntent.dominanceDelta,
+    },
+  });
 
   // ==========================================
   // Step 6: Generate candidates
@@ -245,6 +260,7 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
     phaseIdAfter: currentPhaseId, // No transition in sandbox for now
     emotionBefore,
     emotionAfter,
+    appraisal,
     plan,
     candidates: rankerResult.candidates.map((c) => ({
       text: c.text,
@@ -271,6 +287,7 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
     turnId: turn.id,
     phaseId: currentPhaseId,
     emotion: emotionAfter,
+    coe,
     trace,
   };
 }

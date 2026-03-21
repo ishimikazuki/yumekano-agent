@@ -1,0 +1,13 @@
+# Large files and directories
+video-assets/
+tutorial-video/
+.next/
+out/
+
+# Dependencies (handled by Vercel)
+node_modules/
+
+# Development files
+*.mov
+*.mp4
+*.sst

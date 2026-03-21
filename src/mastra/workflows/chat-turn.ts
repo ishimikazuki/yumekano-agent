@@ -11,6 +11,7 @@ import {
 import { createPhaseEngine, PhaseEngineContext } from '@/lib/rules/phase-engine';
 import { computeAppraisal } from '@/lib/rules/appraisal';
 import { updatePAD } from '@/lib/rules/pad';
+import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
 import { retrieveMemory, getOrCreateWorkingMemory } from '../memory/retrieval';
 import { runPlanner } from '../agents/planner';
 import { runGenerator } from '../agents/generator';
@@ -40,6 +41,7 @@ export type ChatTurnOutput = {
   traceId: string;
   phaseId: string;
   emotion: PADState;
+  coe: CoEExplanation;
 };
 
 /**
@@ -140,6 +142,17 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
     promptOverride: promptBundle.plannerMd,
   });
   const plan = plannerResult.plan;
+  const coe = buildCoEExplanation({
+    emotionBefore,
+    emotionAfter,
+    appraisal,
+    intentReason: plan.emotionDeltaIntent.reason,
+    intentDelta: {
+      pleasure: plan.emotionDeltaIntent.pleasureDelta,
+      arousal: plan.emotionDeltaIntent.arousalDelta,
+      dominance: plan.emotionDeltaIntent.dominanceDelta,
+    },
+  });
 
   // ==========================================
   // Step 6: Evaluate phase transition
@@ -293,6 +306,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
     traceId: trace.id,
     phaseId: phaseIdAfter,
     emotion: emotionAfter,
+    coe,
   };
 }
 

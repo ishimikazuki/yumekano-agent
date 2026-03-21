@@ -4,7 +4,7 @@ import { characterRepo } from '@/lib/repositories';
 export async function GET() {
   try {
     const characters = await characterRepo.list();
-    return NextResponse.json(characters);
+    return NextResponse.json({ characters });
   } catch (error) {
     console.error('Error fetching characters:', error);
     return NextResponse.json(
