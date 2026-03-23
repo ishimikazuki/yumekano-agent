@@ -248,12 +248,61 @@ export default function WorkspaceSandboxPage() {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  const saveEditorContext = useCallback(async (context: { playgroundSessionId?: string }) => {
+    const response = await fetch(`/api/workspaces/${workspaceId}/editor-context`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(context),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save editor context');
+    }
+  }, [workspaceId]);
+
   useEffect(() => {
     const fetchWorkspace = async () => {
+      setLoading(true);
+      setMessages([]);
+      setSessionId(null);
+
       try {
         const res = await fetch(`/api/workspaces/${workspaceId}`);
         if (!res.ok) throw new Error('Failed to fetch workspace');
         setData(await res.json());
+
+        const contextRes = await fetch(`/api/workspaces/${workspaceId}/editor-context`);
+        if (!contextRes.ok) {
+          console.error('Failed to fetch editor context');
+          return;
+        }
+
+        const contextData = await contextRes.json() as {
+          playgroundSessionId?: string;
+        };
+
+        if (!contextData.playgroundSessionId) return;
+
+        const sessionRes = await fetch(
+          `/api/workspaces/${workspaceId}/playground-session?sessionId=${encodeURIComponent(contextData.playgroundSessionId)}`
+        );
+
+        if (sessionRes.status === 404) {
+          await saveEditorContext({});
+          return;
+        }
+
+        if (!sessionRes.ok) {
+          throw new Error('Failed to restore playground session');
+        }
+
+        const sessionData = await sessionRes.json() as {
+          sessionId: string;
+          messages: Message[];
+        };
+
+        setSessionId(sessionData.sessionId);
+        setMessages(sessionData.messages);
       } catch (error) {
         console.error('Failed to fetch workspace:', error);
       } finally {
@@ -261,7 +310,7 @@ export default function WorkspaceSandboxPage() {
       }
     };
     fetchWorkspace();
-  }, [workspaceId]);
+  }, [saveEditorContext, workspaceId]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -333,7 +382,14 @@ export default function WorkspaceSandboxPage() {
       });
       if (!response.ok) throw new Error((await response.json()).error || 'Draft chat failed');
       const responseData = await response.json();
-      if (!sessionId && responseData.sessionId) setSessionId(responseData.sessionId);
+      if (!sessionId && responseData.sessionId) {
+        setSessionId(responseData.sessionId);
+        try {
+          await saveEditorContext({ playgroundSessionId: responseData.sessionId });
+        } catch (contextError) {
+          console.error('Failed to persist playground session:', contextError);
+        }
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -351,7 +407,16 @@ export default function WorkspaceSandboxPage() {
     setIsLoading(false);
   };
 
-  const handleReset = () => { setMessages([]); setSessionId(null); };
+  const handleReset = async () => {
+    setMessages([]);
+    setSessionId(null);
+
+    try {
+      await saveEditorContext({});
+    } catch (error) {
+      console.error('Failed to reset editor context:', error);
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-500">Loading...</div></div>;
   if (!data) return <div className="text-center py-12"><p className="text-red-500">ワークスペースが見つかりません</p><Link href={`/characters/${characterId}`} className="text-pink-500 hover:underline mt-4 inline-block">キャラクターに戻る</Link></div>;
