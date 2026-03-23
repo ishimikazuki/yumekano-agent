@@ -673,19 +673,19 @@ function EmotionEditor({ data, onChange }: { data: DraftState['emotion']; onChan
       <h2 className="text-base font-semibold text-gray-900">感情ベースライン</h2>
       <div className="space-y-3">
         <SliderField
-          label="Pleasure（快楽）"
+          label="快"
           value={(baseline.pleasure + 1) / 2}
           onChange={(v) => updateBaseline('pleasure', v * 2 - 1)}
           showValue={baseline.pleasure.toFixed(2)}
         />
         <SliderField
-          label="Arousal（覚醒）"
+          label="覚醒"
           value={(baseline.arousal + 1) / 2}
           onChange={(v) => updateBaseline('arousal', v * 2 - 1)}
           showValue={baseline.arousal.toFixed(2)}
         />
         <SliderField
-          label="Dominance（支配）"
+          label="支配感"
           value={(baseline.dominance + 1) / 2}
           onChange={(v) => updateBaseline('dominance', v * 2 - 1)}
           showValue={baseline.dominance.toFixed(2)}

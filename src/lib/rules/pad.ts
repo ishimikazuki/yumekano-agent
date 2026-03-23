@@ -22,6 +22,20 @@ export type PADUpdate = {
   combined: PADState;
 };
 
+export type PADContributionFactorKey = keyof AppraisalVector | 'uncertainty';
+
+export type PADContribution = {
+  axis: keyof PADState;
+  factorKey: PADContributionFactorKey;
+  factorValue: number;
+  contribution: number;
+};
+
+export const PAD_DELTA_NOTICE_THRESHOLD = 0.05;
+
+const APPRAISAL_MIDPOINT = 0.5;
+const FAST_AFFECT_GAIN = 0.5;
+
 /**
  * Update PAD state based on appraisal.
  */
@@ -50,8 +64,8 @@ export function updatePAD(input: PADInput): PADUpdate {
 
   // Open threads bias recovery and baseline negatively
   if (hasOpenThreads) {
-    slowMood.pleasure -= 0.1;
-    slowMood.dominance -= 0.05;
+    slowMood.pleasure -= 0.05;
+    slowMood.dominance -= 0.03;
   }
 
   // Clamp values
@@ -75,37 +89,92 @@ export function updatePAD(input: PADInput): PADUpdate {
  * Compute fast affect from appraisal.
  */
 function computeFastAffect(appraisal: AppraisalVector, baseline: PADState): PADState {
-  // Pleasure is influenced by:
-  // + goal congruence, reciprocity, attachment security
-  // - pressure intrusiveness, norm violations
-  const pleasure =
-    baseline.pleasure +
-    appraisal.goalCongruence * 0.4 +
-    appraisal.reciprocity * 0.2 +
-    appraisal.attachmentSecurity * 0.2 -
-    appraisal.pressureIntrusiveness * 0.3 +
-    appraisal.normAlignment * 0.15;
+  const next: PADState = { ...baseline };
 
-  // Arousal is influenced by:
-  // + novelty, self relevance, pressure
-  // + uncertainty (can increase arousal)
-  const arousal =
-    baseline.arousal +
-    appraisal.novelty * 0.3 +
-    appraisal.selfRelevance * 0.2 +
-    appraisal.pressureIntrusiveness * 0.25 +
-    (1 - appraisal.certainty) * 0.15;
+  for (const contribution of getPADContributions(appraisal)) {
+    next[contribution.axis] += contribution.contribution;
+  }
 
-  // Dominance is influenced by:
-  // + controllability, certainty
-  // - pressure intrusiveness
-  const dominance =
-    baseline.dominance +
-    appraisal.controllability * 0.35 +
-    appraisal.certainty * 0.15 -
-    appraisal.pressureIntrusiveness * 0.3;
+  return next;
+}
 
-  return { pleasure, arousal, dominance };
+export function getPADContributions(appraisal: AppraisalVector): PADContribution[] {
+  const centered = (value: number) => value - APPRAISAL_MIDPOINT;
+
+  return [
+    {
+      axis: 'pleasure',
+      factorKey: 'goalCongruence',
+      factorValue: appraisal.goalCongruence,
+      contribution: appraisal.goalCongruence * 0.4 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'pleasure',
+      factorKey: 'reciprocity',
+      factorValue: appraisal.reciprocity,
+      contribution: appraisal.reciprocity * 0.2 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'pleasure',
+      factorKey: 'attachmentSecurity',
+      factorValue: appraisal.attachmentSecurity,
+      contribution: centered(appraisal.attachmentSecurity) * 0.2 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'pleasure',
+      factorKey: 'pressureIntrusiveness',
+      factorValue: appraisal.pressureIntrusiveness,
+      contribution: appraisal.pressureIntrusiveness * -0.3 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'pleasure',
+      factorKey: 'normAlignment',
+      factorValue: appraisal.normAlignment,
+      contribution: appraisal.normAlignment * 0.15 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'arousal',
+      factorKey: 'novelty',
+      factorValue: appraisal.novelty,
+      contribution: centered(appraisal.novelty) * 0.3 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'arousal',
+      factorKey: 'selfRelevance',
+      factorValue: appraisal.selfRelevance,
+      contribution: centered(appraisal.selfRelevance) * 0.2 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'arousal',
+      factorKey: 'pressureIntrusiveness',
+      factorValue: appraisal.pressureIntrusiveness,
+      contribution: appraisal.pressureIntrusiveness * 0.25 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'arousal',
+      factorKey: 'uncertainty',
+      factorValue: 1 - appraisal.certainty,
+      contribution: (APPRAISAL_MIDPOINT - appraisal.certainty) * 0.15 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'dominance',
+      factorKey: 'controllability',
+      factorValue: appraisal.controllability,
+      contribution: centered(appraisal.controllability) * 0.35 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'dominance',
+      factorKey: 'certainty',
+      factorValue: appraisal.certainty,
+      contribution: centered(appraisal.certainty) * 0.15 * FAST_AFFECT_GAIN,
+    },
+    {
+      axis: 'dominance',
+      factorKey: 'pressureIntrusiveness',
+      factorValue: appraisal.pressureIntrusiveness,
+      contribution: appraisal.pressureIntrusiveness * -0.3 * FAST_AFFECT_GAIN,
+    },
+  ];
 }
 
 /**

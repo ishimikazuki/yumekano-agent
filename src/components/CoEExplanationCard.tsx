@@ -1,6 +1,7 @@
 'use client';
 
 import type { CoEExplanation } from '@/lib/rules/coe';
+import { PAD_DELTA_NOTICE_THRESHOLD } from '@/lib/rules/pad';
 
 type CoEExplanationCardProps = {
   coe: CoEExplanation;
@@ -13,8 +14,8 @@ function formatSigned(value: number): string {
 }
 
 function deltaTone(value: number): string {
-  if (value > 0.03) return 'bg-emerald-100 text-emerald-700';
-  if (value < -0.03) return 'bg-rose-100 text-rose-700';
+  if (value > PAD_DELTA_NOTICE_THRESHOLD) return 'bg-emerald-100 text-emerald-700';
+  if (value < -PAD_DELTA_NOTICE_THRESHOLD) return 'bg-rose-100 text-rose-700';
   return 'bg-gray-100 text-gray-600';
 }
 
@@ -26,7 +27,7 @@ export function CoEExplanationCard({
   return (
     <div className={`rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 ${className}`.trim()}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold tracking-wide text-indigo-700">CoE 感情変化の説明</p>
+        <p className="text-xs font-semibold tracking-wide text-indigo-700">PAD 感情変化の説明</p>
         <div className="flex gap-1">
           <span
             className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${deltaTone(coe.delta.pleasure)}`}
@@ -50,7 +51,7 @@ export function CoEExplanationCard({
 
       {coe.intentReason && (
         <p className="mt-2 rounded bg-white/70 px-2 py-1 text-[11px] text-gray-700">
-          Planner意図: {coe.intentReason}
+          応答方針: {coe.intentReason}
         </p>
       )}
 

@@ -1,12 +1,17 @@
 import type { AppraisalVector, PADState } from '../schemas';
+import {
+  getPADContributions,
+  PAD_DELTA_NOTICE_THRESHOLD,
+  type PADContributionFactorKey,
+} from './pad';
 
 type AxisKey = keyof PADState;
-type FactorKey = keyof AppraisalVector | 'uncertainty';
+type FactorKey = PADContributionFactorKey;
 
 const AXIS_LABELS: Record<AxisKey, string> = {
-  pleasure: 'Pleasure',
-  arousal: 'Arousal',
-  dominance: 'Dominance',
+  pleasure: '快',
+  arousal: '覚醒',
+  dominance: '支配感',
 };
 
 const AXIS_SHORT_LABELS: Record<AxisKey, string> = {
@@ -67,8 +72,6 @@ type CoEInput = {
 
 const DRIVER_COUNT = 3;
 const AXIS_DRIVER_COUNT = 2;
-const NEUTRAL_DELTA_THRESHOLD = 0.03;
-
 /**
  * Build an explainable CoE (Chain of Emotion) summary for designer-facing UI.
  */
@@ -81,50 +84,21 @@ export function buildCoEExplanation(input: CoEInput): CoEExplanation {
   };
 
   const byAxis: Record<AxisKey, CoEDriver[]> = {
-    pleasure: [
-      createDriver('pleasure', 'goalCongruence', appraisal.goalCongruence, appraisal.goalCongruence * 0.4),
-      createDriver('pleasure', 'reciprocity', appraisal.reciprocity, appraisal.reciprocity * 0.2),
-      createDriver(
-        'pleasure',
-        'attachmentSecurity',
-        appraisal.attachmentSecurity,
-        appraisal.attachmentSecurity * 0.2
-      ),
-      createDriver(
-        'pleasure',
-        'pressureIntrusiveness',
-        appraisal.pressureIntrusiveness,
-        appraisal.pressureIntrusiveness * -0.3
-      ),
-      createDriver('pleasure', 'normAlignment', appraisal.normAlignment, appraisal.normAlignment * 0.15),
-    ],
-    arousal: [
-      createDriver('arousal', 'novelty', appraisal.novelty, appraisal.novelty * 0.3),
-      createDriver('arousal', 'selfRelevance', appraisal.selfRelevance, appraisal.selfRelevance * 0.2),
-      createDriver(
-        'arousal',
-        'pressureIntrusiveness',
-        appraisal.pressureIntrusiveness,
-        appraisal.pressureIntrusiveness * 0.25
-      ),
-      createDriver('arousal', 'uncertainty', 1 - appraisal.certainty, (1 - appraisal.certainty) * 0.15),
-    ],
-    dominance: [
-      createDriver(
-        'dominance',
-        'controllability',
-        appraisal.controllability,
-        appraisal.controllability * 0.35
-      ),
-      createDriver('dominance', 'certainty', appraisal.certainty, appraisal.certainty * 0.15),
-      createDriver(
-        'dominance',
-        'pressureIntrusiveness',
-        appraisal.pressureIntrusiveness,
-        appraisal.pressureIntrusiveness * -0.3
-      ),
-    ],
+    pleasure: [],
+    arousal: [],
+    dominance: [],
   };
+
+  for (const contribution of getPADContributions(appraisal)) {
+    byAxis[contribution.axis].push(
+      createDriver(
+        contribution.axis,
+        contribution.factorKey,
+        contribution.factorValue,
+        contribution.contribution
+      )
+    );
+  }
 
   const topDrivers = Object.values(byAxis)
     .flat()
@@ -170,13 +144,13 @@ function createDriver(
   };
 }
 
-function buildSummary(delta: PADState, topDrivers: CoEDriver[], intentReason: string | null): string {
-  const deltaSummary = `P${formatSigned(delta.pleasure)} / A${formatSigned(delta.arousal)} / D${formatSigned(delta.dominance)}`;
+function buildSummary(delta: PADState, topDrivers: CoEDriver[], _intentReason: string | null): string {
+  const deltaSummary = `快${formatSigned(delta.pleasure)} / 覚醒${formatSigned(delta.arousal)} / 支配感${formatSigned(delta.dominance)}`;
 
   const hasMeaningfulChange =
-    Math.abs(delta.pleasure) >= NEUTRAL_DELTA_THRESHOLD ||
-    Math.abs(delta.arousal) >= NEUTRAL_DELTA_THRESHOLD ||
-    Math.abs(delta.dominance) >= NEUTRAL_DELTA_THRESHOLD;
+    Math.abs(delta.pleasure) >= PAD_DELTA_NOTICE_THRESHOLD ||
+    Math.abs(delta.arousal) >= PAD_DELTA_NOTICE_THRESHOLD ||
+    Math.abs(delta.dominance) >= PAD_DELTA_NOTICE_THRESHOLD;
 
   const lead = hasMeaningfulChange
     ? `PADが変化 (${deltaSummary})。`
@@ -190,9 +164,7 @@ function buildSummary(delta: PADState, topDrivers: CoEDriver[], intentReason: st
           .join('、')}。`
       : '';
 
-  const intentText = intentReason ? `Planner意図: ${intentReason}` : '';
-
-  return [lead, driverText, intentText].filter(Boolean).join(' ');
+  return [lead, driverText].filter(Boolean).join(' ');
 }
 
 function formatSigned(value: number): string {

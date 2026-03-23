@@ -386,7 +386,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <div className="space-y-4">
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <LabelWithTooltip label="Pleasure (快)" paramKey="pleasure" className="text-gray-500" />
+              <LabelWithTooltip label="快" paramKey="pleasure" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.pleasure.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -398,7 +398,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <LabelWithTooltip label="Arousal (興奮)" paramKey="arousal" className="text-gray-500" />
+              <LabelWithTooltip label="覚醒" paramKey="arousal" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.arousal.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -410,7 +410,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <LabelWithTooltip label="Dominance (支配感)" paramKey="dominance" className="text-gray-500" />
+              <LabelWithTooltip label="支配感" paramKey="dominance" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.dominance.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
