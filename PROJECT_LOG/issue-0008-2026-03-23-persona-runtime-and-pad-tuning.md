@@ -24,3 +24,4 @@
 ## Notes
 - セイラの `これ落としたよ` は修正後 `goalCongruence > 0`、PAD では `pleasure` が微増し、`dominance` は下がらないことを確認した。
 - push 後の deploy 確認は GitHub 連携の preview / production 設定に依存するため、環境変数未設定の preview には引き続き注意が必要。
+- commit `1c75779` を `origin/codex/tooltip-help-front` へ push し、production alias `https://yumekano-codex-spec-v2.vercel.app` を更新した。
