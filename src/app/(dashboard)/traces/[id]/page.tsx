@@ -158,6 +158,8 @@ export default function TraceViewerPage() {
           dominance: trace.plan.emotionDeltaIntent.dominanceDelta,
         }
       : null,
+    stance: trace.plan.stance,
+    primaryActs: trace.plan.primaryActs,
   });
 
   return (

@@ -146,6 +146,8 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
       arousal: plan.emotionDeltaIntent.arousalDelta,
       dominance: plan.emotionDeltaIntent.dominanceDelta,
     },
+    stance: plan.stance,
+    primaryActs: plan.primaryActs,
   });
 
   // ==========================================

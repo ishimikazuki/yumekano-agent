@@ -62,8 +62,16 @@ export async function runPlanner(input: PlannerInput): Promise<PlannerOutput> {
 function buildPlannerSystemPrompt(input: PlannerInput): string {
   const { characterVersion, currentPhase, promptOverride } = input;
 
+  const outputLanguageRules = `
+
+## Output Language Rules
+- Return all free-text string fields in concise natural Japanese.
+- Write \`emotionDeltaIntent.reason\`, \`plannerReasoning\`, \`phaseTransitionProposal.reason\`, and \`memoryFocus.reason\` in Japanese.
+- Write each item in \`mustAvoid\` as a short Japanese phrase.
+- Keep enum fields exactly as required by the schema.`;
+
   if (promptOverride) {
-    return promptOverride;
+    return `${promptOverride}${outputLanguageRules}`;
   }
 
   return `# Planner System Prompt
@@ -105,7 +113,7 @@ ${currentPhase.disallowedActs.map((a) => `- ${a}`).join('\n')}
 4. If intimacy is requested, choose based on state, context, and authored personality.
 5. Keep girlfriend-mode autonomous.
 6. Use memory only when it should genuinely affect behavior.
-7. Avoid generic affirmation.`;
+7. Avoid generic affirmation.${outputLanguageRules}`;
 }
 
 function buildPlannerUserPrompt(input: PlannerInput): string {

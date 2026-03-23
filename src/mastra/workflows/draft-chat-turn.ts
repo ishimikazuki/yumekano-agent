@@ -205,6 +205,8 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
       arousal: plan.emotionDeltaIntent.arousalDelta,
       dominance: plan.emotionDeltaIntent.dominanceDelta,
     },
+    stance: plan.stance,
+    primaryActs: plan.primaryActs,
   });
 
   // ==========================================
