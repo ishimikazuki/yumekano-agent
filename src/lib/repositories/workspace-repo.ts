@@ -11,12 +11,26 @@ import {
   AutosaveSchema,
   PlaygroundSession,
   PlaygroundSessionSchema,
+  SandboxPairState,
+  SandboxPairStateSchema,
   PlaygroundTurn,
   PlaygroundTurnSchema,
   EditorContext,
   EditorContextSchema,
   PromptBundleContentSchema,
 } from '../schemas';
+
+const NEUTRAL_APPRAISAL = {
+  goalCongruence: 0,
+  controllability: 0.5,
+  certainty: 0.5,
+  normAlignment: 0,
+  attachmentSecurity: 0.5,
+  reciprocity: 0,
+  pressureIntrusiveness: 0,
+  novelty: 0.5,
+  selfRelevance: 0.5,
+};
 
 function normalizeLegacyStyle(value: unknown): unknown {
   if (!value || typeof value !== 'object') return value;
@@ -570,6 +584,95 @@ export const workspaceRepo = {
         createdAt: row.created_at,
       })
     );
+  },
+
+  /**
+   * Get persisted sandbox pair state for a session.
+   */
+  async getSandboxPairState(sessionId: string): Promise<SandboxPairState | null> {
+    const db = getDb();
+    const result = await db.execute({
+      sql: `SELECT * FROM sandbox_pair_state WHERE session_id = ?`,
+      args: [sessionId],
+    });
+
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    const appraisalRaw =
+      JSON.parse((row.appraisal_json as string) || '{}') as Record<string, unknown>;
+
+    return SandboxPairStateSchema.parse({
+      sessionId: row.session_id,
+      activePhaseId: row.active_phase_id,
+      affinity: row.affinity,
+      trust: row.trust,
+      intimacyReadiness: row.intimacy_readiness,
+      conflict: row.conflict,
+      pad: JSON.parse(row.pad_json as string),
+      appraisal: {
+        goalCongruence: asNumber(appraisalRaw.goalCongruence, NEUTRAL_APPRAISAL.goalCongruence),
+        controllability: asNumber(appraisalRaw.controllability, NEUTRAL_APPRAISAL.controllability),
+        certainty: asNumber(appraisalRaw.certainty, NEUTRAL_APPRAISAL.certainty),
+        normAlignment: asNumber(appraisalRaw.normAlignment, NEUTRAL_APPRAISAL.normAlignment),
+        attachmentSecurity: asNumber(appraisalRaw.attachmentSecurity, NEUTRAL_APPRAISAL.attachmentSecurity),
+        reciprocity: asNumber(appraisalRaw.reciprocity, NEUTRAL_APPRAISAL.reciprocity),
+        pressureIntrusiveness: asNumber(appraisalRaw.pressureIntrusiveness, NEUTRAL_APPRAISAL.pressureIntrusiveness),
+        novelty: asNumber(appraisalRaw.novelty, NEUTRAL_APPRAISAL.novelty),
+        selfRelevance: asNumber(appraisalRaw.selfRelevance, NEUTRAL_APPRAISAL.selfRelevance),
+      },
+      openThreadCount: row.open_thread_count,
+      updatedAt: row.updated_at,
+    });
+  },
+
+  /**
+   * Persist sandbox pair state so sandbox chat can carry emotion and phase forward.
+   */
+  async saveSandboxPairState(input: {
+    sessionId: string;
+    activePhaseId: string;
+    affinity: number;
+    trust: number;
+    intimacyReadiness: number;
+    conflict: number;
+    pad: SandboxPairState['pad'];
+    appraisal: SandboxPairState['appraisal'];
+    openThreadCount: number;
+  }): Promise<SandboxPairState> {
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    await db.execute({
+      sql: `INSERT OR REPLACE INTO sandbox_pair_state
+            (session_id, active_phase_id, affinity, trust, intimacy_readiness, conflict, pad_json, appraisal_json, open_thread_count, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        input.sessionId,
+        input.activePhaseId,
+        input.affinity,
+        input.trust,
+        input.intimacyReadiness,
+        input.conflict,
+        JSON.stringify(input.pad),
+        JSON.stringify(input.appraisal),
+        input.openThreadCount,
+        now,
+      ],
+    });
+
+    return SandboxPairStateSchema.parse({
+      sessionId: input.sessionId,
+      activePhaseId: input.activePhaseId,
+      affinity: input.affinity,
+      trust: input.trust,
+      intimacyReadiness: input.intimacyReadiness,
+      conflict: input.conflict,
+      pad: input.pad,
+      appraisal: input.appraisal,
+      openThreadCount: input.openThreadCount,
+      updatedAt: now,
+    });
   },
 
   /**

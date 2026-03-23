@@ -241,4 +241,20 @@ export const traceRepo = {
       })
     );
   },
+
+  /**
+   * Count chat turns since a specific time, or all turns if omitted.
+   */
+  async countTurnsSince(pairId: string, since?: Date | null): Promise<number> {
+    const db = getDb();
+    const result = await db.execute({
+      sql: since
+        ? `SELECT COUNT(*) AS count FROM chat_turns WHERE pair_id = ? AND created_at > ?`
+        : `SELECT COUNT(*) AS count FROM chat_turns WHERE pair_id = ?`,
+      args: since ? [pairId, since.toISOString()] : [pairId],
+    });
+
+    const rawCount = result.rows[0]?.count;
+    return Number(rawCount ?? 0);
+  },
 };

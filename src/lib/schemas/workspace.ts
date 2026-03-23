@@ -18,6 +18,7 @@ import {
   type ReactionPack,
 } from './character';
 import { PhaseGraphSchema } from './phase';
+import { AppraisalVectorSchema, PADStateSchema } from './trace';
 
 /**
  * Character identity/meta - basic character identity info
@@ -104,6 +105,23 @@ export const PlaygroundSessionSchema = z.object({
   createdAt: z.coerce.date(),
 });
 export type PlaygroundSession = z.infer<typeof PlaygroundSessionSchema>;
+
+/**
+ * Persisted sandbox pair state for a playground session
+ */
+export const SandboxPairStateSchema = z.object({
+  sessionId: z.string().uuid(),
+  activePhaseId: z.string(),
+  affinity: z.number().min(0).max(100),
+  trust: z.number().min(0).max(100),
+  intimacyReadiness: z.number().min(0).max(100),
+  conflict: z.number().min(0).max(100),
+  pad: PADStateSchema,
+  appraisal: AppraisalVectorSchema,
+  openThreadCount: z.number().int().min(0),
+  updatedAt: z.coerce.date(),
+});
+export type SandboxPairState = z.infer<typeof SandboxPairStateSchema>;
 
 /**
  * Playground turn - a turn in a sandbox session

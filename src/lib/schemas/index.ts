@@ -160,6 +160,7 @@ export {
   WorkspaceWithDraftSchema,
   AutosaveSchema,
   PlaygroundSessionSchema,
+  SandboxPairStateSchema,
   PlaygroundTurnSchema,
   EditorContextSchema,
   type CharacterIdentity,
@@ -170,6 +171,7 @@ export {
   type WorkspaceWithDraft,
   type Autosave,
   type PlaygroundSession,
+  type SandboxPairState,
   type PlaygroundTurn,
   type EditorContext,
 } from './workspace';

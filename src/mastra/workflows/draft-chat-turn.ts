@@ -10,6 +10,12 @@ import { createPhaseEngine } from '@/lib/rules/phase-engine';
 import { computeAppraisal } from '@/lib/rules/appraisal';
 import { updatePAD } from '@/lib/rules/pad';
 import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
+import {
+  buildPhaseEngineRuntimeContext,
+  deriveSandboxPhaseTiming,
+  resolvePhaseTransition,
+  updateRelationshipMetrics,
+} from '@/lib/rules/phase-runtime';
 import { runPlanner } from '../agents/planner';
 import { runGenerator, selectGeneratorPrompt } from '../agents/generator';
 import { runRanker } from '../agents/ranker';
@@ -19,6 +25,7 @@ import type {
   TurnPlan,
   WorkingMemory,
   PlaygroundSession,
+  PairState,
 } from '@/lib/schemas';
 
 export type DraftChatTurnInput = {
@@ -86,6 +93,8 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
     });
   }
 
+  const persistedSandboxState = await workspaceRepo.getSandboxPairState(session.id);
+
   // Get existing turns for recent dialogue
   const existingTurns = await workspaceRepo.getTurns(session.id);
 
@@ -101,11 +110,14 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
   const phaseEngine = createPhaseEngine(draft.phaseGraph);
 
   // Use forced phase or entry phase for new sessions
-  const currentPhaseId = input.forcePhaseId ?? draft.phaseGraph.entryPhaseId;
+  const currentPhaseId =
+    input.forcePhaseId ??
+    persistedSandboxState?.activePhaseId ??
+    draft.phaseGraph.entryPhaseId;
   const currentPhase = phaseEngine.getPhase(currentPhaseId) ?? phaseEngine.getEntryPhase();
 
   // Use forced PAD or baseline
-  const currentPAD = input.forcePAD ?? draft.emotion.baselinePAD;
+  const currentPAD = input.forcePAD ?? persistedSandboxState?.pad ?? draft.emotion.baselinePAD;
 
   // Default working memory for sandbox
   const workingMemory: WorkingMemory = {
@@ -120,24 +132,29 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
   };
 
   // Default pair state for sandbox
-  const sandboxPairState = {
-    affinity: 50,
-    trust: 50,
-    intimacyReadiness: 0,
-    conflict: 0,
+  const sandboxPairState: PairState = {
+    pairId: session.id,
+    activeCharacterVersionId: `draft-${workspaceId}`,
+    activePhaseId: currentPhaseId,
+    affinity: persistedSandboxState?.affinity ?? 50,
+    trust: persistedSandboxState?.trust ?? 50,
+    intimacyReadiness: persistedSandboxState?.intimacyReadiness ?? 0,
+    conflict: persistedSandboxState?.conflict ?? 0,
     pad: currentPAD,
-    appraisal: {
+    appraisal: persistedSandboxState?.appraisal ?? {
       goalCongruence: 0,
-      controllability: 0,
-      certainty: 0,
+      controllability: 0.5,
+      certainty: 0.5,
       normAlignment: 0,
-      attachmentSecurity: 0,
+      attachmentSecurity: 0.5,
       reciprocity: 0,
       pressureIntrusiveness: 0,
-      novelty: 0,
+      novelty: 0.5,
+      selfRelevance: 0.5,
     },
     openThreadCount: 0,
-    activePhaseId: currentPhaseId,
+    lastTransitionAt: null,
+    updatedAt: persistedSandboxState?.updatedAt ?? session.createdAt,
   };
 
   // Build character version-like object from draft
@@ -175,6 +192,19 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
     turnsSinceLastUpdate: 1,
   });
   const emotionAfter = padUpdate.combined;
+  const relationshipAfter = updateRelationshipMetrics({
+    current: sandboxPairState,
+    appraisal,
+    emotionBefore,
+    emotionAfter,
+  });
+  const pairStateAfterUpdate: PairState = {
+    ...sandboxPairState,
+    ...relationshipAfter,
+    pad: emotionAfter,
+    appraisal,
+    updatedAt: new Date(),
+  };
 
   // ==========================================
   // Step 5: Plan turn
@@ -182,7 +212,7 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
   const plannerResult = await runPlanner({
     characterVersion: characterVersion as never,
     currentPhase,
-    pairState: { ...sandboxPairState, pad: emotionAfter, appraisal } as never,
+    pairState: pairStateAfterUpdate as never,
     emotion: emotionAfter,
     workingMemory,
     retrievedMemory: {
@@ -210,7 +240,40 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
   });
 
   // ==========================================
-  // Step 6: Generate candidates
+  // Step 6: Evaluate phase transition
+  // ==========================================
+  const timing = deriveSandboxPhaseTiming({
+    sessionCreatedAt: session.createdAt,
+    turns: existingTurns,
+    currentPhaseId,
+  });
+  const phaseContext = buildPhaseEngineRuntimeContext({
+    edges: phaseEngine.getEdgesFrom(currentPhaseId),
+    pairState: pairStateAfterUpdate,
+    pad: emotionAfter,
+    openThreads: [],
+    recentDialogue,
+    currentUserMessage: message,
+    turnsSinceLastTransition: timing.turnsSinceLastTransition,
+    daysSinceEntry: timing.daysSinceEntry,
+  });
+  const phaseIdBefore = currentPhaseId;
+  const transitionResult = phaseEngine.evaluateTransition(phaseIdBefore, phaseContext);
+  const phaseIdAfter =
+    resolvePhaseTransition(
+      transitionResult,
+      plan.phaseTransitionProposal.shouldTransition
+        ? plan.phaseTransitionProposal.targetPhaseId
+        : null
+    ) ?? phaseIdBefore;
+  const activePhase = phaseEngine.getPhase(phaseIdAfter) ?? currentPhase;
+  const pairStateForGeneration: PairState = {
+    ...pairStateAfterUpdate,
+    activePhaseId: phaseIdAfter,
+  };
+
+  // ==========================================
+  // Step 7: Generate candidates
   // ==========================================
   const generatorPrompt = selectGeneratorPrompt(
     {
@@ -222,8 +285,8 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
 
   const generatorResult = await runGenerator({
     characterVersion: characterVersion as never,
-    currentPhase,
-    pairState: { ...sandboxPairState, pad: emotionAfter, appraisal } as never,
+    currentPhase: activePhase,
+    pairState: pairStateForGeneration as never,
     emotion: emotionAfter,
     workingMemory,
     retrievedMemory: {
@@ -238,12 +301,12 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
   });
 
   // ==========================================
-  // Step 7: Rank candidates
+  // Step 8: Rank candidates
   // ==========================================
   const rankerResult = await runRanker({
     characterVersion: characterVersion as never,
-    currentPhase,
-    pairState: { ...sandboxPairState, pad: emotionAfter, appraisal } as never,
+    currentPhase: activePhase,
+    pairState: pairStateForGeneration as never,
     emotion: emotionAfter,
     workingMemory,
     openThreads: [],
@@ -257,12 +320,12 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
   const assistantMessage = winningCandidate.text;
 
   // ==========================================
-  // Step 8: Build trace
+  // Step 9: Build trace
   // ==========================================
   const trace: DraftChatTrace = {
     workspaceId,
-    phaseIdBefore: currentPhaseId,
-    phaseIdAfter: currentPhaseId, // No transition in sandbox for now
+    phaseIdBefore,
+    phaseIdAfter,
     emotionBefore,
     emotionAfter,
     appraisal,
@@ -277,7 +340,7 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
   };
 
   // ==========================================
-  // Step 9: Save turn
+  // Step 10: Save turn and persist sandbox state
   // ==========================================
   const turn = await workspaceRepo.createTurn({
     sessionId: session.id,
@@ -286,11 +349,23 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
     traceJson: trace,
   });
 
+  await workspaceRepo.saveSandboxPairState({
+    sessionId: session.id,
+    activePhaseId: phaseIdAfter,
+    affinity: pairStateForGeneration.affinity,
+    trust: pairStateForGeneration.trust,
+    intimacyReadiness: pairStateForGeneration.intimacyReadiness,
+    conflict: pairStateForGeneration.conflict,
+    pad: emotionAfter,
+    appraisal,
+    openThreadCount: 0,
+  });
+
   return {
     text: assistantMessage,
     sessionId: session.id,
     turnId: turn.id,
-    phaseId: currentPhaseId,
+    phaseId: phaseIdAfter,
     emotion: emotionAfter,
     coe,
     trace,

@@ -11,6 +11,11 @@ import { createPhaseEngine, PhaseEngineContext } from '@/lib/rules/phase-engine'
 import { computeAppraisal } from '@/lib/rules/appraisal';
 import { updatePAD } from '@/lib/rules/pad';
 import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
+import {
+  buildPhaseEngineRuntimeContext,
+  resolvePhaseTransition,
+  updateRelationshipMetrics,
+} from '@/lib/rules/phase-runtime';
 import { retrieveMemory, getOrCreateWorkingMemory } from '../memory/retrieval';
 import { runPlanner } from '../agents/planner';
 import { runGenerator, selectGeneratorPrompt } from '../agents/generator';
@@ -116,6 +121,18 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
     turnsSinceLastUpdate: 1, // Simplified for now
   });
   const emotionAfter = padUpdate.combined;
+  const relationshipAfter = updateRelationshipMetrics({
+    current: pairState,
+    appraisal,
+    emotionBefore,
+    emotionAfter,
+  });
+  const pairStateAfterUpdate = {
+    ...pairState,
+    ...relationshipAfter,
+    pad: emotionAfter,
+    appraisal,
+  };
 
   // ==========================================
   // Step 5: Plan turn
@@ -123,7 +140,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   const plannerResult = await runPlanner({
     characterVersion,
     currentPhase,
-    pairState: { ...pairState, pad: emotionAfter, appraisal },
+    pairState: pairStateAfterUpdate,
     emotion: emotionAfter,
     workingMemory,
     retrievedMemory: {
@@ -154,27 +171,39 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   // Step 6: Evaluate phase transition
   // ==========================================
   const phaseIdBefore = pairState.activePhaseId;
-  let phaseIdAfter = phaseIdBefore;
-
-  if (plan.phaseTransitionProposal.shouldTransition && plan.phaseTransitionProposal.targetPhaseId) {
-    // Validate transition with phase engine
-    const phaseContext: PhaseEngineContext = {
-      pairState,
-      pad: emotionAfter,
-      openThreads: retrievalResult.threads,
-      events: new Map(), // Would be populated from events
-      topics: new Map(), // Would be populated from topics
-      turnsSinceLastTransition: 0, // Would be calculated
-      daysSinceEntry: 0, // Would be calculated
-    };
-
-    const transitionResult = phaseEngine.evaluateTransition(phaseIdBefore, phaseContext);
-    if (transitionResult.shouldTransition && transitionResult.targetPhaseId === plan.phaseTransitionProposal.targetPhaseId) {
-      phaseIdAfter = transitionResult.targetPhaseId;
-    }
-  }
+  const turnsSinceLastTransition = await traceRepo.countTurnsSince(
+    pair.id,
+    pairState.lastTransitionAt
+  );
+  const phaseEntryReference = pairState.lastTransitionAt ?? pair.createdAt;
+  const daysSinceEntry = Math.max(
+    0,
+    Math.floor((Date.now() - phaseEntryReference.getTime()) / (24 * 60 * 60 * 1000))
+  );
+  const phaseContext: PhaseEngineContext = buildPhaseEngineRuntimeContext({
+    edges: phaseEngine.getEdgesFrom(phaseIdBefore),
+    pairState: pairStateAfterUpdate,
+    pad: emotionAfter,
+    openThreads: retrievalResult.threads,
+    recentDialogue,
+    currentUserMessage: message,
+    turnsSinceLastTransition,
+    daysSinceEntry,
+  });
+  const transitionResult = phaseEngine.evaluateTransition(phaseIdBefore, phaseContext);
+  const phaseIdAfter =
+    resolvePhaseTransition(
+      transitionResult,
+      plan.phaseTransitionProposal.shouldTransition
+        ? plan.phaseTransitionProposal.targetPhaseId
+        : null
+    ) ?? phaseIdBefore;
 
   const activePhase = phaseEngine.getPhase(phaseIdAfter) ?? currentPhase;
+  const pairStateForGeneration = {
+    ...pairStateAfterUpdate,
+    activePhaseId: phaseIdAfter,
+  };
 
   // ==========================================
   // Step 7: Generate candidates
@@ -190,7 +219,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   const generatorResult = await runGenerator({
     characterVersion,
     currentPhase: activePhase,
-    pairState: { ...pairState, pad: emotionAfter, appraisal },
+    pairState: pairStateForGeneration,
     emotion: emotionAfter,
     workingMemory,
     retrievedMemory: {
@@ -210,7 +239,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   const rankerResult = await runRanker({
     characterVersion,
     currentPhase: activePhase,
-    pairState: { ...pairState, pad: emotionAfter, appraisal },
+    pairState: pairStateForGeneration,
     emotion: emotionAfter,
     workingMemory,
     openThreads: retrievalResult.threads,
@@ -294,6 +323,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   // Update pair state
   await pairRepo.updateState(pair.id, {
     activePhaseId: phaseIdAfter,
+    affinity: pairStateForGeneration.affinity,
+    trust: pairStateForGeneration.trust,
+    intimacyReadiness: pairStateForGeneration.intimacyReadiness,
+    conflict: pairStateForGeneration.conflict,
     pad: emotionAfter,
     appraisal,
     openThreadCount: retrievalResult.threads.length,
