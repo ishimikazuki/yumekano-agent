@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/client';
+import { preparePublishedPersona } from '@/lib/persona';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 
@@ -44,6 +45,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const targetVersion = targetResult.rows[0];
+    const preparedPersona = await preparePublishedPersona(
+      JSON.parse(targetVersion.persona_json as string)
+    );
 
     // Get current max version number
     const maxVersionResult = await db.execute({
@@ -64,7 +68,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         characterId,
         newVersionNumber,
         `ロールバック: v${targetVersion.version_number}${targetVersion.label ? ` (${targetVersion.label})` : ''}`,
-        targetVersion.persona_json,
+        JSON.stringify(preparedPersona),
         targetVersion.style_json,
         targetVersion.autonomy_json,
         targetVersion.emotion_json,

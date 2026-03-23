@@ -23,9 +23,11 @@
 - [x] 処理フロー視覚化ドキュメント作成（非エンジニア向け）
 - [x] LPとしてVercelにデプロイ (https://lp-gray-six.vercel.app)
 - [x] デザイナー観点の総合デバッグ（主要ページ巡回、即時修正、再検証）
+- [x] 親密時専用 Generator prompt variant の追加（runtime + dashboard）
+- [x] persona authoring 簡素化 + publish-time compiledPersona 対応
+- [x] appraisal sensitivity の中立点補正 + 落とし物返却シグナル追加
 
 ### 残作業
-- [x] 親密時専用 Generator prompt variant の追加（runtime + dashboard）
 - [ ] anchors/innerWorldをAPIレスポンスに含める
 - [ ] E2Eテスト作成
 - [ ] 本番デプロイ設定
@@ -45,9 +47,12 @@
 - 2026-03-21: メモリ画面と評価画面に stub 実装が残っており、実データ確認や評価実行ができなかった。
 - 2026-03-21: 評価実行を同期APIで待たせる実装だと、1リクエストが数分ぶら下がり UI 上ほぼハングに見えることを確認。
 - 2026-03-23: PAD 更新式が 0..1 appraisal の中立値 0.5 をそのまま加算しており、中立入力でも快・覚醒・支配感が上振れしやすいことを確認。
+- 2026-03-23: appraisal sensitivity が 0..1 系の値全体にそのまま乗算されており、中立入力でも controllability / certainty / attachmentSecurity / novelty が 0.5 未満へ潰れて「拾ってくれたのに不快寄り」な説明が出ることを確認。
 - 2026-03-23: Generator prompt が単一スロットのみで、親密時だけ表現を切り替えたくても workflow に生ファイル prompt を直書きしないと実現できない状態だった。
 - 2026-03-23: `db:migrate` の `_migrations` 管理テーブル定義が libsql/SQLite 非互換で、既存 local.db への列追加 migration がそのままでは流れなかった。
 - 2026-03-23: ローカル起動中の Next.js アプリは `.env` の PostgreSQL を参照しており、local.db だけ migration しても dashboard 保存確認には不十分だった。
+- 2026-03-23: planner / generator は prompt bundle の文字列を丸ごと system prompt として返しており、動的に組み立てた persona ブロックが消えていた。compiledPersona を効かせるには prompt bundle を「前置き」として結合する必要があった。
+- 2026-03-23: Vercel preview deploy は preview 環境変数が未設定で、ローカル `.env` の `localhost` PostgreSQL を拾って API が失敗した。production env では既存 `DATABASE_URL` が有効で、characters/workspace/draft-chat の確認は production で通った。
 
 ## 決定したこと
 - 2026-03-19: CoE説明は共通ロジック（`buildCoEExplanation`）で生成し、`/api/chat` と `/api/draft-chat` から毎ターン返してUI表示する。理由: Playground/Workspace/Traceで同じ説明軸を保ち、検証観点を揃えるため。
@@ -60,9 +65,12 @@
 - 2026-03-21: 評価実行は `202 Accepted` で即時返却し、バックグラウンド実行 + ポーリング表示にする。理由: 数分単位の同期待ちを避け、UI をハングさせないため。
 - 2026-03-21: 共通メタデータを `Yumekano Dashboard` に更新し、`lang=\"ja\"` を設定する。理由: デザイナー向け画面としてのブランド整合性とアクセシビリティを改善するため。
 - 2026-03-23: PAD 寄与計算は 0..1 appraisal を中立点 0.5 基準に再中心化し、fast affect の全体ゲインを 0.5 に抑える。理由: PAD 文献の双極スケール前提と、実験で観測される小さめの変化幅に近づけるため。
+- 2026-03-23: appraisal sensitivity も 0..1 系は中立点 0.5 基準で適用し、落とし物を返す/届ける系の発話は goalCongruence の前向きシグナルとして扱う。理由: 感度を下げても中立がネガティブ化しないようにしつつ、助けてもらった場面を最低限ポジティブに解釈できるようにするため。
 - 2026-03-23: 親密時専用の生成指示は `generatorIntimacyMd` として prompt bundle / workspace draft に保存し、`intimacyDecision` が `accept` / `conditional_accept` のときだけ選択する。理由: workflow にハードコードせず、ダッシュボード編集・公開版バージョン管理・draft/prod 一貫性を保つため。
 - 2026-03-23: `_migrations` 管理テーブルは DB 共通SQLに寄せ、既存 local.db に 004 migration を適用できるようにする。理由: libsql 開発環境でも新しい prompt variant 列を安全に追加できるようにするため。
 - 2026-03-23: ローカル検証時は `.env` の PostgreSQL にも 004 migration を適用してから dashboard 保存を確認する。理由: 実際に起動中アプリが使っている保存先とスキーマを一致させるため。
+- 2026-03-23: persona の編集面は `summary` / `innerWorldNoteMd` / `vulnerabilities` / `authoredExamples` を中心に簡素化し、旧 `innerWorld` / `surfaceLoop` / `anchors` / `topicPacks` / `reactionPacks` は `legacyAuthoring` に退避して読み取り互換を維持する。理由: 非エンジニア向け編集体験を軽くしつつ、既存 draft/version を壊さず publish-time に低トークンな runtime persona を作るため。
+- 2026-03-23: デプロイ確認は production alias `yumekano-codex-spec-v2.vercel.app` で行い、workspace の保存・draft-chat までを確認する。理由: preview では Vercel の preview env 未設定により DB 接続検証が成立しなかったため。
 
 ## 既知の問題
 - xAI APIの応答に10-30秒かかることがある

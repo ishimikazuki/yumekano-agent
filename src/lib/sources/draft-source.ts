@@ -3,6 +3,7 @@
  */
 
 import { workspaceRepo } from '../repositories';
+import { normalizePersonaAuthoring } from '../persona';
 import type { CharacterAssets, CharacterAssetSource } from './character-asset-source';
 
 export class DraftAssetSource implements CharacterAssetSource {
@@ -38,7 +39,7 @@ export class DraftAssetSource implements CharacterAssetSource {
       identity: draft.identity,
 
       // Configuration
-      persona: draft.persona,
+      persona: normalizePersonaAuthoring(draft.persona),
       style: draft.style,
       autonomy: draft.autonomy,
       emotion: draft.emotion,

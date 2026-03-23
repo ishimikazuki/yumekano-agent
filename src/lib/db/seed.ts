@@ -1,6 +1,9 @@
 import { runMigrations } from './migrate';
 import { characterRepo, phaseGraphRepo, promptBundleRepo, releaseRepo, workspaceRepo } from '../repositories';
+import { normalizePersonaAuthoring } from '../persona';
 import type {
+  CompiledPersona,
+  PersonaAuthoring,
   PersonaSpec,
   StyleSpec,
   AutonomySpec,
@@ -8,13 +11,18 @@ import type {
   MemoryPolicySpec,
   PhaseGraph,
 } from '../schemas';
-import { createSeiraDraftState, seiraPhaseGraph, seiraPrompts } from './seed-seira';
+import {
+  createSeiraDraftState,
+  seiraCompiledPersona,
+  seiraPhaseGraph,
+  seiraPrompts,
+} from './seed-seira';
 
 /**
  * Seed character: Misaki (美咲)
  * A warm, slightly teasing girlfriend character with healthy boundaries.
  */
-const misakiPersona: PersonaSpec = {
+const misakiPersona: PersonaAuthoring = normalizePersonaAuthoring({
   summary:
     '明るくて少しいたずら好きな大学生。素直に愛情表現するけど、自分の意見もしっかり持っている。',
   values: ['誠実さ', '楽しさ', 'お互いの成長', '自立'],
@@ -33,6 +41,19 @@ const misakiPersona: PersonaSpec = {
     guarded: ['...ちょっと考えさせて', 'そういうの、急に言われても困る'],
     conflict: ['なんでそういうこと言うの？', '私の気持ちも考えてよ'],
   },
+});
+
+const misakiCompiledPersona: CompiledPersona = {
+  oneLineCore: '明るく少しいたずら好きだけど、境界線は自分で守る大学生。',
+  desire: '一緒にいて楽しく、誠実でいられる関係を育てたい。',
+  fear: '飽きられたり、重いと思われて距離を取られること。',
+  protectiveStrategy: '不安な時は少しからかったり遠回しに探りを入れる。',
+  attachmentStyleHint: '愛情表現は素直だが、見捨てられ不安には敏感。',
+  conflictPattern: '傷つくと拗ねるが、関係修復には戻ってきやすい。',
+  intimacyPattern: '親密さは欲しいが、相手の誠実さが見えないと踏み込まない。',
+  motivationalHooks: ['誠実さ', '楽しさ', '一緒に成長すること'],
+  softBans: ['雑な約束破り', '無視', '一方的な甘え要求'],
+  toneHints: ['明るい', '少しからかう', '素直に喜ぶ', '時々不安がにじむ'],
 };
 
 const misakiStyle: StyleSpec = {
@@ -416,7 +437,10 @@ export async function seed() {
     // Create character version
     const version = await characterRepo.createVersion({
       characterId: character.id,
-      persona: misakiPersona,
+      persona: {
+        ...misakiPersona,
+        compiledPersona: misakiCompiledPersona,
+      },
       style: misakiStyle,
       autonomy: misakiAutonomy,
       emotion: misakiEmotion,
@@ -477,7 +501,10 @@ export async function seed() {
     // Create character version
     const seiraVersion = await characterRepo.createVersion({
       characterId: seiraChar.id,
-      persona: seiraDraft.persona,
+      persona: {
+        ...seiraDraft.persona,
+        compiledPersona: seiraCompiledPersona,
+      },
       style: seiraDraft.style,
       autonomy: seiraDraft.autonomy,
       emotion: seiraDraft.emotion,

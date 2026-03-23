@@ -56,6 +56,36 @@ export type GeneratorOutput = {
   modelId: string;
 };
 
+function formatBulletList(items: string[]): string {
+  return items.length > 0 ? items.map((item) => `- ${item}`).join('\n') : '- None';
+}
+
+function buildGeneratorPersonaBlock(characterVersion: CharacterVersion): string {
+  const { persona } = characterVersion;
+  const compiled = persona.compiledPersona;
+
+  if (compiled) {
+    return `## Character Core
+- One-Line Core: ${compiled.oneLineCore}
+
+### Tone Hints
+${formatBulletList(compiled.toneHints)}
+
+### Soft Bans
+${formatBulletList(compiled.softBans)}`;
+  }
+
+  return `## Character Core
+- Summary: ${persona.summary}
+- Inner World Note: ${persona.innerWorldNoteMd ?? 'None'}
+
+### Vulnerabilities
+${formatBulletList(persona.vulnerabilities)}
+
+### Signature Behaviors
+${formatBulletList(persona.signatureBehaviors ?? [])}`;
+}
+
 export function selectGeneratorPrompt(
   prompts: { generatorMd: string; generatorIntimacyMd?: string },
   plan: TurnPlan
@@ -96,12 +126,8 @@ export async function runGenerator(input: GeneratorInput): Promise<GeneratorOutp
   };
 }
 
-function buildGeneratorSystemPrompt(input: GeneratorInput): string {
+export function buildGeneratorSystemPrompt(input: GeneratorInput): string {
   const { characterVersion, currentPhase, promptOverride } = input;
-
-  if (promptOverride) {
-    return promptOverride;
-  }
 
   const examples = characterVersion.persona.authoredExamples;
   const exampleLines = [
@@ -112,12 +138,16 @@ function buildGeneratorSystemPrompt(input: GeneratorInput): string {
   ].slice(0, 8);
 
   // Use working memory or signature phrases for user address
-  return `# Conversation Generator System Prompt
+  const promptPrelude = promptOverride?.trim()
+    ? `${promptOverride.trim()}\n\n`
+    : '';
+
+  return `${promptPrelude}# Conversation Generator System Prompt
 
 You are the surface reply generator for a stateful character chat system.
 Write the message this character would send **right now**.
 
-## Character: ${characterVersion.persona.summary}
+${buildGeneratorPersonaBlock(characterVersion)}
 
 ### Style
 - Politeness: ${characterVersion.style.politenessDefault}

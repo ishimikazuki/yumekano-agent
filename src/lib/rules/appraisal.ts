@@ -113,6 +113,13 @@ export function computeAppraisal(input: AppraisalInput): AppraisalVector {
   };
 }
 
+const APPRAISAL_MIDPOINT = 0.5;
+
+function scaleBoundedAppraisal(score: number, sensitivity: number): number {
+  const scaled = APPRAISAL_MIDPOINT + (score - APPRAISAL_MIDPOINT) * sensitivity;
+  return Math.max(0, Math.min(1, scaled));
+}
+
 function computeGoalCongruence(
   message: string,
   pairState: PairState,
@@ -134,6 +141,19 @@ function computeGoalCongruence(
   ];
   for (const pattern of positivePatterns) {
     if (pattern.test(message)) score += 0.2;
+  }
+
+  const helpfulPatterns = [
+    /拾/,
+    /見つけ/,
+    /届け/,
+    /返(す|し|した)/,
+    /落とし物/,
+    /忘れ物/,
+    /(これ|それ).*(落とした|忘れた)/,
+  ];
+  for (const pattern of helpfulPatterns) {
+    if (pattern.test(message)) score += 0.3;
   }
 
   // Negative signals
@@ -188,7 +208,7 @@ function computeControllability(
   // High conflict reduces control
   if (pairState.conflict > 50) score -= 0.2;
 
-  return Math.max(0, Math.min(1, score * sensitivity));
+  return scaleBoundedAppraisal(score, sensitivity);
 }
 
 function computeCertainty(
@@ -219,7 +239,7 @@ function computeCertainty(
   // Corrections in memory suggest past uncertainties
   if (workingMemory.knownCorrections.length > 0) score -= 0.1;
 
-  return Math.max(0, Math.min(1, score * sensitivity));
+  return scaleBoundedAppraisal(score, sensitivity);
 }
 
 function computeNormAlignment(
@@ -274,7 +294,7 @@ function computeAttachmentSecurity(
   // Conflict reduces security
   score -= pairState.conflict / 200;
 
-  return Math.max(0, Math.min(1, score * sensitivity));
+  return scaleBoundedAppraisal(score, sensitivity);
 }
 
 function computeReciprocity(
@@ -351,7 +371,7 @@ function computeNovelty(
   const questionCount = (message.match(/[？?]/g) || []).length;
   score += questionCount * 0.1;
 
-  return Math.max(0, Math.min(1, score * sensitivity));
+  return scaleBoundedAppraisal(score, sensitivity);
 }
 
 function computeSelfRelevance(

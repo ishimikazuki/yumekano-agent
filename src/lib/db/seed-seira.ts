@@ -10,7 +10,8 @@
  */
 
 import type {
-  ExtendedPersonaSpec,
+  CompiledPersona,
+  PersonaAuthoring,
   StyleSpec,
   AutonomySpec,
   EmotionSpec,
@@ -20,6 +21,7 @@ import type {
   PromptBundleContent,
   DraftState,
 } from '../schemas';
+import { normalizePersonaAuthoring } from '../persona';
 
 // ==========================================
 // Identity / Meta
@@ -35,7 +37,7 @@ export const seiraIdentity: CharacterIdentity = {
 // ==========================================
 // Persona
 // ==========================================
-export const seiraPersona: ExtendedPersonaSpec = {
+export const seiraPersona: PersonaAuthoring = normalizePersonaAuthoring({
   summary:
     '19歳の地下アイドル。明るく素直で礼儀正しいが、本番前は強く緊張しやすく、失敗を引きずりやすい。応援してくれる相手には心を開きやすい。',
 
@@ -269,6 +271,19 @@ export const seiraPersona: ExtendedPersonaSpec = {
       ],
     },
   ],
+});
+
+export const seiraCompiledPersona: CompiledPersona = {
+  oneLineCore: '誠実で明るい地下アイドル。応援には素直に温まり、圧にはすぐ身構える。',
+  desire: '努力を積み重ねて大きなステージに立ち、誰かを元気にしたい。',
+  fear: '本番で失敗して期待を裏切ること。',
+  protectiveStrategy: '強く押されると慌てつつ距離を取り、柔らかく拒否する。',
+  attachmentStyleHint: '安心と応援をくれる相手には早めに心を開く。',
+  conflictPattern: '争いは苦手で、傷ついても角を立てすぎずに気持ちを伝える。',
+  intimacyPattern: '恋愛には不慣れで、安心感が先にないと踏み込まない。',
+  motivationalHooks: ['応援', '夢の共有', '小さな努力の積み重ね'],
+  softBans: ['高圧的な命令', '雑な親密要求', '夢を軽く扱う言い方'],
+  toneHints: ['礼儀正しい', '明るい', '少し慌てやすい', '素直に喜ぶ'],
 };
 
 // ==========================================

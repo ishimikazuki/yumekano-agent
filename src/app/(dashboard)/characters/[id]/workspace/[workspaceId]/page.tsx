@@ -112,18 +112,25 @@ type DraftState = {
   };
   persona: {
     summary: string;
+    innerWorldNoteMd?: string;
     values: string[];
-    flaws: string[];
-    insecurities: string[];
-    likes: string[];
-    dislikes: string[];
-    signatureBehaviors: string[];
-    authoredExamples?: Record<string, string[]>;
-    innerWorld?: InnerWorld;
-    surfaceLoop?: SurfaceLoop;
-    anchors?: Anchor[];
-    topicPacks?: TopicPack[];
-    reactionPacks?: ReactionPack[];
+    vulnerabilities: string[];
+    likes?: string[];
+    dislikes?: string[];
+    signatureBehaviors?: string[];
+    authoredExamples: {
+      warm?: string[];
+      playful?: string[];
+      guarded?: string[];
+      conflict?: string[];
+    };
+    legacyAuthoring?: {
+      innerWorld?: InnerWorld;
+      surfaceLoop?: SurfaceLoop;
+      anchors?: Anchor[];
+      topicPacks?: TopicPack[];
+      reactionPacks?: ReactionPack[];
+    };
   };
   style: {
     language: string;
@@ -456,7 +463,7 @@ function IdentityEditor({ data, onChange }: { data: DraftState['identity']; onCh
 
 // ============ Persona Editor ============
 function PersonaEditor({ data, onChange }: { data: DraftState['persona']; onChange: (k: keyof DraftState['persona'], v: unknown) => void }) {
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ basic: true, innerWorld: true, surfaceLoop: true, anchors: true, topicPacks: true, reactionPacks: true });
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ basic: true, examples: true });
   const toggle = (key: string) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   return (
@@ -466,132 +473,49 @@ function PersonaEditor({ data, onChange }: { data: DraftState['persona']; onChan
       {/* Basic */}
       <Section title="基本情報" helpKey="section.persona.basic" expanded={expandedSections.basic} onToggle={() => toggle('basic')}>
         <TextArea label="サマリー" helpKey="field.persona.summary" value={data.summary} onChange={(v) => onChange('summary', v)} rows={2} />
+        <TextArea
+          label="内面メモ"
+          helpKey="field.persona.innerWorldNoteMd"
+          value={data.innerWorldNoteMd ?? ''}
+          onChange={(v) => onChange('innerWorldNoteMd', v || undefined)}
+          rows={6}
+          placeholder="彼女が本当に欲しいもの、恐れていること、防御的になるきっかけ、親しさや関係をどう受け取るかを自由に書いてね"
+        />
         <ArrayEditor label="価値観" helpKey="field.persona.values" values={data.values} onChange={(v) => onChange('values', v)} />
-        <ArrayEditor label="欠点" helpKey="field.persona.flaws" values={data.flaws} onChange={(v) => onChange('flaws', v)} />
-        <ArrayEditor label="不安・弱み" helpKey="field.persona.insecurities" values={data.insecurities} onChange={(v) => onChange('insecurities', v)} />
-        <ArrayEditor label="好きなもの" helpKey="field.persona.likes" values={data.likes} onChange={(v) => onChange('likes', v)} />
-        <ArrayEditor label="嫌いなもの" helpKey="field.persona.dislikes" values={data.dislikes} onChange={(v) => onChange('dislikes', v)} />
-        <ArrayEditor label="シグネチャ行動" helpKey="field.persona.signatureBehaviors" values={data.signatureBehaviors} onChange={(v) => onChange('signatureBehaviors', v)} />
+        <ArrayEditor label="弱さ・傷つきやすさ" helpKey="field.persona.vulnerabilities" values={data.vulnerabilities} onChange={(v) => onChange('vulnerabilities', v)} />
+        <ArrayEditor label="好きなもの" helpKey="field.persona.likes" values={data.likes ?? []} onChange={(v) => onChange('likes', v)} />
+        <ArrayEditor label="嫌いなもの" helpKey="field.persona.dislikes" values={data.dislikes ?? []} onChange={(v) => onChange('dislikes', v)} />
+        <ArrayEditor label="シグネチャ行動" helpKey="field.persona.signatureBehaviors" values={data.signatureBehaviors ?? []} onChange={(v) => onChange('signatureBehaviors', v)} />
       </Section>
 
-      {/* Inner World */}
-      <Section title="インナーワールド" helpKey="section.persona.innerWorld" expanded={expandedSections.innerWorld} onToggle={() => toggle('innerWorld')}>
-        <InnerWorldEditor data={data.innerWorld} onChange={(v) => onChange('innerWorld', v)} />
-      </Section>
-
-      {/* Surface Loop */}
-      <Section title="サーフェスループ" helpKey="section.persona.surfaceLoop" expanded={expandedSections.surfaceLoop} onToggle={() => toggle('surfaceLoop')}>
-        <SurfaceLoopEditor data={data.surfaceLoop} onChange={(v) => onChange('surfaceLoop', v)} />
-      </Section>
-
-      {/* Anchors */}
-      <Section title="アンカー" helpKey="section.persona.anchors" expanded={expandedSections.anchors} onToggle={() => toggle('anchors')}>
-        <AnchorsEditor data={data.anchors || []} onChange={(v) => onChange('anchors', v)} />
-      </Section>
-
-      {/* Topic Packs */}
-      <Section title="トピックパック" helpKey="section.persona.topicPacks" expanded={expandedSections.topicPacks} onToggle={() => toggle('topicPacks')}>
-        <TopicPacksEditor data={data.topicPacks || []} onChange={(v) => onChange('topicPacks', v)} />
-      </Section>
-
-      {/* Reaction Packs */}
-      <Section title="リアクションパック" helpKey="section.persona.reactionPacks" expanded={expandedSections.reactionPacks} onToggle={() => toggle('reactionPacks')}>
-        <ReactionPacksEditor data={data.reactionPacks || []} onChange={(v) => onChange('reactionPacks', v)} />
+      <Section title="発話例" expanded={expandedSections.examples} onToggle={() => toggle('examples')}>
+        <AuthoredExamplesEditor
+          data={data.authoredExamples}
+          onChange={(v) => onChange('authoredExamples', v)}
+        />
       </Section>
     </div>
   );
 }
 
-function InnerWorldEditor({ data, onChange }: { data?: InnerWorld; onChange: (v: InnerWorld) => void }) {
-  const d = data || { coreDesire: '', fear: '' };
-  const update = (k: keyof InnerWorld, v: string) => onChange({ ...d, [k]: v || undefined });
-  return (
-    <div className="space-y-3">
-      <Field label="コア欲求" helpKey="field.persona.innerWorld.coreDesire" value={d.coreDesire} onChange={(v) => update('coreDesire', v)} placeholder="最も望んでいること" />
-      <Field label="恐れ" helpKey="field.persona.innerWorld.fear" value={d.fear} onChange={(v) => update('fear', v)} placeholder="最も恐れていること" />
-      <Field label="トラウマ" helpKey="field.persona.innerWorld.wound" value={d.wound ?? ''} onChange={(v) => update('wound', v)} placeholder="過去の傷（任意）" />
-      <Field label="対処法" helpKey="field.persona.innerWorld.coping" value={d.coping ?? ''} onChange={(v) => update('coping', v)} placeholder="ストレス対処法（任意）" />
-      <Field label="成長アーク" helpKey="field.persona.innerWorld.growthArc" value={d.growthArc ?? ''} onChange={(v) => update('growthArc', v)} placeholder="どう成長できるか（任意）" />
-    </div>
-  );
-}
+function AuthoredExamplesEditor({
+  data,
+  onChange,
+}: {
+  data: DraftState['persona']['authoredExamples'];
+  onChange: (v: DraftState['persona']['authoredExamples']) => void;
+}) {
+  const update = (
+    key: keyof DraftState['persona']['authoredExamples'],
+    values: string[]
+  ) => onChange({ ...data, [key]: values.length > 0 ? values : undefined });
 
-function SurfaceLoopEditor({ data, onChange }: { data?: SurfaceLoop; onChange: (v: SurfaceLoop) => void }) {
-  const d = data || { defaultMood: '', stressBehavior: '', joyBehavior: '', conflictStyle: '', affectionStyle: '' };
-  const update = (k: keyof SurfaceLoop, v: string) => onChange({ ...d, [k]: v });
   return (
     <div className="space-y-3">
-      <Field label="デフォルト気分" helpKey="field.persona.surfaceLoop.defaultMood" value={d.defaultMood} onChange={(v) => update('defaultMood', v)} placeholder="普段の気分" />
-      <Field label="ストレス時" helpKey="field.persona.surfaceLoop.stressBehavior" value={d.stressBehavior} onChange={(v) => update('stressBehavior', v)} placeholder="ストレス時の振る舞い" />
-      <Field label="喜び時" helpKey="field.persona.surfaceLoop.joyBehavior" value={d.joyBehavior} onChange={(v) => update('joyBehavior', v)} placeholder="嬉しい時の振る舞い" />
-      <Field label="対立時" helpKey="field.persona.surfaceLoop.conflictStyle" value={d.conflictStyle} onChange={(v) => update('conflictStyle', v)} placeholder="対立の対処法" />
-      <Field label="愛情表現" helpKey="field.persona.surfaceLoop.affectionStyle" value={d.affectionStyle} onChange={(v) => update('affectionStyle', v)} placeholder="愛情の示し方" />
-    </div>
-  );
-}
-
-function AnchorsEditor({ data, onChange }: { data: Anchor[]; onChange: (v: Anchor[]) => void }) {
-  const add = () => onChange([...data, { key: `anchor_${Date.now()}`, label: '新しいアンカー', description: 'このアイテムの説明', emotionalSignificance: 'なぜこれが大切なのか' }]);
-  const remove = (i: number) => onChange(data.filter((_, idx) => idx !== i));
-  const update = (i: number, k: keyof Anchor, v: string) => onChange(data.map((a, idx) => idx === i ? { ...a, [k]: v } : a));
-  return (
-    <div className="space-y-3">
-      {data.map((anchor, i) => (
-        <div key={anchor.key} className="p-3 bg-gray-50 rounded-lg space-y-2">
-          <div className="flex justify-between items-center">
-            <Field label="ラベル" helpKey="field.persona.anchor.label" value={anchor.label} onChange={(v) => update(i, 'label', v)} className="flex-1" />
-            <button onClick={() => remove(i)} className="ml-2 text-red-400 hover:text-red-600 text-xs">削除</button>
-          </div>
-          <Field label="キー" helpKey="field.persona.anchor.key" value={anchor.key} onChange={(v) => update(i, 'key', v)} />
-          <TextArea label="説明" helpKey="field.persona.anchor.description" value={anchor.description} onChange={(v) => update(i, 'description', v)} rows={2} />
-          <TextArea label="感情的意味" helpKey="field.persona.anchor.emotionalSignificance" value={anchor.emotionalSignificance} onChange={(v) => update(i, 'emotionalSignificance', v)} rows={2} />
-        </div>
-      ))}
-      <button onClick={add} className="w-full py-2 border-2 border-dashed border-gray-300 text-gray-500 text-sm rounded-lg hover:border-pink-300 hover:text-pink-500">+ アンカーを追加</button>
-    </div>
-  );
-}
-
-function TopicPacksEditor({ data, onChange }: { data: TopicPack[]; onChange: (v: TopicPack[]) => void }) {
-  const add = () => onChange([...data, { key: `topic_${Date.now()}`, label: '新しいトピック', triggers: ['トリガーワード'], responseHints: ['このトピックでの応答ヒント'] }]);
-  const remove = (i: number) => onChange(data.filter((_, idx) => idx !== i));
-  const update = (i: number, k: keyof TopicPack, v: unknown) => onChange(data.map((t, idx) => idx === i ? { ...t, [k]: v } : t));
-  return (
-    <div className="space-y-3">
-      {data.map((topic, i) => (
-        <div key={topic.key} className="p-3 bg-gray-50 rounded-lg space-y-2">
-          <div className="flex justify-between items-center">
-            <Field label="ラベル" helpKey="field.persona.topicPack.label" value={topic.label} onChange={(v) => update(i, 'label', v)} className="flex-1" />
-            <button onClick={() => remove(i)} className="ml-2 text-red-400 hover:text-red-600 text-xs">削除</button>
-          </div>
-          <Field label="キー" helpKey="field.persona.topicPack.key" value={topic.key} onChange={(v) => update(i, 'key', v)} />
-          <ArrayEditor label="トリガー" helpKey="field.persona.topicPack.triggers" values={topic.triggers} onChange={(v) => update(i, 'triggers', v)} />
-          <ArrayEditor label="応答ヒント" helpKey="field.persona.topicPack.responseHints" values={topic.responseHints} onChange={(v) => update(i, 'responseHints', v)} />
-        </div>
-      ))}
-      <button onClick={add} className="w-full py-2 border-2 border-dashed border-gray-300 text-gray-500 text-sm rounded-lg hover:border-pink-300 hover:text-pink-500">+ トピックを追加</button>
-    </div>
-  );
-}
-
-function ReactionPacksEditor({ data, onChange }: { data: ReactionPack[]; onChange: (v: ReactionPack[]) => void }) {
-  const add = () => onChange([...data, { key: `reaction_${Date.now()}`, label: '新しいリアクション', trigger: 'このリアクションを引き起こす状況', responses: ['応答例1', '応答例2'] }]);
-  const remove = (i: number) => onChange(data.filter((_, idx) => idx !== i));
-  const update = (i: number, k: keyof ReactionPack, v: unknown) => onChange(data.map((r, idx) => idx === i ? { ...r, [k]: v } : r));
-  return (
-    <div className="space-y-3">
-      {data.map((reaction, i) => (
-        <div key={reaction.key} className="p-3 bg-gray-50 rounded-lg space-y-2">
-          <div className="flex justify-between items-center">
-            <Field label="ラベル" helpKey="field.persona.reactionPack.label" value={reaction.label} onChange={(v) => update(i, 'label', v)} className="flex-1" />
-            <button onClick={() => remove(i)} className="ml-2 text-red-400 hover:text-red-600 text-xs">削除</button>
-          </div>
-          <Field label="キー" helpKey="field.persona.reactionPack.key" value={reaction.key} onChange={(v) => update(i, 'key', v)} />
-          <Field label="トリガー" helpKey="field.persona.reactionPack.trigger" value={reaction.trigger} onChange={(v) => update(i, 'trigger', v)} placeholder="何がこのリアクションを引き起こすか" />
-          <ArrayEditor label="応答例" helpKey="field.persona.reactionPack.responses" values={reaction.responses} onChange={(v) => update(i, 'responses', v)} />
-        </div>
-      ))}
-      <button onClick={add} className="w-full py-2 border-2 border-dashed border-gray-300 text-gray-500 text-sm rounded-lg hover:border-pink-300 hover:text-pink-500">+ リアクションを追加</button>
+      <ArrayEditor label="優しい時" values={data.warm ?? []} onChange={(v) => update('warm', v)} />
+      <ArrayEditor label="じゃれた時" values={data.playful ?? []} onChange={(v) => update('playful', v)} />
+      <ArrayEditor label="警戒している時" values={data.guarded ?? []} onChange={(v) => update('guarded', v)} />
+      <ArrayEditor label="ぶつかった時" values={data.conflict ?? []} onChange={(v) => update('conflict', v)} />
     </div>
   );
 }

@@ -5,6 +5,7 @@
  */
 
 import { characterRepo, releaseRepo } from '../repositories';
+import { preparePublishedPersona } from '../persona';
 import { getDraft, deleteDraft, type DraftVersion } from './drafts';
 import type { CharacterVersion, Release } from '../schemas';
 
@@ -37,9 +38,10 @@ export async function publishDraft(options: PublishOptions): Promise<PublishResu
   validateDraftForPublish(draft);
 
   // Create the new version
+  const persona = await preparePublishedPersona(draft.data.persona);
   const newVersion = await characterRepo.createVersion({
     characterId: draft.characterId,
-    persona: draft.data.persona,
+    persona,
     style: draft.data.style,
     autonomy: draft.data.autonomy,
     emotion: draft.data.emotion,

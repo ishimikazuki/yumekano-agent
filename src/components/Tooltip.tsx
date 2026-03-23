@@ -188,8 +188,12 @@ export const HELP_TEXTS = {
     '職業や立場です。日常会話で出る話題や、忙しさの理由づけに効きます。',
   'field.persona.summary':
     'キャラを短く説明する要約です。初期印象の芯になるので、性格と立場が1回で伝わる文にすると扱いやすいです。',
+  'field.persona.innerWorldNoteMd':
+    '固定テンプレートに当てはめず、彼女が何を欲しがるか、何を恐れるか、どんな時に身構えるか、親しさや関係をどう受け取るかを自由に書くメモです。矛盾や言葉にしづらい弱さも、そのまま自然文で残して大丈夫です。',
   'field.persona.values':
     '大事にしている判断基準です。ここに反する提案には抵抗しやすくなり、賛成・反対の軸がはっきりします。',
+  'field.persona.vulnerabilities':
+    '弱さ、傷つきやすさ、気にしていることをまとめる欄です。触れられると守りに入る点や、揺れやすい感情の芯を書きます。',
   'field.persona.flaws':
     '弱点や未熟さです。完璧すぎるキャラを避け、失敗や揺れに自然な理由を持たせます。',
   'field.persona.insecurities':
@@ -324,7 +328,9 @@ export type HelpKey = keyof typeof HELP_TEXTS;
 
 const LEGACY_HELP_KEY_MAP: Record<string, HelpKey> = {
   summary: 'field.persona.summary',
+  innerWorldNoteMd: 'field.persona.innerWorldNoteMd',
   values: 'field.persona.values',
+  vulnerabilities: 'field.persona.vulnerabilities',
   flaws: 'field.persona.flaws',
   likes: 'field.persona.likes',
   dislikes: 'field.persona.dislikes',

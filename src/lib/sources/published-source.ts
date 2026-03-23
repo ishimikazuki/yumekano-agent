@@ -8,6 +8,7 @@ import {
   phaseGraphRepo,
   promptBundleRepo,
 } from '../repositories';
+import { toPersonaAuthoring } from '../persona';
 import type { CharacterAssets, CharacterAssetSource } from './character-asset-source';
 
 export class PublishedAssetSource implements CharacterAssetSource {
@@ -77,7 +78,7 @@ export class PublishedAssetSource implements CharacterAssetSource {
       },
 
       // Configuration
-      persona: version.persona,
+      persona: toPersonaAuthoring(version.persona),
       style: version.style,
       autonomy: version.autonomy,
       emotion: version.emotion,

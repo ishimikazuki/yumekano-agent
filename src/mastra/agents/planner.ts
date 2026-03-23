@@ -34,6 +34,45 @@ export type PlannerOutput = {
   modelId: string;
 };
 
+function formatBulletList(items: string[]): string {
+  return items.length > 0 ? items.map((item) => `- ${item}`).join('\n') : '- None';
+}
+
+function buildPlannerPersonaBlock(characterVersion: CharacterVersion): string {
+  const { persona } = characterVersion;
+  const compiled = persona.compiledPersona;
+
+  if (compiled) {
+    return `## Compiled Persona
+- One-Line Core: ${compiled.oneLineCore}
+- Desire: ${compiled.desire ?? 'None'}
+- Fear: ${compiled.fear ?? 'None'}
+- Protective Strategy: ${compiled.protectiveStrategy ?? 'None'}
+- Attachment Style Hint: ${compiled.attachmentStyleHint ?? 'None'}
+- Conflict Pattern: ${compiled.conflictPattern ?? 'None'}
+- Intimacy Pattern: ${compiled.intimacyPattern ?? 'None'}
+
+### Motivational Hooks
+${formatBulletList(compiled.motivationalHooks)}
+
+### Soft Bans
+${formatBulletList(compiled.softBans)}`;
+  }
+
+  return `## Persona Summary
+- Summary: ${persona.summary}
+- Inner World Note: ${persona.innerWorldNoteMd ?? 'None'}
+
+### Values
+${formatBulletList(persona.values)}
+
+### Vulnerabilities
+${formatBulletList(persona.vulnerabilities)}
+
+### Signature Behaviors
+${formatBulletList(persona.signatureBehaviors ?? [])}`;
+}
+
 /**
  * The Planner agent decides what the character should do next.
  * It thinks in third person about what this character would actually do.
@@ -59,7 +98,7 @@ export async function runPlanner(input: PlannerInput): Promise<PlannerOutput> {
   };
 }
 
-function buildPlannerSystemPrompt(input: PlannerInput): string {
+export function buildPlannerSystemPrompt(input: PlannerInput): string {
   const { characterVersion, currentPhase, promptOverride } = input;
 
   const outputLanguageRules = `
@@ -70,22 +109,16 @@ function buildPlannerSystemPrompt(input: PlannerInput): string {
 - Write each item in \`mustAvoid\` as a short Japanese phrase.
 - Keep enum fields exactly as required by the schema.`;
 
-  if (promptOverride) {
-    return `${promptOverride}${outputLanguageRules}`;
-  }
+  const promptPrelude = promptOverride?.trim()
+    ? `${promptOverride.trim()}\n\n`
+    : '';
 
-  return `# Planner System Prompt
+  return `${promptPrelude}# Planner System Prompt
 
 You are the planner for a stateful character conversation agent.
 Your job is to decide what this character would **actually do next**.
 
-## Character: ${characterVersion.persona.summary}
-
-### Values
-${characterVersion.persona.values.map((v) => `- ${v}`).join('\n')}
-
-### Flaws
-${characterVersion.persona.flaws.map((f) => `- ${f}`).join('\n')}
+${buildPlannerPersonaBlock(characterVersion)}
 
 ### Current Phase: ${currentPhase.label}
 ${currentPhase.description}

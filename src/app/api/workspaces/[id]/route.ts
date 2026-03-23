@@ -4,7 +4,7 @@ import { resolveInitialDraftForCharacter } from '@/lib/workspaces/initial-draft'
 import {
   DraftStateSchema,
   CharacterIdentitySchema,
-  ExtendedPersonaSpecSchema,
+  PersonaAuthoringSchema,
   StyleSpecSchema,
   AutonomySpecSchema,
   EmotionSpecSchema,
@@ -102,7 +102,7 @@ const UpdateDraftSectionSchema = z.object({
 
 const sectionSchemas = {
   identity: CharacterIdentitySchema,
-  persona: ExtendedPersonaSpecSchema,
+  persona: PersonaAuthoringSchema,
   style: StyleSpecSchema,
   autonomy: AutonomySpecSchema,
   emotion: EmotionSpecSchema,

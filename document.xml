@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>MVP Phase 6 完了 / ダッシュボード総合デバッグ完了 / Git風バージョン管理実装済み / 処理フロー視覚化LP公開済み</phase>
+    <phase>MVP Phase 6 完了 / persona authoring 簡素化・compiledPersona 対応 / PAD appraisal tuning 適用 / 処理フロー視覚化LP公開済み</phase>
   </project_overview>
 
   <architecture>
@@ -53,6 +53,8 @@
     <decision date="2026-03-19">バージョンステータスは draft/published/archived の3状態</decision>
     <decision date="2026-03-21">処理フロー視覚化ドキュメントをHTML/CSSで作成、LPとしてVercelにデプロイ</decision>
     <decision date="2026-03-21">ダッシュボード総合デバッグで、ワークスペース初期draft生成・メモリ画面実データ化・評価画面非同期実行化を適用</decision>
+    <decision date="2026-03-23">designer向け persona authoring は summary / innerWorldNoteMd / vulnerabilities / authoredExamples を中心に簡素化し、旧構造は legacyAuthoring として後方互換保持する</decision>
+    <decision date="2026-03-23">publish-time に compiledPersona を生成し、planner / generator prompt bundle は前置きとして連結する。0..1 appraisal sensitivity は 0.5 基準で適用し、落とし物返却は前向きシグナルとして扱う</decision>
   </decisions>
 
   <logs>PROJECT_LOG/INDEX.md</logs>

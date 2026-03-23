@@ -12,38 +12,18 @@ interface CharacterVersion {
   status: string;
   persona: {
     summary: string;
+    innerWorldNoteMd?: string;
     values: string[];
-    flaws: string[];
-    insecurities: string[];
-    likes: string[];
-    dislikes: string[];
-    signatureBehaviors: string[];
+    vulnerabilities: string[];
+    likes?: string[];
+    dislikes?: string[];
+    signatureBehaviors?: string[];
     authoredExamples: {
       warm?: string[];
       playful?: string[];
       guarded?: string[];
       conflict?: string[];
     };
-    innerWorld?: {
-      coreDesire: string;
-      fear: string;
-      wound?: string;
-      coping?: string;
-      growthArc?: string;
-    };
-    surfaceLoop?: {
-      defaultMood: string;
-      stressBehavior: string;
-      joyBehavior: string;
-      conflictStyle: string;
-      affectionStyle: string;
-    };
-    anchors?: Array<{
-      key: string;
-      label: string;
-      description: string;
-      emotionalSignificance: string;
-    }>;
   };
   style: {
     language: string;
@@ -244,6 +224,14 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
             </dt>
             <dd className="text-sm text-gray-900 mt-1">{version.persona.summary}</dd>
           </div>
+          {version.persona.innerWorldNoteMd && (
+            <div>
+              <dt className="text-sm font-medium">
+                <LabelWithTooltip label="内面メモ" helpKey="field.persona.innerWorldNoteMd" className="text-gray-500" />
+              </dt>
+              <dd className="text-sm text-gray-900 mt-1 whitespace-pre-wrap">{version.persona.innerWorldNoteMd}</dd>
+            </div>
+          )}
           <div>
             <dt className="text-sm font-medium">
               <LabelWithTooltip label="価値観" helpKey="field.persona.values" className="text-gray-500" />
@@ -258,12 +246,12 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <dt className="text-sm font-medium">
-              <LabelWithTooltip label="欠点" helpKey="field.persona.flaws" className="text-gray-500" />
+              <LabelWithTooltip label="弱さ・傷つきやすさ" helpKey="field.persona.vulnerabilities" className="text-gray-500" />
             </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
-              {version.persona.flaws.map((flaw, i) => (
+              {version.persona.vulnerabilities.map((vulnerability, i) => (
                 <span key={i} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                  {flaw}
+                  {vulnerability}
                 </span>
               ))}
             </dd>
@@ -273,7 +261,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
               <LabelWithTooltip label="好きなもの" helpKey="field.persona.likes" className="text-gray-500" />
             </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
-              {version.persona.likes.map((like, i) => (
+              {(version.persona.likes ?? []).map((like, i) => (
                 <span key={i} className="px-2 py-1 bg-pink-100 text-pink-700 text-xs rounded">
                   {like}
                 </span>
@@ -285,9 +273,21 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
               <LabelWithTooltip label="嫌いなもの" helpKey="field.persona.dislikes" className="text-gray-500" />
             </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
-              {version.persona.dislikes.map((d, i) => (
+              {(version.persona.dislikes ?? []).map((d, i) => (
                 <span key={i} className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded">
                   {d}
+                </span>
+              ))}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-sm font-medium">
+              <LabelWithTooltip label="シグネチャ行動" helpKey="field.persona.signatureBehaviors" className="text-gray-500" />
+            </dt>
+            <dd className="flex flex-wrap gap-1 mt-1">
+              {(version.persona.signatureBehaviors ?? []).map((behavior, i) => (
+                <span key={i} className="px-2 py-1 bg-violet-100 text-violet-700 text-xs rounded">
+                  {behavior}
                 </span>
               ))}
             </dd>
@@ -422,59 +422,6 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
         </div>
       </div>
-
-      {/* Inner World Panel */}
-      {version.persona.innerWorld && (
-        <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">インナーワールド</h2>
-          <dl className="grid grid-cols-2 gap-4">
-            <div>
-              <dt className="text-sm font-medium">
-                <LabelWithTooltip label="コア欲求" helpKey="field.persona.innerWorld.coreDesire" className="text-gray-500" />
-              </dt>
-              <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.coreDesire}</dd>
-            </div>
-            <div>
-              <dt className="text-sm font-medium">
-                <LabelWithTooltip label="恐れ" helpKey="field.persona.innerWorld.fear" className="text-gray-500" />
-              </dt>
-              <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.fear}</dd>
-            </div>
-            {version.persona.innerWorld.wound && (
-              <div>
-                <dt className="text-sm font-medium">
-                  <LabelWithTooltip label="傷" helpKey="field.persona.innerWorld.wound" className="text-gray-500" />
-                </dt>
-                <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.wound}</dd>
-              </div>
-            )}
-            {version.persona.innerWorld.coping && (
-              <div>
-                <dt className="text-sm font-medium">
-                  <LabelWithTooltip label="対処法" helpKey="field.persona.innerWorld.coping" className="text-gray-500" />
-                </dt>
-                <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.coping}</dd>
-              </div>
-            )}
-          </dl>
-        </div>
-      )}
-
-      {/* Anchors Panel */}
-      {version.persona.anchors && version.persona.anchors.length > 0 && (
-        <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">アンカー</h2>
-          <div className="grid gap-4 md:grid-cols-3">
-            {version.persona.anchors.map((anchor) => (
-              <div key={anchor.key} className="p-4 bg-gray-50 rounded-lg">
-                <h3 className="font-medium text-gray-900">{anchor.label}</h3>
-                <p className="text-sm text-gray-600 mt-1">{anchor.description}</p>
-                <p className="text-xs text-gray-500 mt-2 italic">{anchor.emotionalSignificance}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Authored Examples */}
       <div className="bg-white rounded-lg shadow p-6 lg:col-span-2">

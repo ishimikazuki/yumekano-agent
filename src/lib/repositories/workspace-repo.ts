@@ -1,5 +1,6 @@
 import { getDb } from '../db/client';
 import { v4 as uuid } from 'uuid';
+import { normalizePersonaAuthoring } from '../persona';
 import {
   Workspace,
   WorkspaceSchema,
@@ -214,7 +215,7 @@ export const workspaceRepo = {
       args: [
         workspaceId,
         JSON.stringify(draft.identity),
-        JSON.stringify(draft.persona),
+        JSON.stringify(normalizePersonaAuthoring(draft.persona)),
         JSON.stringify(draft.style),
         JSON.stringify(draft.autonomy),
         JSON.stringify(draft.emotion),
@@ -253,7 +254,7 @@ export const workspaceRepo = {
     const row = result.rows[0];
     return DraftStateSchema.parse({
       identity: JSON.parse(row.identity_json as string),
-      persona: JSON.parse(row.persona_json as string),
+      persona: normalizePersonaAuthoring(JSON.parse(row.persona_json as string)),
       style: normalizeLegacyStyle(JSON.parse(row.style_json as string)),
       autonomy: normalizeLegacyAutonomy(JSON.parse(row.autonomy_json as string)),
       emotion: normalizeLegacyEmotion(JSON.parse(row.emotion_json as string)),
@@ -331,9 +332,13 @@ export const workspaceRepo = {
       });
     } else {
       const column = columnMap[section];
+      const serializedValue =
+        section === 'persona'
+          ? normalizePersonaAuthoring(value)
+          : value;
       await db.execute({
         sql: `UPDATE workspace_draft_state SET ${column} = ?, updated_at = ? WHERE workspace_id = ?`,
-        args: [JSON.stringify(value), now, workspaceId],
+        args: [JSON.stringify(serializedValue), now, workspaceId],
       });
     }
 

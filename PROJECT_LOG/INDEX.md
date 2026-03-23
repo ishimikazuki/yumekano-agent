@@ -1,5 +1,6 @@
 # PROJECT_LOG INDEX
 
+- issue-0008-2026-03-23-persona-runtime-and-pad-tuning.md — persona authoring簡素化、compiledPersona対応、PAD appraisal tuning
 - issue-0007-2026-03-21-designer-debug-sweep.md — デザイナー観点の総合デバッグと修正
 - 2026-03-21-processing-flow-visual.md — 処理フロー視覚化ドキュメント作成 & LPデプロイ
 - 2026-03-19-version-management.md — Git風バージョン管理システム実装（公開・ロールバック機能）

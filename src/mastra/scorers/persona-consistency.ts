@@ -37,10 +37,10 @@ export async function scorePersonaConsistency(input: ScorerInput): Promise<Score
 Score how well the assistant's reply matches the defined character persona.
 
 Character Definition:
-- Summary: ${characterVersion.persona.summary}
+- Summary: ${characterVersion.persona.compiledPersona?.oneLineCore ?? characterVersion.persona.summary}
 - Values: ${characterVersion.persona.values.join(', ')}
-- Flaws: ${characterVersion.persona.flaws.join(', ')}
-- Signature behaviors: ${characterVersion.persona.signatureBehaviors.join(', ')}
+- Vulnerabilities: ${characterVersion.persona.vulnerabilities.join(', ')}
+- Signature behaviors: ${(characterVersion.persona.signatureBehaviors ?? []).join(', ')}
 
 Style:
 - Politeness: ${characterVersion.style.politenessDefault}
