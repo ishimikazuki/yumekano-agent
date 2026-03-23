@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { LabelWithTooltip, Tooltip, PARAM_DESCRIPTIONS } from '@/components/Tooltip';
+import { LabelWithTooltip } from '@/components/Tooltip';
 
 interface CharacterVersion {
   id: string;
@@ -240,13 +240,13 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <dl className="space-y-3">
           <div>
             <dt className="text-sm font-medium">
-              <LabelWithTooltip label="サマリー" paramKey="summary" className="text-gray-500" />
+              <LabelWithTooltip label="サマリー" helpKey="field.persona.summary" className="text-gray-500" />
             </dt>
             <dd className="text-sm text-gray-900 mt-1">{version.persona.summary}</dd>
           </div>
           <div>
             <dt className="text-sm font-medium">
-              <LabelWithTooltip label="価値観" paramKey="values" className="text-gray-500" />
+              <LabelWithTooltip label="価値観" helpKey="field.persona.values" className="text-gray-500" />
             </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
               {version.persona.values.map((value, i) => (
@@ -258,7 +258,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <dt className="text-sm font-medium">
-              <LabelWithTooltip label="欠点" paramKey="flaws" className="text-gray-500" />
+              <LabelWithTooltip label="欠点" helpKey="field.persona.flaws" className="text-gray-500" />
             </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
               {version.persona.flaws.map((flaw, i) => (
@@ -270,7 +270,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <dt className="text-sm font-medium">
-              <LabelWithTooltip label="好きなもの" paramKey="likes" className="text-gray-500" />
+              <LabelWithTooltip label="好きなもの" helpKey="field.persona.likes" className="text-gray-500" />
             </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
               {version.persona.likes.map((like, i) => (
@@ -282,7 +282,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <dt className="text-sm font-medium">
-              <LabelWithTooltip label="嫌いなもの" paramKey="dislikes" className="text-gray-500" />
+              <LabelWithTooltip label="嫌いなもの" helpKey="field.persona.dislikes" className="text-gray-500" />
             </dt>
             <dd className="flex flex-wrap gap-1 mt-1">
               {version.persona.dislikes.map((d, i) => (
@@ -300,20 +300,20 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <h2 className="text-lg font-medium text-gray-900 mb-4">スタイル</h2>
         <div className="space-y-4">
           <div className="flex justify-between text-sm">
-            <LabelWithTooltip label="敬語レベル" paramKey="politenessDefault" className="text-gray-500" />
+            <LabelWithTooltip label="敬語レベル" helpKey="field.style.politenessDefault" className="text-gray-500" />
             <span className="text-gray-900">{version.style.politenessDefault}</span>
           </div>
           {[
-            { key: 'terseness' as const, label: '簡潔さ' },
-            { key: 'directness' as const, label: '直接性' },
-            { key: 'playfulness' as const, label: '遊び心' },
-            { key: 'teasing' as const, label: 'からかい' },
-            { key: 'initiative' as const, label: '主導性' },
-            { key: 'emojiRate' as const, label: '絵文字率' },
-          ].map(({ key, label }) => (
+            { key: 'terseness' as const, label: '簡潔さ', helpKey: 'field.style.terseness' as const },
+            { key: 'directness' as const, label: '直接性', helpKey: 'field.style.directness' as const },
+            { key: 'playfulness' as const, label: '遊び心', helpKey: 'field.style.playfulness' as const },
+            { key: 'teasing' as const, label: 'からかい', helpKey: 'field.style.teasing' as const },
+            { key: 'initiative' as const, label: '主導性', helpKey: 'field.style.initiative' as const },
+            { key: 'emojiRate' as const, label: '絵文字率', helpKey: 'field.style.emojiRate' as const },
+          ].map(({ key, label, helpKey }) => (
             <div key={key}>
               <div className="flex justify-between text-sm">
-                <LabelWithTooltip label={label} paramKey={key} className="text-gray-500" />
+                <LabelWithTooltip label={label} helpKey={helpKey} className="text-gray-500" />
                 <span className="text-gray-900">
                   {(version.style[key] * 100).toFixed(0)}%
                 </span>
@@ -328,7 +328,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           ))}
           <div>
             <dt className="text-sm font-medium text-gray-500 mt-4">
-              <LabelWithTooltip label="シグネチャフレーズ" paramKey="signaturePhrases" className="text-gray-500" />
+              <LabelWithTooltip label="シグネチャフレーズ" helpKey="field.style.signaturePhrases" className="text-gray-500" />
             </dt>
             <dd className="flex flex-wrap gap-1 mt-2">
               {version.style.signaturePhrases.map((p, i) => (
@@ -346,15 +346,15 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <h2 className="text-lg font-medium text-gray-900 mb-4">自律性</h2>
         <div className="space-y-4">
           {[
-            { key: 'disagreeReadiness' as const, label: '反論しやすさ' },
-            { key: 'refusalReadiness' as const, label: '断りやすさ' },
-            { key: 'delayReadiness' as const, label: '待たせやすさ' },
-            { key: 'repairReadiness' as const, label: '仲直りしやすさ' },
-            { key: 'conflictCarryover' as const, label: '引きずりやすさ' },
-          ].map(({ key, label }) => (
+            { key: 'disagreeReadiness' as const, label: '反論しやすさ', helpKey: 'field.autonomy.disagreeReadiness' as const },
+            { key: 'refusalReadiness' as const, label: '断りやすさ', helpKey: 'field.autonomy.refusalReadiness' as const },
+            { key: 'delayReadiness' as const, label: '待たせやすさ', helpKey: 'field.autonomy.delayReadiness' as const },
+            { key: 'repairReadiness' as const, label: '仲直りしやすさ', helpKey: 'field.autonomy.repairReadiness' as const },
+            { key: 'conflictCarryover' as const, label: '引きずりやすさ', helpKey: 'field.autonomy.conflictCarryover' as const },
+          ].map(({ key, label, helpKey }) => (
             <div key={key}>
               <div className="flex justify-between text-sm">
-                <LabelWithTooltip label={label} paramKey={key} className="text-gray-500" />
+                <LabelWithTooltip label={label} helpKey={helpKey} className="text-gray-500" />
                 <span className="text-gray-900">
                   {(version.autonomy[key] * 100).toFixed(0)}%
                 </span>
@@ -368,7 +368,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
             </div>
           ))}
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-            <LabelWithTooltip label="親密さはオンデマンド不可" paramKey="intimacyNeverOnDemand" className="text-sm text-gray-500" />
+            <LabelWithTooltip label="親密さはオンデマンド不可" helpKey="field.autonomy.intimacyNeverOnDemand" className="text-sm text-gray-500" />
             <span className={`px-2 py-1 rounded text-xs ${
               version.autonomy.intimacyNeverOnDemand
                 ? 'bg-green-100 text-green-700'
@@ -386,7 +386,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
         <div className="space-y-4">
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <LabelWithTooltip label="快" paramKey="pleasure" className="text-gray-500" />
+              <LabelWithTooltip label="快" helpKey="field.emotion.pleasure" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.pleasure.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -398,7 +398,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <LabelWithTooltip label="覚醒" paramKey="arousal" className="text-gray-500" />
+              <LabelWithTooltip label="覚醒" helpKey="field.emotion.arousal" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.arousal.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -410,7 +410,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <LabelWithTooltip label="支配感" paramKey="dominance" className="text-gray-500" />
+              <LabelWithTooltip label="支配感" helpKey="field.emotion.dominance" className="text-gray-500" />
               <span className="font-mono">{version.emotion.baselinePAD.dominance.toFixed(2)}</span>
             </div>
             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -430,20 +430,20 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
           <dl className="grid grid-cols-2 gap-4">
             <div>
               <dt className="text-sm font-medium">
-                <LabelWithTooltip label="コア欲求" paramKey="coreDesire" className="text-gray-500" />
+                <LabelWithTooltip label="コア欲求" helpKey="field.persona.innerWorld.coreDesire" className="text-gray-500" />
               </dt>
               <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.coreDesire}</dd>
             </div>
             <div>
               <dt className="text-sm font-medium">
-                <LabelWithTooltip label="恐れ" paramKey="fear" className="text-gray-500" />
+                <LabelWithTooltip label="恐れ" helpKey="field.persona.innerWorld.fear" className="text-gray-500" />
               </dt>
               <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.fear}</dd>
             </div>
             {version.persona.innerWorld.wound && (
               <div>
                 <dt className="text-sm font-medium">
-                  <LabelWithTooltip label="傷" paramKey="wound" className="text-gray-500" />
+                  <LabelWithTooltip label="傷" helpKey="field.persona.innerWorld.wound" className="text-gray-500" />
                 </dt>
                 <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.wound}</dd>
               </div>
@@ -451,7 +451,7 @@ function OverviewTab({ version }: { version: CharacterVersion | null }) {
             {version.persona.innerWorld.coping && (
               <div>
                 <dt className="text-sm font-medium">
-                  <LabelWithTooltip label="対処法" paramKey="coping" className="text-gray-500" />
+                  <LabelWithTooltip label="対処法" helpKey="field.persona.innerWorld.coping" className="text-gray-500" />
                 </dt>
                 <dd className="text-sm text-gray-900 mt-1">{version.persona.innerWorld.coping}</dd>
               </div>
