@@ -343,17 +343,24 @@ CREATE INDEX IF NOT EXISTS idx_character_versions_parent ON character_versions(p
 `;
 
 /**
+ * Migration 004: Intimacy-specific generator prompt variant
+ */
+const MIGRATION_004_GENERATOR_INTIMACY_PROMPT = `
+ALTER TABLE prompt_bundle_versions ADD COLUMN generator_intimacy_md TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspace_draft_state ADD COLUMN generator_intimacy_md TEXT NOT NULL DEFAULT '';
+`;
+
+/**
  * Run all migrations.
  */
 export async function runMigrations() {
   const db = getDb();
 
-  // Create migrations tracking table (PostgreSQL compatible)
+  // Create migrations tracking table with portable SQL
   await db.execute(`
     CREATE TABLE IF NOT EXISTS _migrations (
-      id SERIAL PRIMARY KEY,
-      name TEXT UNIQUE NOT NULL,
-      applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      name TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -386,7 +393,7 @@ export async function runMigrations() {
       }
 
       await db.execute({
-        sql: 'INSERT INTO _migrations (name) VALUES ($1)',
+        sql: 'INSERT INTO _migrations (name) VALUES (?)',
         args: [name],
       });
 
@@ -400,6 +407,10 @@ export async function runMigrations() {
   await runMigration('001_initial.sql', MIGRATION_001_INITIAL);
   await runMigration('002_workspaces.sql', MIGRATION_002_WORKSPACES);
   await runMigration('003_version_labels.sql', MIGRATION_003_VERSION_LABELS);
+  await runMigration(
+    '004_generator_intimacy_prompt.sql',
+    MIGRATION_004_GENERATOR_INTIMACY_PROMPT
+  );
 
   console.log('All migrations completed');
 }

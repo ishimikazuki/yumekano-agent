@@ -13,6 +13,7 @@ export const promptBundleRepo = {
     characterId: string;
     plannerMd: string;
     generatorMd: string;
+    generatorIntimacyMd?: string;
     extractorMd: string;
     reflectorMd: string;
     rankerMd: string;
@@ -29,14 +30,15 @@ export const promptBundleRepo = {
     const versionNumber = versionResult.rows[0].next_version as number;
 
     await db.execute({
-      sql: `INSERT INTO prompt_bundle_versions (id, character_id, version_number, planner_md, generator_md, extractor_md, reflector_md, ranker_md, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO prompt_bundle_versions (id, character_id, version_number, planner_md, generator_md, generator_intimacy_md, extractor_md, reflector_md, ranker_md, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         id,
         input.characterId,
         versionNumber,
         input.plannerMd,
         input.generatorMd,
+        input.generatorIntimacyMd ?? '',
         input.extractorMd,
         input.reflectorMd,
         input.rankerMd,
@@ -50,6 +52,7 @@ export const promptBundleRepo = {
       versionNumber,
       plannerMd: input.plannerMd,
       generatorMd: input.generatorMd,
+      generatorIntimacyMd: input.generatorIntimacyMd ?? '',
       extractorMd: input.extractorMd,
       reflectorMd: input.reflectorMd,
       rankerMd: input.rankerMd,
@@ -76,6 +79,7 @@ export const promptBundleRepo = {
       versionNumber: row.version_number,
       plannerMd: row.planner_md,
       generatorMd: row.generator_md,
+      generatorIntimacyMd: row.generator_intimacy_md,
       extractorMd: row.extractor_md,
       reflectorMd: row.reflector_md,
       rankerMd: row.ranker_md,
@@ -102,6 +106,7 @@ export const promptBundleRepo = {
       versionNumber: row.version_number,
       plannerMd: row.planner_md,
       generatorMd: row.generator_md,
+      generatorIntimacyMd: row.generator_intimacy_md,
       extractorMd: row.extractor_md,
       reflectorMd: row.reflector_md,
       rankerMd: row.ranker_md,
@@ -126,6 +131,7 @@ export const promptBundleRepo = {
         versionNumber: row.version_number,
         plannerMd: row.planner_md,
         generatorMd: row.generator_md,
+        generatorIntimacyMd: row.generator_intimacy_md,
         extractorMd: row.extractor_md,
         reflectorMd: row.reflector_md,
         rankerMd: row.ranker_md,

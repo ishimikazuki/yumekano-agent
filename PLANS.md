@@ -25,6 +25,7 @@
 - [x] デザイナー観点の総合デバッグ（主要ページ巡回、即時修正、再検証）
 
 ### 残作業
+- [x] 親密時専用 Generator prompt variant の追加（runtime + dashboard）
 - [ ] anchors/innerWorldをAPIレスポンスに含める
 - [ ] E2Eテスト作成
 - [ ] 本番デプロイ設定
@@ -44,6 +45,9 @@
 - 2026-03-21: メモリ画面と評価画面に stub 実装が残っており、実データ確認や評価実行ができなかった。
 - 2026-03-21: 評価実行を同期APIで待たせる実装だと、1リクエストが数分ぶら下がり UI 上ほぼハングに見えることを確認。
 - 2026-03-23: PAD 更新式が 0..1 appraisal の中立値 0.5 をそのまま加算しており、中立入力でも快・覚醒・支配感が上振れしやすいことを確認。
+- 2026-03-23: Generator prompt が単一スロットのみで、親密時だけ表現を切り替えたくても workflow に生ファイル prompt を直書きしないと実現できない状態だった。
+- 2026-03-23: `db:migrate` の `_migrations` 管理テーブル定義が libsql/SQLite 非互換で、既存 local.db への列追加 migration がそのままでは流れなかった。
+- 2026-03-23: ローカル起動中の Next.js アプリは `.env` の PostgreSQL を参照しており、local.db だけ migration しても dashboard 保存確認には不十分だった。
 
 ## 決定したこと
 - 2026-03-19: CoE説明は共通ロジック（`buildCoEExplanation`）で生成し、`/api/chat` と `/api/draft-chat` から毎ターン返してUI表示する。理由: Playground/Workspace/Traceで同じ説明軸を保ち、検証観点を揃えるため。
@@ -56,6 +60,9 @@
 - 2026-03-21: 評価実行は `202 Accepted` で即時返却し、バックグラウンド実行 + ポーリング表示にする。理由: 数分単位の同期待ちを避け、UI をハングさせないため。
 - 2026-03-21: 共通メタデータを `Yumekano Dashboard` に更新し、`lang=\"ja\"` を設定する。理由: デザイナー向け画面としてのブランド整合性とアクセシビリティを改善するため。
 - 2026-03-23: PAD 寄与計算は 0..1 appraisal を中立点 0.5 基準に再中心化し、fast affect の全体ゲインを 0.5 に抑える。理由: PAD 文献の双極スケール前提と、実験で観測される小さめの変化幅に近づけるため。
+- 2026-03-23: 親密時専用の生成指示は `generatorIntimacyMd` として prompt bundle / workspace draft に保存し、`intimacyDecision` が `accept` / `conditional_accept` のときだけ選択する。理由: workflow にハードコードせず、ダッシュボード編集・公開版バージョン管理・draft/prod 一貫性を保つため。
+- 2026-03-23: `_migrations` 管理テーブルは DB 共通SQLに寄せ、既存 local.db に 004 migration を適用できるようにする。理由: libsql 開発環境でも新しい prompt variant 列を安全に追加できるようにするため。
+- 2026-03-23: ローカル検証時は `.env` の PostgreSQL にも 004 migration を適用してから dashboard 保存を確認する。理由: 実際に起動中アプリが使っている保存先とスキーマを一致させるため。
 
 ## 既知の問題
 - xAI APIの応答に10-30秒かかることがある

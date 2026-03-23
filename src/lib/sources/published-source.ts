@@ -91,6 +91,7 @@ export class PublishedAssetSource implements CharacterAssetSource {
       prompts: {
         plannerMd: promptBundle.plannerMd,
         generatorMd: promptBundle.generatorMd,
+        generatorIntimacyMd: promptBundle.generatorIntimacyMd,
         extractorMd: promptBundle.extractorMd,
         reflectorMd: promptBundle.reflectorMd,
         rankerMd: promptBundle.rankerMd,

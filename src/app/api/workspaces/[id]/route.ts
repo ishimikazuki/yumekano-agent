@@ -152,7 +152,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     await workspaceRepo.updateDraftSection(
       id,
       parsed.data.section as keyof z.infer<typeof DraftStateSchema>,
-      parsed.data.value as never
+      valueResult.data as never
     );
 
     // Return updated draft

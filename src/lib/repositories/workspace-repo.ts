@@ -14,13 +14,6 @@ import {
   PlaygroundTurnSchema,
   EditorContext,
   EditorContextSchema,
-  CharacterIdentitySchema,
-  ExtendedPersonaSpecSchema,
-  StyleSpecSchema,
-  AutonomySpecSchema,
-  EmotionSpecSchema,
-  MemoryPolicySpecSchema,
-  PhaseGraphSchema,
   PromptBundleContentSchema,
 } from '../schemas';
 
@@ -212,11 +205,12 @@ export const workspaceRepo = {
   async initDraft(workspaceId: string, draft: DraftState): Promise<void> {
     const db = getDb();
     const now = new Date().toISOString();
+    const prompts = PromptBundleContentSchema.parse(draft.prompts);
 
     await db.execute({
       sql: `INSERT INTO workspace_draft_state
-            (workspace_id, identity_json, persona_json, style_json, autonomy_json, emotion_json, memory_policy_json, phase_graph_json, planner_md, generator_md, extractor_md, reflector_md, ranker_md, base_version_id, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (workspace_id, identity_json, persona_json, style_json, autonomy_json, emotion_json, memory_policy_json, phase_graph_json, planner_md, generator_md, generator_intimacy_md, extractor_md, reflector_md, ranker_md, base_version_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         workspaceId,
         JSON.stringify(draft.identity),
@@ -226,11 +220,12 @@ export const workspaceRepo = {
         JSON.stringify(draft.emotion),
         JSON.stringify(draft.memory),
         JSON.stringify(draft.phaseGraph),
-        draft.prompts.plannerMd,
-        draft.prompts.generatorMd,
-        draft.prompts.extractorMd,
-        draft.prompts.reflectorMd,
-        draft.prompts.rankerMd,
+        prompts.plannerMd,
+        prompts.generatorMd,
+        prompts.generatorIntimacyMd,
+        prompts.extractorMd,
+        prompts.reflectorMd,
+        prompts.rankerMd,
         draft.baseVersionId,
         now,
       ],
@@ -267,6 +262,7 @@ export const workspaceRepo = {
       prompts: {
         plannerMd: row.planner_md as string,
         generatorMd: row.generator_md as string,
+        generatorIntimacyMd: row.generator_intimacy_md as string | undefined,
         extractorMd: row.extractor_md as string,
         reflectorMd: row.reflector_md as string,
         rankerMd: row.ranker_md as string,
@@ -312,12 +308,21 @@ export const workspaceRepo = {
     };
 
     if (section === 'prompts') {
-      const prompts = value as DraftState['prompts'];
+      const prompts = PromptBundleContentSchema.parse(value);
       await db.execute({
         sql: `UPDATE workspace_draft_state
-              SET planner_md = ?, generator_md = ?, extractor_md = ?, reflector_md = ?, ranker_md = ?, updated_at = ?
+              SET planner_md = ?, generator_md = ?, generator_intimacy_md = ?, extractor_md = ?, reflector_md = ?, ranker_md = ?, updated_at = ?
               WHERE workspace_id = ?`,
-        args: [prompts.plannerMd, prompts.generatorMd, prompts.extractorMd, prompts.reflectorMd, prompts.rankerMd, now, workspaceId],
+        args: [
+          prompts.plannerMd,
+          prompts.generatorMd,
+          prompts.generatorIntimacyMd,
+          prompts.extractorMd,
+          prompts.reflectorMd,
+          prompts.rankerMd,
+          now,
+          workspaceId,
+        ],
       });
     } else if (section === 'baseVersionId') {
       await db.execute({
@@ -344,12 +349,26 @@ export const workspaceRepo = {
    */
   async updatePrompt(
     workspaceId: string,
-    promptKey: 'planner' | 'generator' | 'extractor' | 'reflector' | 'ranker',
+    promptKey:
+      | 'planner'
+      | 'generator'
+      | 'generatorIntimacy'
+      | 'extractor'
+      | 'reflector'
+      | 'ranker',
     content: string
   ): Promise<void> {
     const db = getDb();
     const now = new Date().toISOString();
-    const column = `${promptKey}_md`;
+    const columnMap = {
+      planner: 'planner_md',
+      generator: 'generator_md',
+      generatorIntimacy: 'generator_intimacy_md',
+      extractor: 'extractor_md',
+      reflector: 'reflector_md',
+      ranker: 'ranker_md',
+    } as const;
+    const column = columnMap[promptKey];
 
     await db.execute({
       sql: `UPDATE workspace_draft_state SET ${column} = ?, updated_at = ? WHERE workspace_id = ?`,

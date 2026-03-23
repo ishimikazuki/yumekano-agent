@@ -105,6 +105,7 @@ export type ExtendedPersonaSpec = z.infer<typeof ExtendedPersonaSpecSchema>;
 export const PromptBundleContentSchema = z.object({
   plannerMd: z.string(),
   generatorMd: z.string(),
+  generatorIntimacyMd: z.string().default(''),
   extractorMd: z.string(),
   reflectorMd: z.string(),
   rankerMd: z.string(),

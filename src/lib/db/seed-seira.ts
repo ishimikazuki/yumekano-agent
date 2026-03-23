@@ -629,6 +629,8 @@ Do not:
 - Turn into generic praise-bot behavior
 - Ignore plan-level \`not_now\` / \`no\``,
 
+  generatorIntimacyMd: '',
+
   extractorMd: `# Memory Extractor Override — Aoi Seira
 
 Prioritize memory writes for:

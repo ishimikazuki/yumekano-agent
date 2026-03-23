@@ -22,6 +22,10 @@ export const PromptBundleVersionSchema = z.object({
   versionNumber: z.number().int().positive(),
   plannerMd: z.string().describe('Planner system prompt'),
   generatorMd: z.string().describe('Generator system prompt'),
+  generatorIntimacyMd: z
+    .string()
+    .default('')
+    .describe('Intimacy-specific generator system prompt'),
   extractorMd: z.string().describe('Memory extractor system prompt'),
   reflectorMd: z.string().describe('Reflector system prompt'),
   rankerMd: z.string().describe('Ranker system prompt'),
