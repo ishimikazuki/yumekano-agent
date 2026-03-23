@@ -49,13 +49,36 @@ export function CoEExplanationCard({
 
       <p className="mt-1 text-xs leading-relaxed text-indigo-900">{coe.summary}</p>
 
-      {coe.intentReason && (
+      <div className="mt-2 rounded bg-white/70 px-2 py-2 text-[11px] text-gray-700">
+        <p className="font-medium text-gray-800">
+          感情名: {coe.beforeEmotionLabel} → {coe.afterEmotionLabel}
+        </p>
+        <p className="mt-1 text-gray-600">
+          変化前: {coe.beforeEmotionDescription}
+        </p>
+        <p className="mt-0.5 text-gray-600">
+          変化後: {coe.afterEmotionDescription}
+        </p>
+      </div>
+
+      {coe.movementNarrative.length > 0 && (
+        <div className="mt-2 rounded bg-white/70 px-2 py-2 text-[11px] text-gray-700">
+          <p className="font-medium text-gray-800">どうして感情が動いたか</p>
+          <ul className="mt-1 space-y-1">
+            {coe.movementNarrative.map((line, index) => (
+              <li key={`${line}-${index}`}>・{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {coe.policySummary && (
         <p className="mt-2 rounded bg-white/70 px-2 py-1 text-[11px] text-gray-700">
-          応答方針: {coe.intentReason}
+          応答方針: {coe.policySummary}
         </p>
       )}
 
-      {coe.topDrivers.length > 0 && (
+      {variant === 'detailed' && coe.topDrivers.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {coe.topDrivers.map((driver, index) => (
             <span key={`${driver.axis}-${driver.factorKey}-${index}`} className="rounded bg-white px-2 py-0.5 text-[10px] text-gray-700">

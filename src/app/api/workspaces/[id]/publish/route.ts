@@ -74,14 +74,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const maxPromptVersion = (promptVersionResult.rows[0]?.max_version as number) || 0;
 
     await db.execute({
-      sql: `INSERT INTO prompt_bundle_versions (id, character_id, version_number, planner_md, generator_md, extractor_md, reflector_md, ranker_md, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO prompt_bundle_versions (id, character_id, version_number, planner_md, generator_md, generator_intimacy_md, extractor_md, reflector_md, ranker_md, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         promptBundleVersionId,
         characterId,
         maxPromptVersion + 1,
         draft.prompts.plannerMd,
         draft.prompts.generatorMd,
+        draft.prompts.generatorIntimacyMd,
         draft.prompts.extractorMd,
         draft.prompts.reflectorMd,
         draft.prompts.rankerMd,

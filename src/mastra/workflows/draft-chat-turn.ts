@@ -5,25 +5,20 @@
  * Sandbox sessions are isolated from production pair state.
  */
 
-import { v4 as uuid } from 'uuid';
 import { workspaceRepo } from '@/lib/repositories';
-import { createPhaseEngine, PhaseEngineContext } from '@/lib/rules/phase-engine';
+import { createPhaseEngine } from '@/lib/rules/phase-engine';
 import { computeAppraisal } from '@/lib/rules/appraisal';
 import { updatePAD } from '@/lib/rules/pad';
 import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
 import { runPlanner } from '../agents/planner';
-import { runGenerator } from '../agents/generator';
+import { runGenerator, selectGeneratorPrompt } from '../agents/generator';
 import { runRanker } from '../agents/ranker';
-import { runMemoryExtractor } from '../agents/memory-extractor';
-import { DraftAssetSource } from '@/lib/sources/draft-source';
 import type {
   PADState,
   AppraisalVector,
-  PhaseNode,
   TurnPlan,
   WorkingMemory,
   PlaygroundSession,
-  DraftState,
 } from '@/lib/schemas';
 
 export type DraftChatTurnInput = {
@@ -210,11 +205,21 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
       arousal: plan.emotionDeltaIntent.arousalDelta,
       dominance: plan.emotionDeltaIntent.dominanceDelta,
     },
+    stance: plan.stance,
+    primaryActs: plan.primaryActs,
   });
 
   // ==========================================
   // Step 6: Generate candidates
   // ==========================================
+  const generatorPrompt = selectGeneratorPrompt(
+    {
+      generatorMd: draft.prompts.generatorMd,
+      generatorIntimacyMd: draft.prompts.generatorIntimacyMd,
+    },
+    plan
+  );
+
   const generatorResult = await runGenerator({
     characterVersion: characterVersion as never,
     currentPhase,
@@ -229,7 +234,7 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
     recentDialogue,
     userMessage: message,
     plan,
-    promptOverride: draft.prompts.generatorMd,
+    promptOverride: generatorPrompt,
   });
 
   // ==========================================

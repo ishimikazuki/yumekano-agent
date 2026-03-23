@@ -174,6 +174,7 @@ type DraftState = {
   prompts: {
     plannerMd: string;
     generatorMd: string;
+    generatorIntimacyMd: string;
     extractorMd: string;
     reflectorMd: string;
     rankerMd: string;
@@ -986,6 +987,7 @@ function PromptsEditor({ data, onChange }: { data: DraftState['prompts']; onChan
   const [activePrompt, setActivePrompt] = useState<keyof DraftState['prompts']>('generatorMd');
   const prompts: { key: keyof DraftState['prompts']; label: string }[] = [
     { key: 'generatorMd', label: 'Generator' },
+    { key: 'generatorIntimacyMd', label: 'Generator (Intimacy)' },
     { key: 'plannerMd', label: 'Planner' },
     { key: 'extractorMd', label: 'Extractor' },
     { key: 'reflectorMd', label: 'Reflector' },

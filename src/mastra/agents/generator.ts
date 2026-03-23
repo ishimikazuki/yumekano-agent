@@ -56,6 +56,22 @@ export type GeneratorOutput = {
   modelId: string;
 };
 
+export function selectGeneratorPrompt(
+  prompts: { generatorMd: string; generatorIntimacyMd?: string },
+  plan: TurnPlan
+): string {
+  const intimacyPrompt = prompts.generatorIntimacyMd?.trim();
+  const shouldUseIntimacyPrompt =
+    plan.intimacyDecision === 'accept' ||
+    plan.intimacyDecision === 'conditional_accept';
+
+  if (shouldUseIntimacyPrompt && intimacyPrompt) {
+    return intimacyPrompt;
+  }
+
+  return prompts.generatorMd;
+}
+
 /**
  * The Generator agent creates multiple candidate responses based on the plan.
  */
@@ -96,10 +112,6 @@ function buildGeneratorSystemPrompt(input: GeneratorInput): string {
   ].slice(0, 8);
 
   // Use working memory or signature phrases for user address
-  const signaturePhrases = characterVersion.style.signaturePhrases;
-  const userAddressPattern = signaturePhrases.find(p => p.includes('くん') || p.includes('さん') || p.includes('○○'));
-  const userAddress = userAddressPattern ?? 'あなた';
-
   return `# Conversation Generator System Prompt
 
 You are the surface reply generator for a stateful character chat system.

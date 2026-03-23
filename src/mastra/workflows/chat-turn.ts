@@ -1,4 +1,3 @@
-import { v4 as uuid } from 'uuid';
 import {
   characterRepo,
   pairRepo,
@@ -14,16 +13,11 @@ import { updatePAD } from '@/lib/rules/pad';
 import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
 import { retrieveMemory, getOrCreateWorkingMemory } from '../memory/retrieval';
 import { runPlanner } from '../agents/planner';
-import { runGenerator } from '../agents/generator';
+import { runGenerator, selectGeneratorPrompt } from '../agents/generator';
 import { runRanker } from '../agents/ranker';
 import { runMemoryExtractor } from '../agents/memory-extractor';
 import type {
-  CharacterVersion,
-  PairState,
   PADState,
-  PhaseNode,
-  TurnPlan,
-  TurnTrace,
   WorkingMemory,
   MemoryWrite,
 } from '@/lib/schemas';
@@ -152,6 +146,8 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
       arousal: plan.emotionDeltaIntent.arousalDelta,
       dominance: plan.emotionDeltaIntent.dominanceDelta,
     },
+    stance: plan.stance,
+    primaryActs: plan.primaryActs,
   });
 
   // ==========================================
@@ -183,6 +179,14 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   // ==========================================
   // Step 7: Generate candidates
   // ==========================================
+  const generatorPrompt = selectGeneratorPrompt(
+    {
+      generatorMd: promptBundle.generatorMd,
+      generatorIntimacyMd: promptBundle.generatorIntimacyMd,
+    },
+    plan
+  );
+
   const generatorResult = await runGenerator({
     characterVersion,
     currentPhase: activePhase,
@@ -197,7 +201,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
     recentDialogue,
     userMessage: message,
     plan,
-    promptOverride: promptBundle.generatorMd,
+    promptOverride: generatorPrompt,
   });
 
   // ==========================================
