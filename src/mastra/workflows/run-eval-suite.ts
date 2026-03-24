@@ -16,6 +16,7 @@ import type {
   EvalCaseResult,
   CharacterVersion,
   PhaseNode,
+  PhaseGraph,
 } from '@/lib/schemas';
 
 export type RunEvalSuiteInput = {
@@ -144,7 +145,7 @@ export async function runEvalSuite(input: RunEvalSuiteInput): Promise<RunEvalSui
 type RunSingleCaseInput = {
   scenario: ScenarioCase;
   characterVersion: CharacterVersion;
-  phaseGraph: { nodes: PhaseNode[]; edges: unknown[]; entryPhaseId: string };
+  phaseGraph: PhaseGraph;
   evalRunId: string;
 };
 
@@ -155,12 +156,20 @@ async function runSingleCase(input: RunSingleCaseInput): Promise<EvalCaseResult 
   const sandboxUserId = `eval-${uuid()}`;
   const sandboxThreadId = `eval-thread-${uuid()}`;
 
+  const promptBundle = await promptBundleRepo.getById(characterVersion.promptBundleVersionId);
+  if (!promptBundle) {
+    throw new Error(`Prompt bundle ${characterVersion.promptBundleVersionId} not found`);
+  }
+
   // Run the chat turn
   const chatResult = await runChatTurn({
     userId: sandboxUserId,
     characterId: characterVersion.characterId,
     threadId: sandboxThreadId,
     message: scenario.input.userMessage,
+    characterVersionOverride: characterVersion,
+    phaseGraphOverride: phaseGraph,
+    promptBundleOverride: promptBundle,
   });
 
   // Get the trace for scoring
@@ -205,8 +214,18 @@ async function runSingleCase(input: RunSingleCaseInput): Promise<EvalCaseResult 
   scores.emotional_coherence = emotionResult.score;
   issues.push(...emotionResult.issues);
 
-  // memory_grounding (simplified - would need actual memory)
-  scores.memory_grounding = 0.8; // Placeholder
+  const { memoryRepo } = await import('@/lib/repositories');
+  const retrievedFacts = await memoryRepo.getFactsByPair(trace.pairId, { status: 'active' });
+  const retrievedEvents = await memoryRepo.getEventsByPair(trace.pairId, 20);
+  const openThreads = await memoryRepo.getOpenThreads(trace.pairId);
+  const memoryResult = await scoreMemoryGrounding({
+    trace,
+    retrievedEvents,
+    retrievedFacts,
+    openThreads,
+  });
+  scores.memory_grounding = memoryResult.score;
+  issues.push(...memoryResult.issues);
 
   // refusal_naturalness
   const refusalResult = await scoreRefusalNaturalness({ trace, characterVersion });
@@ -217,11 +236,11 @@ async function runSingleCase(input: RunSingleCaseInput): Promise<EvalCaseResult 
 
   // contradiction_penalty
   const contradictionResult = await scoreContradictionPenalty({
-    trace,
-    activeFacts: [],
-    openThreads: [],
-    recentDialogue: [{ role: 'user', content: scenario.input.userMessage }],
-  });
+      trace,
+      activeFacts: retrievedFacts,
+      openThreads,
+      recentDialogue: [{ role: 'user', content: scenario.input.userMessage }],
+    });
   scores.contradiction_penalty = contradictionResult.score;
   issues.push(...contradictionResult.issues);
 

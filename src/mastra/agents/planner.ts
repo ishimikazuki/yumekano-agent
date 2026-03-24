@@ -1,5 +1,6 @@
 import { generateObject } from 'ai';
 import { getProviderRegistry } from '../providers/registry';
+import { assemblePrompt, formatDesignerFragment, hashPrompt } from '../prompts/assemble';
 import {
   TurnPlan,
   TurnPlanSchema,
@@ -10,6 +11,7 @@ import {
   PhaseNode,
   MemoryEvent,
   MemoryFact,
+  MemoryObservation,
   OpenThread,
 } from '@/lib/schemas';
 
@@ -22,6 +24,7 @@ export type PlannerInput = {
   retrievedMemory: {
     events: MemoryEvent[];
     facts: MemoryFact[];
+    observations: MemoryObservation[];
     threads: OpenThread[];
   };
   recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>;
@@ -32,6 +35,7 @@ export type PlannerInput = {
 export type PlannerOutput = {
   plan: TurnPlan;
   modelId: string;
+  systemPromptHash: string;
 };
 
 function formatBulletList(items: string[]): string {
@@ -95,33 +99,31 @@ export async function runPlanner(input: PlannerInput): Promise<PlannerOutput> {
   return {
     plan: result.object,
     modelId: `${modelInfo.provider}/${modelInfo.modelId}`,
+    systemPromptHash: hashPrompt(systemPrompt),
   };
 }
 
 export function buildPlannerSystemPrompt(input: PlannerInput): string {
   const { characterVersion, currentPhase, promptOverride } = input;
 
-  const outputLanguageRules = `
-
-## Output Language Rules
+  const outputLanguageRules = `## Output Contract Reminder
 - Return all free-text string fields in concise natural Japanese.
 - Write \`emotionDeltaIntent.reason\`, \`plannerReasoning\`, \`phaseTransitionProposal.reason\`, and \`memoryFocus.reason\` in Japanese.
 - Write each item in \`mustAvoid\` as a short Japanese phrase.
 - Keep enum fields exactly as required by the schema.`;
 
-  const promptPrelude = promptOverride?.trim()
-    ? `${promptOverride.trim()}\n\n`
-    : '';
-
-  return `${promptPrelude}# Planner System Prompt
-
-You are the planner for a stateful character conversation agent.
-Your job is to decide what this character would **actually do next**.
-
-${buildPlannerPersonaBlock(characterVersion)}
-
-### Current Phase: ${currentPhase.label}
+  return assemblePrompt([
+    '# Planner System Prompt',
+    'You are the planner for a stateful character conversation agent.\nYour job is to decide what this character would **actually do next**.',
+    buildPlannerPersonaBlock(characterVersion),
+    `### Current Phase: ${currentPhase.label}
 ${currentPhase.description}
+
+#### Acceptance Profile
+- Warmth Floor: ${currentPhase.acceptanceProfile.warmthFloor ?? 'None'}
+- Trust Floor: ${currentPhase.acceptanceProfile.trustFloor ?? 'None'}
+- Intimacy Floor: ${currentPhase.acceptanceProfile.intimacyFloor ?? 'None'}
+- Conflict Ceiling: ${currentPhase.acceptanceProfile.conflictCeiling ?? 'None'}
 
 #### Allowed Acts
 ${currentPhase.allowedActs.map((a) => `- ${a}`).join('\n')}
@@ -129,24 +131,25 @@ ${currentPhase.allowedActs.map((a) => `- ${a}`).join('\n')}
 #### Disallowed Acts
 ${currentPhase.disallowedActs.map((a) => `- ${a}`).join('\n')}
 
-#### Intimacy Eligibility: ${currentPhase.adultIntimacyEligibility ?? 'never'}
-
-## Autonomy Settings
+#### Intimacy Eligibility: ${currentPhase.adultIntimacyEligibility ?? 'never'}`,
+    `## Autonomy Settings
 - Disagree Readiness: ${characterVersion.autonomy.disagreeReadiness}
 - Refusal Readiness: ${characterVersion.autonomy.refusalReadiness}
 - Delay Readiness: ${characterVersion.autonomy.delayReadiness}
 - Repair Readiness: ${characterVersion.autonomy.repairReadiness}
 - Conflict Carryover: ${characterVersion.autonomy.conflictCarryover}
-- Intimacy Never On Demand: ${characterVersion.autonomy.intimacyNeverOnDemand}
-
-## Rules
+- Intimacy Never On Demand: ${characterVersion.autonomy.intimacyNeverOnDemand}`,
+    formatDesignerFragment(promptOverride),
+    `## Rules
 1. Think in **third person**, not as a people-pleasing assistant.
 2. Prioritize character truth over user satisfaction.
 3. Respect the active phase and authored character config.
 4. If intimacy is requested, choose based on state, context, and authored personality.
 5. Keep girlfriend-mode autonomous.
 6. Use memory only when it should genuinely affect behavior.
-7. Avoid generic affirmation.${outputLanguageRules}`;
+7. Avoid generic affirmation.`,
+    outputLanguageRules,
+  ]);
 }
 
 function buildPlannerUserPrompt(input: PlannerInput): string {
@@ -181,7 +184,14 @@ function buildPlannerUserPrompt(input: PlannerInput): string {
   const eventsText =
     retrievedMemory.events.length > 0
       ? retrievedMemory.events
-          .map((e) => `- [${e.eventType}] ${e.summary}`)
+          .map((e) => `- ${e.id}: [${e.eventType}] ${e.summary}`)
+          .join('\n')
+      : 'None';
+
+  const observationsText =
+    retrievedMemory.observations.length > 0
+      ? retrievedMemory.observations
+          .map((o) => `- ${o.id}: ${o.summary}`)
           .join('\n')
       : 'None';
 
@@ -212,6 +222,9 @@ ${factsText}
 
 ## Recent Events
 ${eventsText}
+
+## Relevant Observations
+${observationsText}
 
 ## Recent Dialogue
 ${recentDialogueText}

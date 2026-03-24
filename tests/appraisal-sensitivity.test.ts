@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { computeAppraisal } from '@/lib/rules/appraisal';
-import { updatePAD } from '@/lib/rules/pad';
+import { createRuntimeEmotionState, updatePAD } from '@/lib/rules/pad';
 import { createSeiraDraftState } from '@/lib/db/seed-seira';
 import {
   createCharacterVersion,
@@ -104,7 +104,7 @@ test('returning a dropped item reads as helpful instead of lowering seira PAD', 
   });
 
   const updated = updatePAD({
-    currentPAD: draft.emotion.baselinePAD,
+    currentEmotion: createRuntimeEmotionState(draft.emotion.baselinePAD),
     appraisal,
     emotionSpec: draft.emotion,
     hasOpenThreads: false,
@@ -112,6 +112,6 @@ test('returning a dropped item reads as helpful instead of lowering seira PAD', 
   });
 
   assert.ok(appraisal.goalCongruence > 0);
-  assert.ok(updated.combined.pleasure >= draft.emotion.baselinePAD.pleasure);
-  assert.ok(updated.combined.dominance >= draft.emotion.baselinePAD.dominance);
+  assert.ok(updated.after.combined.pleasure >= draft.emotion.baselinePAD.pleasure);
+  assert.ok(updated.after.combined.dominance >= draft.emotion.baselinePAD.dominance);
 });

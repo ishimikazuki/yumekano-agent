@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DialogueActSchema } from './plan';
 
 /**
  * Phase mode - where the character is in the relationship arc
@@ -27,8 +28,10 @@ export const PhaseNodeSchema = z.object({
     intimacyFloor: z.number().optional(),
     conflictCeiling: z.number().optional(),
   }).describe('Thresholds for phase behavior'),
-  allowedActs: z.array(z.string()).describe('Dialogue acts allowed in this phase'),
-  disallowedActs: z.array(z.string()).describe('Dialogue acts prohibited in this phase'),
+  allowedActs: z.array(DialogueActSchema).describe('Dialogue acts allowed in this phase'),
+  disallowedActs: z
+    .array(DialogueActSchema)
+    .describe('Dialogue acts prohibited in this phase'),
   adultIntimacyEligibility: IntimacyEligibilitySchema.optional(),
 });
 export type PhaseNode = z.infer<typeof PhaseNodeSchema>;
@@ -94,6 +97,7 @@ export const PhaseEdgeSchema = z.object({
   to: z.string().describe('Target phase ID'),
   conditions: z.array(TransitionConditionSchema),
   allMustPass: z.boolean().describe('Whether all conditions must be met'),
+  priority: z.number().int().optional().describe('Higher priority wins when multiple edges pass'),
   authoredBeat: z.string().optional().describe('Optional narrative beat description'),
 });
 export type PhaseEdge = z.infer<typeof PhaseEdgeSchema>;

@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+export const PromptFragmentSchema = z
+  .string()
+  .default('')
+  .describe('Designer-authored prompt fragment merged into the invariant runtime prompt');
+export type PromptFragment = z.infer<typeof PromptFragmentSchema>;
+
 /**
  * Prompt bundle reference - links to versioned prompts
  */
@@ -20,15 +26,14 @@ export const PromptBundleVersionSchema = z.object({
   id: z.string().uuid(),
   characterId: z.string().uuid(),
   versionNumber: z.number().int().positive(),
-  plannerMd: z.string().describe('Planner system prompt'),
-  generatorMd: z.string().describe('Generator system prompt'),
-  generatorIntimacyMd: z
-    .string()
-    .default('')
-    .describe('Intimacy-specific generator system prompt'),
-  extractorMd: z.string().describe('Memory extractor system prompt'),
-  reflectorMd: z.string().describe('Reflector system prompt'),
-  rankerMd: z.string().describe('Ranker system prompt'),
+  plannerMd: PromptFragmentSchema.describe('Planner designer fragment'),
+  generatorMd: PromptFragmentSchema.describe('Generator designer fragment'),
+  generatorIntimacyMd: PromptFragmentSchema.describe(
+    'Intimacy-specific generator designer fragment'
+  ),
+  extractorMd: PromptFragmentSchema.describe('Memory extractor designer fragment'),
+  reflectorMd: PromptFragmentSchema.describe('Reflector designer fragment'),
+  rankerMd: PromptFragmentSchema.describe('Ranker designer fragment'),
   createdAt: z.coerce.date(),
 });
 export type PromptBundleVersion = z.infer<typeof PromptBundleVersionSchema>;

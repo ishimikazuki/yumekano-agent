@@ -1,6 +1,7 @@
 import { getDb } from '../db/client';
 import { v4 as uuid } from 'uuid';
 import { Pair, PairSchema, PairState, PairStateSchema, PADState, AppraisalVector } from '../schemas';
+import { createRuntimeEmotionState } from '../rules/pad';
 
 /**
  * Default PAD state (neutral baseline).
@@ -123,11 +124,12 @@ export const pairRepo = {
     const db = getDb();
     const now = new Date().toISOString();
     const pad = input.pad ?? defaultPAD;
+    const emotion = createRuntimeEmotionState(pad, new Date(now));
 
     await db.execute({
       sql: `INSERT INTO pair_state
-            (pair_id, active_character_version_id, active_phase_id, affinity, trust, intimacy_readiness, conflict, pad_json, appraisal_json, open_thread_count, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (pair_id, active_character_version_id, active_phase_id, affinity, trust, intimacy_readiness, conflict, pad_json, pad_fast_json, pad_slow_json, pad_combined_json, last_emotion_updated_at, appraisal_json, open_thread_count, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         input.pairId,
         input.activeCharacterVersionId,
@@ -137,6 +139,10 @@ export const pairRepo = {
         0, // default intimacy readiness
         0, // default conflict
         JSON.stringify(pad),
+        JSON.stringify(emotion.fastAffect),
+        JSON.stringify(emotion.slowMood),
+        JSON.stringify(emotion.combined),
+        emotion.lastUpdatedAt.toISOString(),
         JSON.stringify(defaultAppraisal),
         0,
         now,
@@ -151,6 +157,7 @@ export const pairRepo = {
       trust: 50,
       intimacyReadiness: 0,
       conflict: 0,
+      emotion,
       pad,
       appraisal: defaultAppraisal,
       openThreadCount: 0,
@@ -172,6 +179,13 @@ export const pairRepo = {
     if (result.rows.length === 0) return null;
 
     const row = result.rows[0];
+    const combined = JSON.parse(String(row.pad_combined_json ?? row.pad_json));
+    const emotion = {
+      fastAffect: JSON.parse(String(row.pad_fast_json ?? row.pad_json)),
+      slowMood: JSON.parse(String(row.pad_slow_json ?? row.pad_json)),
+      combined,
+      lastUpdatedAt: row.last_emotion_updated_at ?? row.updated_at,
+    };
     return PairStateSchema.parse({
       pairId: row.pair_id,
       activeCharacterVersionId: row.active_character_version_id,
@@ -180,7 +194,8 @@ export const pairRepo = {
       trust: row.trust,
       intimacyReadiness: row.intimacy_readiness,
       conflict: row.conflict,
-      pad: JSON.parse(row.pad_json as string),
+      emotion,
+      pad: combined,
       appraisal: JSON.parse(row.appraisal_json as string),
       openThreadCount: row.open_thread_count,
       lastTransitionAt: row.last_transition_at,
@@ -200,6 +215,7 @@ export const pairRepo = {
       trust: number;
       intimacyReadiness: number;
       conflict: number;
+      emotion: PairState['emotion'];
       pad: PADState;
       appraisal: AppraisalVector;
       openThreadCount: number;
@@ -235,6 +251,18 @@ export const pairRepo = {
     if (updates.conflict !== undefined) {
       sets.push('conflict = ?');
       args.push(updates.conflict);
+    }
+    if (updates.emotion !== undefined) {
+      sets.push('pad_fast_json = ?');
+      args.push(JSON.stringify(updates.emotion.fastAffect));
+      sets.push('pad_slow_json = ?');
+      args.push(JSON.stringify(updates.emotion.slowMood));
+      sets.push('pad_combined_json = ?');
+      args.push(JSON.stringify(updates.emotion.combined));
+      sets.push('last_emotion_updated_at = ?');
+      args.push(updates.emotion.lastUpdatedAt.toISOString());
+      sets.push('pad_json = ?');
+      args.push(JSON.stringify(updates.emotion.combined));
     }
     if (updates.pad !== undefined) {
       sets.push('pad_json = ?');

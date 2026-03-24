@@ -6,11 +6,71 @@ import {
   ChatTurn,
   ChatTurnSchema,
   PADState,
+  RuntimeEmotionState,
   AppraisalVector,
   TurnPlan,
   Candidate,
   MemoryWrite,
+  RelationshipMetrics,
+  RelationshipMetricDelta,
+  PhaseTransitionEvaluation,
+  PromptAssemblyHashes,
+  MemoryThresholdDecision,
+  PADTransitionContribution,
 } from '../schemas';
+
+const DEFAULT_RELATIONSHIP_METRICS: RelationshipMetrics = {
+  affinity: 50,
+  trust: 50,
+  intimacyReadiness: 0,
+  conflict: 0,
+};
+
+const DEFAULT_RELATIONSHIP_DELTAS: RelationshipMetricDelta = {
+  affinity: 0,
+  trust: 0,
+  intimacyReadiness: 0,
+  conflict: 0,
+};
+
+const DEFAULT_PHASE_TRANSITION_EVALUATION: PhaseTransitionEvaluation = {
+  shouldTransition: false,
+  targetPhaseId: null,
+  reason: 'unknown',
+  satisfiedConditions: [],
+  failedConditions: [],
+};
+
+const DEFAULT_PROMPT_HASHES: PromptAssemblyHashes = {
+  planner: '',
+  generator: '',
+  ranker: '',
+  extractor: '',
+};
+
+function parseRuntimeEmotionState(
+  runtimeJson: string | null | undefined,
+  padJson: string
+): RuntimeEmotionState {
+  if (runtimeJson) {
+    return JSON.parse(runtimeJson) as RuntimeEmotionState;
+  }
+
+  const combined = JSON.parse(padJson) as PADState;
+  return {
+    fastAffect: combined,
+    slowMood: combined,
+    combined,
+    lastUpdatedAt: new Date(0),
+  };
+}
+
+function parseJsonWithFallback<T>(
+  raw: string | null | undefined,
+  fallback: T
+): T {
+  return raw ? (JSON.parse(raw) as T) : fallback;
+}
 
 /**
  * Repository for trace and chat turn operations.
@@ -20,6 +80,7 @@ export const traceRepo = {
    * Create a turn trace.
    */
   async createTrace(input: {
+    id?: string;
     pairId: string;
     characterVersionId: string;
     promptBundleVersionId: string;
@@ -33,6 +94,13 @@ export const traceRepo = {
     phaseIdAfter: string;
     emotionBefore: PADState;
     emotionAfter: PADState;
+    emotionStateBefore: RuntimeEmotionState;
+    emotionStateAfter: RuntimeEmotionState;
+    relationshipBefore: RelationshipMetrics;
+    relationshipAfter: RelationshipMetrics;
+    relationshipDeltas: RelationshipMetricDelta;
+    phaseTransitionEvaluation: PhaseTransitionEvaluation;
+    promptAssemblyHashes: PromptAssemblyHashes;
     appraisal: AppraisalVector;
     retrievedMemoryIds: {
       events: string[];
@@ -40,6 +108,8 @@ export const traceRepo = {
       observations: string[];
       threads: string[];
     };
+    memoryThresholdDecisions: MemoryThresholdDecision[];
+    coeContributions: PADTransitionContribution[];
     plan: TurnPlan;
     candidates: Candidate[];
     winnerIndex: number;
@@ -48,16 +118,18 @@ export const traceRepo = {
     assistantMessage: string;
   }): Promise<TurnTrace> {
     const db = getDb();
-    const id = uuid();
+    const id = input.id ?? uuid();
     const now = new Date().toISOString();
 
     await db.execute({
       sql: `INSERT INTO turn_traces
             (id, pair_id, character_version_id, prompt_bundle_version_id, model_ids_json,
-             phase_id_before, phase_id_after, emotion_before_json, emotion_after_json, appraisal_json,
-             retrieved_memory_ids_json, plan_json, candidates_json, winner_index, memory_writes_json,
-             user_message, assistant_message, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             phase_id_before, phase_id_after, emotion_before_json, emotion_after_json,
+             emotion_state_before_json, emotion_state_after_json, relationship_before_json, relationship_after_json,
+             relationship_deltas_json, phase_transition_evaluation_json, prompt_assembly_hashes_json,
+             appraisal_json, retrieved_memory_ids_json, memory_threshold_decisions_json, coe_contributions_json,
+             plan_json, candidates_json, winner_index, memory_writes_json, user_message, assistant_message, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         id,
         input.pairId,
@@ -68,8 +140,17 @@ export const traceRepo = {
         input.phaseIdAfter,
         JSON.stringify(input.emotionBefore),
         JSON.stringify(input.emotionAfter),
+        JSON.stringify(input.emotionStateBefore),
+        JSON.stringify(input.emotionStateAfter),
+        JSON.stringify(input.relationshipBefore),
+        JSON.stringify(input.relationshipAfter),
+        JSON.stringify(input.relationshipDeltas),
+        JSON.stringify(input.phaseTransitionEvaluation),
+        JSON.stringify(input.promptAssemblyHashes),
         JSON.stringify(input.appraisal),
         JSON.stringify(input.retrievedMemoryIds),
+        JSON.stringify(input.memoryThresholdDecisions),
+        JSON.stringify(input.coeContributions),
         JSON.stringify(input.plan),
         JSON.stringify(input.candidates),
         input.winnerIndex,
@@ -90,8 +171,17 @@ export const traceRepo = {
       phaseIdAfter: input.phaseIdAfter,
       emotionBefore: input.emotionBefore,
       emotionAfter: input.emotionAfter,
+      emotionStateBefore: input.emotionStateBefore,
+      emotionStateAfter: input.emotionStateAfter,
+      relationshipBefore: input.relationshipBefore,
+      relationshipAfter: input.relationshipAfter,
+      relationshipDeltas: input.relationshipDeltas,
+      phaseTransitionEvaluation: input.phaseTransitionEvaluation,
+      promptAssemblyHashes: input.promptAssemblyHashes,
       appraisal: input.appraisal,
       retrievedMemoryIds: input.retrievedMemoryIds,
+      memoryThresholdDecisions: input.memoryThresholdDecisions,
+      coeContributions: input.coeContributions,
       plan: input.plan,
       candidates: input.candidates,
       winnerIndex: input.winnerIndex,
@@ -125,8 +215,38 @@ export const traceRepo = {
       phaseIdAfter: row.phase_id_after,
       emotionBefore: JSON.parse(row.emotion_before_json as string),
       emotionAfter: JSON.parse(row.emotion_after_json as string),
+      emotionStateBefore: parseRuntimeEmotionState(
+        row.emotion_state_before_json as string | null | undefined,
+        row.emotion_before_json as string
+      ),
+      emotionStateAfter: parseRuntimeEmotionState(
+        row.emotion_state_after_json as string | null | undefined,
+        row.emotion_after_json as string
+      ),
+      relationshipBefore: parseJsonWithFallback(
+        row.relationship_before_json as string | null | undefined,
+        DEFAULT_RELATIONSHIP_METRICS
+      ),
+      relationshipAfter: parseJsonWithFallback(
+        row.relationship_after_json as string | null | undefined,
+        DEFAULT_RELATIONSHIP_METRICS
+      ),
+      relationshipDeltas: parseJsonWithFallback(
+        row.relationship_deltas_json as string | null | undefined,
+        DEFAULT_RELATIONSHIP_DELTAS
+      ),
+      phaseTransitionEvaluation: parseJsonWithFallback(
+        row.phase_transition_evaluation_json as string | null | undefined,
+        DEFAULT_PHASE_TRANSITION_EVALUATION
+      ),
+      promptAssemblyHashes: parseJsonWithFallback(
+        row.prompt_assembly_hashes_json as string | null | undefined,
+        DEFAULT_PROMPT_HASHES
+      ),
       appraisal: JSON.parse(row.appraisal_json as string),
       retrievedMemoryIds: JSON.parse(row.retrieved_memory_ids_json as string),
+      memoryThresholdDecisions: JSON.parse((row.memory_threshold_decisions_json ?? '[]') as string),
+      coeContributions: JSON.parse((row.coe_contributions_json ?? '[]') as string),
       plan: JSON.parse(row.plan_json as string),
       candidates: JSON.parse(row.candidates_json as string),
       winnerIndex: row.winner_index,
@@ -158,8 +278,38 @@ export const traceRepo = {
         phaseIdAfter: row.phase_id_after,
         emotionBefore: JSON.parse(row.emotion_before_json as string),
         emotionAfter: JSON.parse(row.emotion_after_json as string),
+        emotionStateBefore: parseRuntimeEmotionState(
+          row.emotion_state_before_json as string | null | undefined,
+          row.emotion_before_json as string
+        ),
+        emotionStateAfter: parseRuntimeEmotionState(
+          row.emotion_state_after_json as string | null | undefined,
+          row.emotion_after_json as string
+        ),
+        relationshipBefore: parseJsonWithFallback(
+          row.relationship_before_json as string | null | undefined,
+          DEFAULT_RELATIONSHIP_METRICS
+        ),
+        relationshipAfter: parseJsonWithFallback(
+          row.relationship_after_json as string | null | undefined,
+          DEFAULT_RELATIONSHIP_METRICS
+        ),
+        relationshipDeltas: parseJsonWithFallback(
+          row.relationship_deltas_json as string | null | undefined,
+          DEFAULT_RELATIONSHIP_DELTAS
+        ),
+        phaseTransitionEvaluation: parseJsonWithFallback(
+          row.phase_transition_evaluation_json as string | null | undefined,
+          DEFAULT_PHASE_TRANSITION_EVALUATION
+        ),
+        promptAssemblyHashes: parseJsonWithFallback(
+          row.prompt_assembly_hashes_json as string | null | undefined,
+          DEFAULT_PROMPT_HASHES
+        ),
         appraisal: JSON.parse(row.appraisal_json as string),
         retrievedMemoryIds: JSON.parse(row.retrieved_memory_ids_json as string),
+        memoryThresholdDecisions: JSON.parse((row.memory_threshold_decisions_json ?? '[]') as string),
+        coeContributions: JSON.parse((row.coe_contributions_json ?? '[]') as string),
         plan: JSON.parse(row.plan_json as string),
         candidates: JSON.parse(row.candidates_json as string),
         winnerIndex: row.winner_index,
@@ -175,6 +325,7 @@ export const traceRepo = {
    * Create a chat turn record.
    */
   async createChatTurn(input: {
+    id?: string;
     pairId: string;
     threadId: string;
     userMessageText: string;
@@ -184,7 +335,7 @@ export const traceRepo = {
     traceId: string;
   }): Promise<ChatTurn> {
     const db = getDb();
-    const id = uuid();
+    const id = input.id ?? uuid();
     const now = new Date().toISOString();
 
     await db.execute({

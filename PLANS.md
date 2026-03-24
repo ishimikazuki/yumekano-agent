@@ -26,9 +26,20 @@
 - [x] 親密時専用 Generator prompt variant の追加（runtime + dashboard）
 - [x] persona authoring 簡素化 + publish-time compiledPersona 対応
 - [x] appraisal sensitivity の中立点補正 + 落とし物返却シグナル追加
+- [x] planner / generator / ranker prompt 契約を schema-first で再整合
+- [x] prompt bundle を全文置換ではなく runtime context + designer fragment 合成に修正
+- [x] pair / sandbox / trace に fast/slow/combined PAD レイヤーと prompt hash を追加
+- [x] memory writeback に sourceTurnId / threshold 判定 / fact supersession を接続
+- [x] prompt contract drift を検知するテスト追加
+- [x] production / draft / eval が共有する `executeTurn()` ベースの turn engine を導入
+- [x] ranker を deterministic guard → scorer → LLM judge → deterministic fallback に再配線
+- [x] sandbox memory events / facts / observations / open threads / usage を永続化
+- [x] draft chat でも retrieval / writeback / consolidation trigger を production parity に接続
+- [x] eval suite が指定 character version / prompt bundle を shared engine に流すよう修正
+- [x] model matrix を logic 修正後に回せる workflow を追加
 
 ### 残作業
-- [ ] ワークスペース会話テストの履歴復元を仕上げて検証する
+- [ ] ワークスペース会話テストの送信前 autosave UX を仕上げて必要ならデプロイする
 - [ ] anchors/innerWorldをAPIレスポンスに含める
 - [ ] E2Eテスト作成
 - [ ] 本番デプロイ設定
@@ -58,6 +69,11 @@
 - 2026-03-23: planner / generator は prompt bundle の文字列を丸ごと system prompt として返しており、動的に組み立てた persona ブロックが消えていた。compiledPersona を効かせるには prompt bundle を「前置き」として結合する必要があった。
 - 2026-03-23: Vercel preview deploy は preview 環境変数が未設定で、ローカル `.env` の `localhost` PostgreSQL を拾って API が失敗した。production env では既存 `DATABASE_URL` が有効で、characters/workspace/draft-chat の確認は production で通った。
 - 2026-03-23: ワークスペースの会話テスト履歴は `playground_turns` に保存済みだが、画面側が React state の `messages` / `sessionId` しか見ておらず、リロード時に復元されていなかった。
+- 2026-03-24: `pair_state` / `sandbox_pair_state` は combined PAD のみ保存しており、slow mood の carry-over が永続化されていなかった。trace も assembled prompt hash や relationship delta を持たず、contract drift の再検証が難しかった。
+- 2026-03-24: `run_eval_suite` は shared engine を使わず current release の `runChatTurn()` を叩いていたため、指定 character version の評価にならない経路があった。
+- 2026-03-24: draft sandbox は pair state だけ持続し、memory layer と consolidation が未接続だったため、本番との差分が大きかった。
+- 2026-03-24: libSQL migration では `DEFAULT now()` が新規 sandbox memory table 追加時に失敗し、SQLite 互換の `datetime('now')` に寄せる必要があった。
+- 2026-03-24: ワークスペース編集UIはローカル state に draft 全体を保持しているが、保存 API は section 単位だけだったため、会話送信前に「最新の全編集内容」を確実に反映させる入口がなかった。
 
 ## 決定したこと
 - 2026-03-23: `conversationHigh` は `grok-4.20-reasoning`、`analysisMedium` は `grok-4-1-fast-reasoning` に切り替える。理由: ユーザー向け返信生成は最高品質を優先しつつ、planner / ranker / extractor / eval scorer 群は高速 reasoning で総レイテンシとコストのバランスを取るため。
@@ -81,6 +97,12 @@
 - 2026-03-23: persona の編集面は `summary` / `innerWorldNoteMd` / `vulnerabilities` / `authoredExamples` を中心に簡素化し、旧 `innerWorld` / `surfaceLoop` / `anchors` / `topicPacks` / `reactionPacks` は `legacyAuthoring` に退避して読み取り互換を維持する。理由: 非エンジニア向け編集体験を軽くしつつ、既存 draft/version を壊さず publish-time に低トークンな runtime persona を作るため。
 - 2026-03-23: デプロイ確認は production alias `yumekano-codex-spec-v2.vercel.app` で行い、workspace の保存・draft-chat までを確認する。理由: preview では Vercel の preview env 未設定により DB 接続検証が成立しなかったため。
 - 2026-03-23: 会話テスト履歴の継続は `workspace_editor_context.playgroundSessionId` を保存し、`playground_turns` から復元する。理由: 既存の永続化基盤を再利用して、リロードでは消えず、リセット時だけ明示的に切り替わる挙動にするため。
+- 2026-03-24: prompt bundle の各フィールドは runtime system prompt を置換せず、designer fragment として invariant context に合成する。理由: character / phase / autonomy / style / memory 文脈を prompt 編集で消せないようにするため。
+- 2026-03-24: runtime emotion は fastAffect / slowMood / combined / lastUpdatedAt を永続化し、turn trace に relationship delta・phase evaluation・prompt hash・memory threshold 判定を残す。理由: CoE と PAD の説明責務を実際の状態遷移に近づけ、designer が turn を再構築できるようにするため。
+- 2026-03-24: turn path の本体は `executeTurn()` に集約し、prod/draft/eval は context load と persistence adapter だけを持つ。理由: phase/memory/ranker/trace の配線差分を環境ごとに増やさないため。
+- 2026-03-24: sandbox でも events / facts / observations / open threads / memory usage を独立テーブルに保存し、retrieval / writeback / consolidation を共通 helper 経由で動かす。理由: playground を production parity の検証環境に戻すため。
+- 2026-03-24: ranker は scorer 群を runtime に実配線し、acceptanceProfile・`isActAllowed()`・memory ref 妥当性・open thread を deterministic guard に取り込む。理由: LLM judge を最終裁定へ下げ、同一入力での再現性を高めるため。
+- 2026-03-24: ワークスペース会話テストは送信前に draft 全体を自動保存してから `draft-chat` を呼ぶ。理由: タブまたぎの未保存編集も含めて、会話テストを常に最新 draft で実行できるようにするため。
 
 ## 既知の問題
 - xAI APIの応答に10-30秒かかることがある

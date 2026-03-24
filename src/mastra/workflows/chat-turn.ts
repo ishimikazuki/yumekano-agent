@@ -1,30 +1,22 @@
 import {
   characterRepo,
   pairRepo,
-  memoryRepo,
   traceRepo,
   releaseRepo,
   phaseGraphRepo,
   promptBundleRepo,
 } from '@/lib/repositories';
-import { createPhaseEngine, PhaseEngineContext } from '@/lib/rules/phase-engine';
-import { computeAppraisal } from '@/lib/rules/appraisal';
-import { updatePAD } from '@/lib/rules/pad';
-import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
-import {
-  buildPhaseEngineRuntimeContext,
-  resolvePhaseTransition,
-  updateRelationshipMetrics,
-} from '@/lib/rules/phase-runtime';
-import { retrieveMemory, getOrCreateWorkingMemory } from '../memory/retrieval';
-import { runPlanner } from '../agents/planner';
-import { runGenerator, selectGeneratorPrompt } from '../agents/generator';
-import { runRanker } from '../agents/ranker';
-import { runMemoryExtractor } from '../agents/memory-extractor';
+import { createPhaseEngine } from '@/lib/rules/phase-engine';
+import { getOrCreateWorkingMemory } from '../memory/retrieval';
+import { createProductionMemoryStore } from '../memory/store';
+import { executeTurn } from './execute-turn';
+import { runConsolidateMemory, shouldTriggerConsolidation } from './consolidate-memory';
 import type {
+  CharacterVersion,
+  PhaseGraph,
+  PhaseGraphVersion,
+  PromptBundleVersion,
   PADState,
-  WorkingMemory,
-  MemoryWrite,
 } from '@/lib/schemas';
 
 export type ChatTurnInput = {
@@ -33,6 +25,9 @@ export type ChatTurnInput = {
   threadId?: string;
   message: string;
   releaseChannel?: 'prod';
+  characterVersionOverride?: CharacterVersion;
+  phaseGraphOverride?: PhaseGraph;
+  promptBundleOverride?: PromptBundleVersion;
 };
 
 export type ChatTurnOutput = {
@@ -40,345 +35,153 @@ export type ChatTurnOutput = {
   traceId: string;
   phaseId: string;
   emotion: PADState;
-  coe: CoEExplanation;
+  coe: Awaited<ReturnType<typeof executeTurn>>['coe'];
 };
 
-/**
- * Main chat turn workflow.
- *
- * Steps:
- * 1. Load context
- * 2. Retrieve memory
- * 3. Compute appraisal
- * 4. Update emotion (PAD)
- * 5. Plan turn
- * 6. Evaluate phase transition
- * 7. Generate candidates
- * 8. Rank candidates
- * 9. Persist turn
- * 10. Schedule consolidation if needed
- */
 export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput> {
-  const { userId, characterId, message, releaseChannel = 'prod' } = input;
-
-  // ==========================================
-  // Step 1: Load context
-  // ==========================================
-  const context = await loadContext(userId, characterId, releaseChannel);
-  const {
-    characterVersion,
-    phaseGraph,
-    promptBundle,
-    pair,
-    pairState,
-    recentTurns,
-    currentPhase,
-  } = context;
-
-  const phaseEngine = createPhaseEngine(phaseGraph.graph);
-  const threadId = input.threadId ?? pair.canonicalThreadId;
-
-  // Get working memory
-  const workingMemory = await getOrCreateWorkingMemory(pair.id);
-
-  // Build recent dialogue from turns
-  const recentDialogue = recentTurns.flatMap((t) => [
-    { role: 'user' as const, content: t.userMessageText },
-    { role: 'assistant' as const, content: t.assistantMessageText },
+  const context = await loadContext(input);
+  const memoryStore = createProductionMemoryStore();
+  const workingMemory = await getOrCreateWorkingMemory(context.pair.id, memoryStore);
+  const recentDialogue = context.recentTurns.flatMap((turn) => [
+    { role: 'user' as const, content: turn.userMessageText },
+    { role: 'assistant' as const, content: turn.assistantMessageText },
   ]);
 
-  // ==========================================
-  // Step 2: Retrieve memory
-  // ==========================================
-  const retrievalResult = await retrieveMemory({
-    pairId: pair.id,
-    userMessage: message,
-    memoryPolicy: characterVersion.memory,
-    recentDialogue,
-  });
-
-  // ==========================================
-  // Step 3: Compute appraisal
-  // ==========================================
-  const appraisal = computeAppraisal({
-    userMessage: message,
-    characterVersion,
-    pairState,
-    workingMemory,
-    openThreads: retrievalResult.threads,
-    recentDialogue,
-  });
-
-  // ==========================================
-  // Step 4: Update emotion (PAD)
-  // ==========================================
-  const emotionBefore = pairState.pad;
-  const padUpdate = updatePAD({
-    currentPAD: pairState.pad,
-    appraisal,
-    emotionSpec: characterVersion.emotion,
-    hasOpenThreads: retrievalResult.threads.length > 0,
-    turnsSinceLastUpdate: 1, // Simplified for now
-  });
-  const emotionAfter = padUpdate.combined;
-  const relationshipAfter = updateRelationshipMetrics({
-    current: pairState,
-    appraisal,
-    emotionBefore,
-    emotionAfter,
-  });
-  const pairStateAfterUpdate = {
-    ...pairState,
-    ...relationshipAfter,
-    pad: emotionAfter,
-    appraisal,
-  };
-
-  // ==========================================
-  // Step 5: Plan turn
-  // ==========================================
-  const plannerResult = await runPlanner({
-    characterVersion,
-    currentPhase,
-    pairState: pairStateAfterUpdate,
-    emotion: emotionAfter,
-    workingMemory,
-    retrievedMemory: {
-      events: retrievalResult.events,
-      facts: retrievalResult.facts,
-      threads: retrievalResult.threads,
-    },
-    recentDialogue,
-    userMessage: message,
-    promptOverride: promptBundle.plannerMd,
-  });
-  const plan = plannerResult.plan;
-  const coe = buildCoEExplanation({
-    emotionBefore,
-    emotionAfter,
-    appraisal,
-    intentReason: plan.emotionDeltaIntent.reason,
-    intentDelta: {
-      pleasure: plan.emotionDeltaIntent.pleasureDelta,
-      arousal: plan.emotionDeltaIntent.arousalDelta,
-      dominance: plan.emotionDeltaIntent.dominanceDelta,
-    },
-    stance: plan.stance,
-    primaryActs: plan.primaryActs,
-  });
-
-  // ==========================================
-  // Step 6: Evaluate phase transition
-  // ==========================================
-  const phaseIdBefore = pairState.activePhaseId;
-  const turnsSinceLastTransition = await traceRepo.countTurnsSince(
-    pair.id,
-    pairState.lastTransitionAt
-  );
-  const phaseEntryReference = pairState.lastTransitionAt ?? pair.createdAt;
+  const phaseEntryReference = context.pairState.lastTransitionAt ?? context.pair.createdAt;
   const daysSinceEntry = Math.max(
     0,
     Math.floor((Date.now() - phaseEntryReference.getTime()) / (24 * 60 * 60 * 1000))
   );
-  const phaseContext: PhaseEngineContext = buildPhaseEngineRuntimeContext({
-    edges: phaseEngine.getEdgesFrom(phaseIdBefore),
-    pairState: pairStateAfterUpdate,
-    pad: emotionAfter,
-    openThreads: retrievalResult.threads,
+  const turnsSinceLastTransition = await traceRepo.countTurnsSince(
+    context.pair.id,
+    context.pairState.lastTransitionAt
+  );
+  const turnsSinceLastEmotionUpdate =
+    Math.max(0, await traceRepo.countTurnsSince(context.pair.id, context.pairState.emotion.lastUpdatedAt)) + 1;
+
+  const result = await executeTurn({
+    scopeId: context.pair.id,
+    tracePairId: context.pair.id,
+    traceCharacterVersionId: context.characterVersion.id,
+    tracePromptBundleVersionId: context.promptBundle.id,
+    threadId: input.threadId ?? context.pair.canonicalThreadId,
+    userMessage: input.message,
+    characterVersion: context.characterVersion,
+    phaseGraph: context.phaseGraph.graph,
+    promptBundle: context.promptBundle,
+    pairState: context.pairState,
+    currentPhase: context.currentPhase,
+    workingMemory,
     recentDialogue,
-    currentUserMessage: message,
     turnsSinceLastTransition,
     daysSinceEntry,
-  });
-  const transitionResult = phaseEngine.evaluateTransition(phaseIdBefore, phaseContext);
-  const phaseIdAfter =
-    resolvePhaseTransition(
-      transitionResult,
-      plan.phaseTransitionProposal.shouldTransition
-        ? plan.phaseTransitionProposal.targetPhaseId
-        : null
-    ) ?? phaseIdBefore;
-
-  const activePhase = phaseEngine.getPhase(phaseIdAfter) ?? currentPhase;
-  const pairStateForGeneration = {
-    ...pairStateAfterUpdate,
-    activePhaseId: phaseIdAfter,
-  };
-
-  // ==========================================
-  // Step 7: Generate candidates
-  // ==========================================
-  const generatorPrompt = selectGeneratorPrompt(
-    {
-      generatorMd: promptBundle.generatorMd,
-      generatorIntimacyMd: promptBundle.generatorIntimacyMd,
+    turnsSinceLastEmotionUpdate,
+    memoryStore,
+    persistence: {
+      createTurnRecord: async ({
+        turnId,
+        traceId,
+        threadId,
+        userMessageText,
+        assistantMessageText,
+        plan,
+        rankerSummary,
+      }) => {
+        await traceRepo.createChatTurn({
+          id: turnId,
+          pairId: context.pair.id,
+          threadId,
+          userMessageText,
+          assistantMessageText,
+          plannerJson: plan,
+          rankerJson: rankerSummary,
+          traceId,
+        });
+      },
+      persistTrace: async (trace) => {
+        await traceRepo.createTrace(trace);
+      },
+      updatePairState: async (nextState) => {
+        await pairRepo.updateState(context.pair.id, {
+          activeCharacterVersionId: nextState.activeCharacterVersionId,
+          activePhaseId: nextState.activePhaseId,
+          affinity: nextState.affinity,
+          trust: nextState.trust,
+          intimacyReadiness: nextState.intimacyReadiness,
+          conflict: nextState.conflict,
+          emotion: nextState.emotion,
+          pad: nextState.pad,
+          appraisal: nextState.appraisal,
+          openThreadCount: nextState.openThreadCount,
+          lastTransitionAt: nextState.lastTransitionAt,
+        });
+      },
+      maybeConsolidate: async ({ pairState, characterVersion }) => {
+        if (
+          await shouldTriggerConsolidation({
+            scopeId: context.pair.id,
+            memoryStore,
+          })
+        ) {
+          await runConsolidateMemory({
+            scopeId: context.pair.id,
+            mode: 'light',
+            memoryStore,
+            pairState,
+            characterVersion,
+          });
+        }
+      },
     },
-    plan
-  );
-
-  const generatorResult = await runGenerator({
-    characterVersion,
-    currentPhase: activePhase,
-    pairState: pairStateForGeneration,
-    emotion: emotionAfter,
-    workingMemory,
-    retrievedMemory: {
-      events: retrievalResult.events,
-      facts: retrievalResult.facts,
-      threads: retrievalResult.threads,
-    },
-    recentDialogue,
-    userMessage: message,
-    plan,
-    promptOverride: generatorPrompt,
   });
-
-  // ==========================================
-  // Step 8: Rank candidates
-  // ==========================================
-  const rankerResult = await runRanker({
-    characterVersion,
-    currentPhase: activePhase,
-    pairState: pairStateForGeneration,
-    emotion: emotionAfter,
-    workingMemory,
-    openThreads: retrievalResult.threads,
-    userMessage: message,
-    plan,
-    candidates: generatorResult.candidates,
-    promptOverride: promptBundle.rankerMd,
-  });
-
-  const winningCandidate = rankerResult.candidates[rankerResult.winnerIndex];
-  const assistantMessage = winningCandidate.text;
-
-  // ==========================================
-  // Step 9: Persist turn
-  // ==========================================
-
-  // Extract memory from this turn
-  const extractorResult = await runMemoryExtractor({
-    characterVersion,
-    pairStateBefore: pairState,
-    workingMemoryBefore: workingMemory,
-    userMessage: message,
-    assistantMessage,
-    plan,
-    recentDialogue,
-    promptOverride: promptBundle.extractorMd,
-  });
-
-  // Process memory writes
-  const memoryWrites = await processMemoryWrites(
-    pair.id,
-    null, // Will be set after chat turn is created
-    extractorResult.extraction,
-    workingMemory
-  );
-
-  // Create trace
-  const trace = await traceRepo.createTrace({
-    pairId: pair.id,
-    characterVersionId: characterVersion.id,
-    promptBundleVersionId: promptBundle.id,
-    modelIds: {
-      planner: plannerResult.modelId,
-      generator: generatorResult.modelId,
-      ranker: rankerResult.modelId,
-      extractor: null, // Memory extractor model ID
-    },
-    phaseIdBefore,
-    phaseIdAfter,
-    emotionBefore,
-    emotionAfter,
-    appraisal,
-    retrievedMemoryIds: {
-      events: retrievalResult.events.map((e) => e.id),
-      facts: retrievalResult.facts.map((f) => f.id),
-      observations: retrievalResult.observations.map((o) => o.id),
-      threads: retrievalResult.threads.map((t) => t.id),
-    },
-    plan,
-    candidates: rankerResult.candidates,
-    winnerIndex: rankerResult.winnerIndex,
-    memoryWrites,
-    userMessage: message,
-    assistantMessage,
-  });
-
-  // Create chat turn record
-  await traceRepo.createChatTurn({
-    pairId: pair.id,
-    threadId,
-    userMessageText: message,
-    assistantMessageText: assistantMessage,
-    plannerJson: plan,
-    rankerJson: {
-      winnerIndex: rankerResult.winnerIndex,
-      globalNotes: rankerResult.globalNotes,
-    },
-    traceId: trace.id,
-  });
-
-  // Update pair state
-  await pairRepo.updateState(pair.id, {
-    activePhaseId: phaseIdAfter,
-    affinity: pairStateForGeneration.affinity,
-    trust: pairStateForGeneration.trust,
-    intimacyReadiness: pairStateForGeneration.intimacyReadiness,
-    conflict: pairStateForGeneration.conflict,
-    pad: emotionAfter,
-    appraisal,
-    openThreadCount: retrievalResult.threads.length,
-    lastTransitionAt: phaseIdBefore !== phaseIdAfter ? new Date() : pairState.lastTransitionAt,
-  });
-
-  // ==========================================
-  // Step 10: Schedule consolidation if needed
-  // ==========================================
-  // TODO: Implement consolidation scheduling based on thresholds
 
   return {
-    text: assistantMessage,
-    traceId: trace.id,
-    phaseId: phaseIdAfter,
-    emotion: emotionAfter,
-    coe,
+    text: result.text,
+    traceId: result.traceId,
+    phaseId: result.phaseId,
+    emotion: result.emotion,
+    coe: result.coe,
   };
 }
 
-/**
- * Load all context needed for a chat turn.
- */
-async function loadContext(userId: string, characterId: string, channel: 'prod') {
-  // Get or create pair
+async function loadContext(input: ChatTurnInput) {
+  const { userId, characterId, releaseChannel = 'prod' } = input;
   const pair = await pairRepo.getOrCreate({ userId, characterId });
 
-  // Get current release
-  const release = await releaseRepo.getCurrent(characterId, channel);
-  if (!release) {
-    throw new Error(`No published release for character ${characterId}`);
-  }
+  const characterVersion =
+    input.characterVersionOverride ??
+    (await (async () => {
+      const release = await releaseRepo.getCurrent(characterId, releaseChannel);
+      if (!release) {
+        throw new Error(`No published release for character ${characterId}`);
+      }
+      const version = await characterRepo.getVersionById(release.characterVersionId);
+      if (!version) {
+        throw new Error(`Character version ${release.characterVersionId} not found`);
+      }
+      return version;
+    })());
 
-  // Get character version
-  const characterVersion = await characterRepo.getVersionById(release.characterVersionId);
-  if (!characterVersion) {
-    throw new Error(`Character version ${release.characterVersionId} not found`);
-  }
-
-  // Get phase graph
-  const phaseGraph = await phaseGraphRepo.getById(characterVersion.phaseGraphVersionId);
+  const phaseGraph: PhaseGraphVersion | null = input.phaseGraphOverride
+    ? {
+        id: characterVersion.phaseGraphVersionId,
+        characterId: characterVersion.characterId,
+        versionNumber: characterVersion.versionNumber,
+        graph: input.phaseGraphOverride,
+        createdAt: characterVersion.createdAt,
+      }
+    : await phaseGraphRepo.getById(characterVersion.phaseGraphVersionId);
   if (!phaseGraph) {
     throw new Error(`Phase graph ${characterVersion.phaseGraphVersionId} not found`);
   }
 
-  // Get prompt bundle
-  const promptBundle = await promptBundleRepo.getById(characterVersion.promptBundleVersionId);
+  const promptBundle =
+    input.promptBundleOverride ??
+    (await promptBundleRepo.getById(characterVersion.promptBundleVersionId));
   if (!promptBundle) {
     throw new Error(`Prompt bundle ${characterVersion.promptBundleVersionId} not found`);
   }
 
-  // Get or init pair state
   let pairState = await pairRepo.getState(pair.id);
   if (!pairState) {
     pairState = await pairRepo.initState({
@@ -389,134 +192,17 @@ async function loadContext(userId: string, characterId: string, channel: 'prod')
     });
   }
 
-  // Get recent turns
   const recentTurns = await traceRepo.getRecentTurns(pair.id, 10);
-
-  // Get current phase
   const phaseEngine = createPhaseEngine(phaseGraph.graph);
   const currentPhase = phaseEngine.getPhase(pairState.activePhaseId) ?? phaseEngine.getEntryPhase();
 
   return {
+    pair,
+    pairState,
     characterVersion,
     phaseGraph,
     promptBundle,
-    pair,
-    pairState,
     recentTurns,
     currentPhase,
   };
-}
-
-/**
- * Process memory extraction results into actual writes.
- */
-async function processMemoryWrites(
-  pairId: string,
-  sourceTurnId: string | null,
-  extraction: Awaited<ReturnType<typeof runMemoryExtractor>>['extraction'],
-  currentWorkingMemory: WorkingMemory
-): Promise<MemoryWrite[]> {
-  const writes: MemoryWrite[] = [];
-
-  // Process episodic events
-  for (const event of extraction.episodicEvents) {
-    const created = await memoryRepo.createEvent({
-      pairId,
-      sourceTurnId,
-      eventType: event.eventType,
-      summary: event.summary,
-      salience: event.salience,
-      retrievalKeys: event.retrievalKeys,
-      emotionSignature: event.emotionSignature,
-      participants: event.participants,
-    });
-    writes.push({
-      type: 'event',
-      itemId: created.id,
-      summary: event.summary,
-    });
-  }
-
-  // Process graph facts
-  for (const fact of extraction.graphFacts) {
-    const created = await memoryRepo.createFact({
-      pairId,
-      subject: fact.subject,
-      predicate: fact.predicate,
-      object: fact.object,
-      confidence: fact.confidence,
-    });
-    writes.push({
-      type: 'fact',
-      itemId: created.id,
-      summary: `${fact.subject} ${fact.predicate} ${JSON.stringify(fact.object)}`,
-    });
-  }
-
-  // Process open thread updates
-  for (const threadUpdate of extraction.openThreadUpdates) {
-    if (threadUpdate.action === 'resolve') {
-      await memoryRepo.resolveThread(pairId, threadUpdate.key);
-      writes.push({
-        type: 'thread_resolve',
-        itemId: null,
-        summary: `Resolved: ${threadUpdate.key}`,
-      });
-    } else {
-      const thread = await memoryRepo.createOrUpdateThread({
-        pairId,
-        key: threadUpdate.key,
-        summary: threadUpdate.summary ?? '',
-        severity: threadUpdate.severity ?? 0.5,
-      });
-      writes.push({
-        type: 'thread_open',
-        itemId: thread.id,
-        summary: threadUpdate.summary ?? threadUpdate.key,
-      });
-    }
-  }
-
-  // Process working memory patch
-  const patch = extraction.workingMemoryPatch;
-  const updatedWorkingMemory = { ...currentWorkingMemory };
-
-  if (patch.preferredAddressForm !== undefined) {
-    updatedWorkingMemory.preferredAddressForm = patch.preferredAddressForm;
-  }
-  if (patch.addLikes) {
-    updatedWorkingMemory.knownLikes = [
-      ...new Set([...updatedWorkingMemory.knownLikes, ...patch.addLikes]),
-    ];
-  }
-  if (patch.addDislikes) {
-    updatedWorkingMemory.knownDislikes = [
-      ...new Set([...updatedWorkingMemory.knownDislikes, ...patch.addDislikes]),
-    ];
-  }
-  if (patch.addCorrections) {
-    updatedWorkingMemory.knownCorrections = [
-      ...new Set([...updatedWorkingMemory.knownCorrections, ...patch.addCorrections]),
-    ];
-  }
-  if (patch.activeTensionSummary !== undefined) {
-    updatedWorkingMemory.activeTensionSummary = patch.activeTensionSummary;
-  }
-  if (patch.relationshipStance !== undefined) {
-    updatedWorkingMemory.relationshipStance = patch.relationshipStance;
-  }
-  if (patch.addIntimacyHints) {
-    updatedWorkingMemory.intimacyContextHints = [
-      ...new Set([...updatedWorkingMemory.intimacyContextHints, ...patch.addIntimacyHints]),
-    ];
-  }
-
-  await memoryRepo.setWorkingMemory(pairId, updatedWorkingMemory);
-  writes.push({
-    type: 'working_memory',
-    itemId: null,
-    summary: 'Working memory updated',
-  });
-
-  return writes;
 }

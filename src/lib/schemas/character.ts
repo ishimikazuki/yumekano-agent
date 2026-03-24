@@ -191,6 +191,7 @@ export const EmotionSpecSchema = z.object({
     reciprocity: z.number().min(0).max(1),
     pressureIntrusiveness: z.number().min(0).max(1),
     novelty: z.number().min(0).max(1),
+    selfRelevance: z.number().min(0).max(1),
   }).describe('Sensitivity to appraisal dimensions'),
   externalization: z.object({
     warmthWeight: z.number(),

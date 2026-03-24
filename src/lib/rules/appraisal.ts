@@ -4,6 +4,10 @@ import {
   WorkingMemory,
   OpenThread,
   CharacterVersion,
+  MemoryFact,
+  MemoryEvent,
+  MemoryObservation,
+  PhaseNode,
 } from '../schemas';
 
 /**
@@ -16,6 +20,10 @@ export type AppraisalInput = {
   workingMemory: WorkingMemory;
   openThreads: OpenThread[];
   recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>;
+  currentPhase?: PhaseNode;
+  retrievedFacts?: MemoryFact[];
+  retrievedEvents?: MemoryEvent[];
+  retrievedObservations?: MemoryObservation[];
 };
 
 /**
@@ -31,6 +39,10 @@ export function computeAppraisal(input: AppraisalInput): AppraisalVector {
     pairState,
     workingMemory,
     openThreads,
+    currentPhase,
+    retrievedFacts = [],
+    retrievedEvents = [],
+    retrievedObservations = [],
   } = input;
 
   const message = userMessage.toLowerCase();
@@ -41,6 +53,7 @@ export function computeAppraisal(input: AppraisalInput): AppraisalVector {
     message,
     pairState,
     workingMemory,
+    retrievedFacts,
     sensitivity.goalCongruence
   );
 
@@ -56,6 +69,8 @@ export function computeAppraisal(input: AppraisalInput): AppraisalVector {
   const certainty = computeCertainty(
     message,
     workingMemory,
+    retrievedFacts,
+    retrievedObservations,
     sensitivity.certainty
   );
 
@@ -63,6 +78,7 @@ export function computeAppraisal(input: AppraisalInput): AppraisalVector {
   const normAlignment = computeNormAlignment(
     message,
     pairState,
+    currentPhase,
     sensitivity.normAlignment
   );
 
@@ -84,6 +100,8 @@ export function computeAppraisal(input: AppraisalInput): AppraisalVector {
   const pressureIntrusiveness = computePressureIntrusiveness(
     message,
     pairState,
+    input.recentDialogue,
+    currentPhase,
     sensitivity.pressureIntrusiveness
   );
 
@@ -91,13 +109,15 @@ export function computeAppraisal(input: AppraisalInput): AppraisalVector {
   const novelty = computeNovelty(
     message,
     workingMemory,
+    retrievedEvents,
     sensitivity.novelty
   );
 
   // Self relevance: How much does this matter to the character?
   const selfRelevance = computeSelfRelevance(
     message,
-    characterVersion
+    characterVersion,
+    sensitivity.selfRelevance
   );
 
   return {
@@ -124,6 +144,7 @@ function computeGoalCongruence(
   message: string,
   pairState: PairState,
   workingMemory: WorkingMemory,
+  retrievedFacts: MemoryFact[],
   sensitivity: number
 ): number {
   let score = 0;
@@ -177,6 +198,13 @@ function computeGoalCongruence(
   // Adjust for tension
   if (workingMemory.activeTensionSummary) score -= 0.15;
 
+  // Known likes increase congruence when message aligns with recalled preferences.
+  const matchingPreference = retrievedFacts.some((fact) => {
+    if (fact.predicate !== 'likes') return false;
+    return message.includes(String(fact.object).toLowerCase());
+  });
+  if (matchingPreference) score += 0.1;
+
   return Math.max(-1, Math.min(1, score * sensitivity));
 }
 
@@ -214,6 +242,8 @@ function computeControllability(
 function computeCertainty(
   message: string,
   workingMemory: WorkingMemory,
+  retrievedFacts: MemoryFact[],
+  retrievedObservations: MemoryObservation[],
   sensitivity: number
 ): number {
   let score = 0.5;
@@ -238,6 +268,8 @@ function computeCertainty(
 
   // Corrections in memory suggest past uncertainties
   if (workingMemory.knownCorrections.length > 0) score -= 0.1;
+  if (retrievedFacts.length > 0) score += 0.05;
+  if (retrievedObservations.length > 0) score += 0.03;
 
   return scaleBoundedAppraisal(score, sensitivity);
 }
@@ -245,6 +277,7 @@ function computeCertainty(
 function computeNormAlignment(
   message: string,
   pairState: PairState,
+  currentPhase: PhaseNode | undefined,
   sensitivity: number
 ): number {
   let score = 0;
@@ -268,6 +301,10 @@ function computeNormAlignment(
         score -= 0.5;
       }
     }
+  }
+
+  if (currentPhase?.adultIntimacyEligibility === 'never' && inappropriatePatterns.some((pattern) => pattern.test(message))) {
+    score -= 0.25;
   }
 
   return Math.max(-1, Math.min(1, score * sensitivity));
@@ -324,6 +361,8 @@ function computeReciprocity(
 function computePressureIntrusiveness(
   message: string,
   pairState: PairState,
+  recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>,
+  currentPhase: PhaseNode | undefined,
   sensitivity: number
 ): number {
   let score = 0;
@@ -347,6 +386,19 @@ function computePressureIntrusiveness(
     for (const pattern of intimacyPatterns) {
       if (pattern.test(message)) score += 0.3;
     }
+
+    const repeatedAttempts = recentDialogue
+      .filter((turn) => turn.role === 'user')
+      .slice(-4)
+      .filter((turn) => intimacyPatterns.some((pattern) => pattern.test(turn.content)))
+      .length;
+    score += repeatedAttempts * 0.08;
+  }
+
+  if (currentPhase?.adultIntimacyEligibility === 'never') {
+    if (/したい|触|キス|抱|エッチ|セックス/.test(message)) {
+      score += 0.2;
+    }
   }
 
   return Math.max(0, Math.min(1, score * sensitivity));
@@ -355,6 +407,7 @@ function computePressureIntrusiveness(
 function computeNovelty(
   message: string,
   workingMemory: WorkingMemory,
+  retrievedEvents: MemoryEvent[],
   sensitivity: number
 ): number {
   let score = 0.5;
@@ -370,13 +423,15 @@ function computeNovelty(
   // Question marks suggest new information seeking
   const questionCount = (message.match(/[？?]/g) || []).length;
   score += questionCount * 0.1;
+  if (retrievedEvents.length > 0) score -= 0.05;
 
   return scaleBoundedAppraisal(score, sensitivity);
 }
 
 function computeSelfRelevance(
   message: string,
-  characterVersion: CharacterVersion
+  characterVersion: CharacterVersion,
+  sensitivity: number
 ): number {
   let score = 0.5;
 
@@ -391,5 +446,5 @@ function computeSelfRelevance(
   // Emotional content increases relevance
   if (/好き|嫌|愛|心配|寂しい/.test(message)) score += 0.2;
 
-  return Math.max(0, Math.min(1, score));
+  return scaleBoundedAppraisal(score, sensitivity);
 }

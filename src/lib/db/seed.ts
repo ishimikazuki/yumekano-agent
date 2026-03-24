@@ -99,6 +99,7 @@ const misakiEmotion: EmotionSpec = {
     reciprocity: 0.8,
     pressureIntrusiveness: 0.7,
     novelty: 0.5,
+    selfRelevance: 0.6,
   },
   externalization: {
     warmthWeight: 0.8,

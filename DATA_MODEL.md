@@ -40,11 +40,12 @@ Immutable prompt bundle.
 - `id`
 - `character_id`
 - `version_number`
-- `planner_md`
-- `generator_md`
-- `extractor_md`
-- `reflector_md`
-- `ranker_md`
+- `planner_md` (designer fragment)
+- `generator_md` (designer fragment)
+- `generator_intimacy_md` (designer fragment)
+- `extractor_md` (designer fragment)
+- `reflector_md` (designer fragment)
+- `ranker_md` (designer fragment)
 - `created_at`
 
 ### `releases`
@@ -78,7 +79,11 @@ Current mutable pair state.
 - `trust`
 - `intimacy_readiness`
 - `conflict`
-- `pad_json`
+- `pad_json` (combined convenience copy)
+- `pad_fast_json`
+- `pad_slow_json`
+- `pad_combined_json`
+- `last_emotion_updated_at`
 - `appraisal_json`
 - `open_thread_count`
 - `last_transition_at`
@@ -95,6 +100,16 @@ Raw surface interaction record.
 - `ranker_json`
 - `trace_id`
 - `created_at`
+
+### Sandbox runtime
+Playground sessions now persist the same runtime categories in sandbox-scoped tables:
+- `sandbox_pair_state`
+- `sandbox_working_memory`
+- `sandbox_memory_events`
+- `sandbox_memory_facts`
+- `sandbox_memory_observations`
+- `sandbox_memory_open_threads`
+- `sandbox_memory_usage`
 
 ---
 
@@ -211,11 +226,21 @@ Optional analytics for quality/ranking.
 - `character_version_id`
 - `prompt_bundle_version_id`
 - `model_ids_json`
+- `emotion_before_json`
+- `emotion_after_json`
+- `emotion_state_before_json`
+- `emotion_state_after_json`
+- `relationship_before_json`
+- `relationship_after_json`
+- `relationship_deltas_json`
+- `phase_transition_evaluation_json`
+- `prompt_assembly_hashes_json`
 - `retrieved_memory_ids_json`
+- `memory_threshold_decisions_json`
+- `coe_contributions_json`
 - `planner_json`
 - `candidates_json`
 - `winner_index`
-- `scorecards_json`
 - `memory_writes_json`
 - `created_at`
 

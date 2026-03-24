@@ -81,6 +81,7 @@ export function createCharacterVersion(
         reciprocity: 0.6,
         pressureIntrusiveness: 0.8,
         novelty: 0.4,
+        selfRelevance: 0.7,
       },
       externalization: {
         warmthWeight: 0.4,
@@ -143,6 +144,12 @@ export function createPairState(overrides: Record<string, unknown> = {}) {
     trust: 58,
     intimacyReadiness: 31,
     conflict: 12,
+    emotion: {
+      fastAffect: { pleasure: 0.2, arousal: 0.1, dominance: 0.0 },
+      slowMood: { pleasure: 0.16, arousal: 0.08, dominance: -0.02 },
+      combined: { pleasure: 0.18, arousal: 0.09, dominance: -0.01 },
+      lastUpdatedAt: new Date('2026-03-23T00:00:00.000Z'),
+    },
     pad: { pleasure: 0.2, arousal: 0.1, dominance: 0.0 },
     appraisal: {
       goalCongruence: 0.2,

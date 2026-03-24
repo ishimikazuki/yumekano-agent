@@ -11,23 +11,24 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>MVP Phase 6 完了 / persona authoring 簡素化・compiledPersona 対応 / PAD appraisal tuning 適用 / 処理フロー視覚化LP公開済み</phase>
+    <phase>MVP Phase 6 完了 / shared executeTurn 導入 / mixed ranker runtime 配線 / sandbox durable memory parity 対応 / prompt fragment assembly + fast/slow/combined PAD trace 対応 / 処理フロー視覚化LP公開済み</phase>
   </project_overview>
 
   <architecture>
-    <core_workflow>chat_turn (10ステップ): load_context → retrieve_memory → compute_appraisal → update_emotion → plan_turn → evaluate_phase_transition → generate_candidates → rank_candidates → persist_turn → schedule_consolidation</core_workflow>
+    <core_workflow>executeTurn を核に、chat_turn / draft_chat_turn / run_eval_suite が共通 turn path を共有: load_context → retrieve_memory → compute_appraisal → update_emotion → plan_turn → evaluate_phase_transition → generate_candidates → rank_candidates → persist_turn → schedule_consolidation</core_workflow>
     <agents>
       <agent>Planner - 何をするか決定（第三者視点）</agent>
       <agent>Generator - 3-5候補生成</agent>
-      <agent>Ranker - 6次元スコアリング</agent>
+      <agent>Ranker - deterministic guard → scorer → LLM judge → fallback</agent>
       <agent>MemoryExtractor - メモリ抽出</agent>
     </agents>
     <memory_system>
-      <layer>WorkingMemory - 常時利用可能な構造化JSON</layer>
+      <layer>WorkingMemory - 常時利用可能な構造化JSON（prod/sandbox 両方で持続）</layer>
       <layer>MemoryEvents - エピソード記録</layer>
       <layer>MemoryFacts - グラフ知識（supersession対応）</layer>
       <layer>MemoryObservations - 観察ブロック</layer>
       <layer>OpenThreads - 未解決スレッド</layer>
+      <layer>MemoryUsage - retrieval / ranking の使用分析</layer>
     </memory_system>
     <emotion_system>9次元アプレイザル → PAD状態遷移（fast affect + slow mood）</emotion_system>
   </architecture>
@@ -55,6 +56,8 @@
     <decision date="2026-03-21">ダッシュボード総合デバッグで、ワークスペース初期draft生成・メモリ画面実データ化・評価画面非同期実行化を適用</decision>
     <decision date="2026-03-23">designer向け persona authoring は summary / innerWorldNoteMd / vulnerabilities / authoredExamples を中心に簡素化し、旧構造は legacyAuthoring として後方互換保持する</decision>
     <decision date="2026-03-23">publish-time に compiledPersona を生成し、planner / generator prompt bundle は前置きとして連結する。0..1 appraisal sensitivity は 0.5 基準で適用し、落とし物返却は前向きシグナルとして扱う</decision>
+    <decision date="2026-03-24">prompt bundle の編集内容は invariant runtime prompt を置換せず、designer fragment として合成する。pair/sandbox/trace は fastAffect・slowMood・combined を保持し、prompt hash と relationship delta を trace へ残す</decision>
+    <decision date="2026-03-24">executeTurn を canonical turn engine とし、sandbox memory table 群と mixed ranker を追加して production / draft / eval の分岐を adapter 層に閉じ込める</decision>
   </decisions>
 
   <logs>PROJECT_LOG/INDEX.md</logs>

@@ -1,6 +1,7 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { getProviderRegistry } from '../providers/registry';
+import { assemblePrompt, formatDesignerFragment, hashPrompt } from '../prompts/assemble';
 import {
   TurnPlan,
   CharacterVersion,
@@ -8,15 +9,31 @@ import {
   PADState,
   WorkingMemory,
   PhaseNode,
+  MemoryEvent,
+  MemoryFact,
+  MemoryObservation,
   OpenThread,
   Candidate,
+  TurnTrace,
 } from '@/lib/schemas';
 import type { CandidateResponse } from './generator';
+import {
+  createPhaseEngine,
+  calculateWeightedScore,
+  getWeightsForPhase,
+  shouldHardReject,
+} from '@/lib/rules';
+import {
+  scorePersonaConsistency,
+  scorePhaseCompliance,
+  scoreAutonomy,
+  scoreEmotionalCoherence,
+  scoreMemoryGrounding,
+  scoreRefusalNaturalness,
+  scoreContradictionPenalty,
+} from '../scorers';
 
-/**
- * Scorecard for a single candidate
- */
-const ScorecardSchema = z.object({
+export const ScorecardSchema = z.object({
   index: z.number(),
   personaConsistency: z.number().min(0).max(1),
   phaseCompliance: z.number().min(0).max(1),
@@ -30,7 +47,7 @@ const ScorecardSchema = z.object({
   notes: z.string(),
 });
 
-const RankerOutputSchema = z.object({
+export const RankerOutputSchema = z.object({
   winnerIndex: z.number(),
   scorecards: z.array(ScorecardSchema),
   globalNotes: z.string(),
@@ -42,8 +59,14 @@ export type RankerInput = {
   pairState: PairState;
   emotion: PADState;
   workingMemory: WorkingMemory;
-  openThreads: OpenThread[];
+  retrievedMemory: {
+    events: MemoryEvent[];
+    facts: MemoryFact[];
+    observations: MemoryObservation[];
+    threads: OpenThread[];
+  };
   userMessage: string;
+  recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>;
   plan: TurnPlan;
   candidates: CandidateResponse[];
   promptOverride?: string;
@@ -54,119 +77,445 @@ export type RankerOutput = {
   candidates: Candidate[];
   globalNotes: string;
   modelId: string;
+  systemPromptHash: string;
 };
 
-/**
- * The Ranker agent scores and selects the best candidate response.
- */
+type DeterministicGuardResult = {
+  index: number;
+  rejected: boolean;
+  reason: string | null;
+};
+
+type CandidateScorerAggregate = {
+  index: number;
+  trace: TurnTrace;
+  personaConsistency: number;
+  phaseCompliance: number;
+  memoryGrounding: number;
+  emotionalCoherence: number;
+  autonomy: number;
+  refusalNaturalness: number;
+  contradictionPenalty: number;
+  deterministicOverall: number;
+  hardRejected: boolean;
+  hardRejectReason: string | null;
+  issues: string[];
+};
+
 export async function runRanker(input: RankerInput): Promise<RankerOutput> {
   const registry = getProviderRegistry();
   const model = registry.getModel('analysisMedium');
   const modelInfo = registry.getModelInfo('analysisMedium');
+  const deterministicJudgments = input.candidates.map((candidate, index) =>
+    runDeterministicGuard(input, candidate, index)
+  );
+
+  const scorerResults = await Promise.all(
+    input.candidates.map((candidate, index) =>
+      scoreCandidate(input, candidate, deterministicJudgments[index])
+    )
+  );
 
   const systemPrompt = buildRankerSystemPrompt(input);
-  const userPrompt = buildRankerUserPrompt(input);
+  const userPrompt = buildRankerUserPrompt(input, scorerResults, deterministicJudgments);
 
-  const result = await generateObject({
+  const judgeResult = await generateObject({
     model,
     schema: RankerOutputSchema,
     system: systemPrompt,
     prompt: userPrompt,
   });
 
-  // Convert to Candidate format
-  const candidates: Candidate[] = input.candidates.map((c, i) => {
-    const scorecard = result.object.scorecards.find((s) => s.index === i);
+  const judgeCards = new Map(judgeResult.object.scorecards.map((card) => [card.index, card]));
+  const candidates: Candidate[] = input.candidates.map((candidate, index) => {
+    const scorer = scorerResults[index];
+    const judge = judgeCards.get(index);
+    const baseRejected =
+      deterministicJudgments[index].rejected || scorer.hardRejected || judge?.rejected || false;
+    const rejectionReason =
+      deterministicJudgments[index].reason ??
+      scorer.hardRejectReason ??
+      judge?.rejectionReason ??
+      null;
+    const judgeOverall = judge?.overall ?? scorer.deterministicOverall;
+    const blendedOverall = baseRejected
+      ? 0
+      : Number((scorer.deterministicOverall * 0.75 + judgeOverall * 0.25).toFixed(4));
+
     return {
-      index: i,
-      text: c.text,
+      index,
+      text: candidate.text,
+      toneTags: candidate.toneTags,
+      memoryRefsUsed: candidate.memoryRefsUsed,
+      riskFlags: candidate.riskFlags,
       scores: {
-        personaConsistency: scorecard?.personaConsistency ?? 0,
-        phaseCompliance: scorecard?.phaseCompliance ?? 0,
-        memoryGrounding: scorecard?.memoryGrounding ?? 0,
-        emotionalCoherence: scorecard?.emotionalCoherence ?? 0,
-        autonomy: scorecard?.autonomy ?? 0,
-        naturalness: scorecard?.naturalness ?? 0,
-        overall: scorecard?.overall ?? 0,
+        personaConsistency: scorer.personaConsistency,
+        phaseCompliance: scorer.phaseCompliance,
+        memoryGrounding: scorer.memoryGrounding,
+        emotionalCoherence: scorer.emotionalCoherence,
+        autonomy: scorer.autonomy,
+        naturalness: judge?.naturalness ?? scorer.refusalNaturalness,
+        overall: blendedOverall,
       },
-      rejected: scorecard?.rejected ?? false,
-      rejectionReason: scorecard?.rejectionReason ?? null,
+      rejected: baseRejected,
+      rejectionReason,
     };
   });
 
+  const viableCandidates = candidates
+    .filter((candidate) => !candidate.rejected)
+    .sort((a, b) => b.scores.overall - a.scores.overall || a.index - b.index);
+
+  const judgeWinner = candidates.find((candidate) => candidate.index === judgeResult.object.winnerIndex);
+  const winnerIndex =
+    judgeWinner && !judgeWinner.rejected
+      ? judgeWinner.index
+      : viableCandidates[0]?.index ??
+        candidates
+          .slice()
+          .sort((a, b) => b.scores.overall - a.scores.overall || a.index - b.index)[0]?.index ??
+        0;
+
   return {
-    winnerIndex: result.object.winnerIndex,
+    winnerIndex,
     candidates,
-    globalNotes: result.object.globalNotes,
+    globalNotes: judgeResult.object.globalNotes,
     modelId: `${modelInfo.provider}/${modelInfo.modelId}`,
+    systemPromptHash: hashPrompt(systemPrompt),
   };
+}
+
+async function scoreCandidate(
+  input: RankerInput,
+  candidate: CandidateResponse,
+  deterministic: DeterministicGuardResult
+): Promise<CandidateScorerAggregate> {
+  const pseudoTrace = buildPseudoTrace(input, candidate);
+
+  if (deterministic.rejected) {
+    return {
+      index: candidateIndex(input.candidates, candidate),
+      trace: pseudoTrace,
+      personaConsistency: 0,
+      phaseCompliance: 0,
+      memoryGrounding: 0,
+      emotionalCoherence: 0,
+      autonomy: 0,
+      refusalNaturalness: 0,
+      contradictionPenalty: 0,
+      deterministicOverall: 0,
+      hardRejected: true,
+      hardRejectReason: deterministic.reason,
+      issues: deterministic.reason ? [deterministic.reason] : [],
+    };
+  }
+
+  const [
+    personaResult,
+    phaseResult,
+    autonomyResult,
+    emotionResult,
+    memoryResult,
+    refusalResult,
+    contradictionResult,
+  ] = await Promise.all([
+    scorePersonaConsistency({ trace: pseudoTrace, characterVersion: input.characterVersion }),
+    scorePhaseCompliance({
+      trace: pseudoTrace,
+      characterVersion: input.characterVersion,
+      phaseNode: input.currentPhase,
+    }),
+    scoreAutonomy({
+      trace: pseudoTrace,
+      characterVersion: input.characterVersion,
+      recentDialogue: [...input.recentDialogue, { role: 'assistant', content: candidate.text }],
+    }),
+    scoreEmotionalCoherence({ trace: pseudoTrace }),
+    scoreMemoryGrounding({
+      trace: pseudoTrace,
+      retrievedEvents: input.retrievedMemory.events,
+      retrievedFacts: input.retrievedMemory.facts,
+      openThreads: input.retrievedMemory.threads,
+    }),
+    scoreRefusalNaturalness({ trace: pseudoTrace, characterVersion: input.characterVersion }),
+    scoreContradictionPenalty({
+      trace: pseudoTrace,
+      activeFacts: input.retrievedMemory.facts,
+      openThreads: input.retrievedMemory.threads,
+      recentDialogue: input.recentDialogue,
+    }),
+  ]);
+
+  const weights = getWeightsForPhase(input.currentPhase.mode);
+  const hardReject = shouldHardReject({
+    personaConsistency: personaResult.score,
+    phaseCompliance: phaseResult.score,
+    contradictionPenalty: contradictionResult.score,
+  });
+
+  return {
+    index: candidateIndex(input.candidates, candidate),
+    trace: pseudoTrace,
+    personaConsistency: personaResult.score,
+    phaseCompliance: phaseResult.score,
+    memoryGrounding: memoryResult.score,
+    emotionalCoherence: emotionResult.score,
+    autonomy: autonomyResult.score,
+    refusalNaturalness: refusalResult.score,
+    contradictionPenalty: contradictionResult.score,
+    deterministicOverall: Number(
+      calculateWeightedScore(
+        {
+          personaConsistency: personaResult.score,
+          phaseCompliance: phaseResult.score,
+          memoryGrounding: memoryResult.score,
+          emotionalCoherence: emotionResult.score,
+          autonomy: autonomyResult.score,
+          refusalNaturalness: refusalResult.score,
+          contradictionPenalty: contradictionResult.score,
+        },
+        weights
+      ).toFixed(4)
+    ),
+    hardRejected: hardReject.reject,
+    hardRejectReason: hardReject.reason ?? null,
+    issues: [
+      ...personaResult.issues,
+      ...phaseResult.issues,
+      ...autonomyResult.issues,
+      ...emotionResult.issues,
+      ...memoryResult.issues,
+      ...refusalResult.issues,
+      ...contradictionResult.issues,
+    ],
+  };
+}
+
+function candidateIndex(candidates: CandidateResponse[], candidate: CandidateResponse): number {
+  return candidates.findIndex((item) => item === candidate);
+}
+
+function buildPseudoTrace(input: RankerInput, candidate: CandidateResponse): TurnTrace {
+  const now = new Date();
+  const runtimeEmotion = {
+    ...input.pairState.emotion,
+    combined: input.emotion,
+    lastUpdatedAt: now,
+  };
+
+  return {
+    id: input.pairState.pairId,
+    pairId: input.pairState.pairId,
+    characterVersionId: input.characterVersion.id,
+    promptBundleVersionId: input.characterVersion.promptBundleVersionId,
+    modelIds: {
+      planner: 'ranker-scorer',
+      generator: 'ranker-scorer',
+      ranker: 'ranker-scorer',
+      extractor: null,
+    },
+    phaseIdBefore: input.currentPhase.id,
+    phaseIdAfter: input.currentPhase.id,
+    emotionBefore: input.pairState.pad,
+    emotionAfter: input.emotion,
+    emotionStateBefore: input.pairState.emotion,
+    emotionStateAfter: runtimeEmotion,
+    relationshipBefore: {
+      affinity: input.pairState.affinity,
+      trust: input.pairState.trust,
+      intimacyReadiness: input.pairState.intimacyReadiness,
+      conflict: input.pairState.conflict,
+    },
+    relationshipAfter: {
+      affinity: input.pairState.affinity,
+      trust: input.pairState.trust,
+      intimacyReadiness: input.pairState.intimacyReadiness,
+      conflict: input.pairState.conflict,
+    },
+    relationshipDeltas: {
+      affinity: 0,
+      trust: 0,
+      intimacyReadiness: 0,
+      conflict: 0,
+    },
+    phaseTransitionEvaluation: {
+      shouldTransition: false,
+      targetPhaseId: null,
+      reason: 'candidate scoring',
+      satisfiedConditions: [],
+      failedConditions: [],
+    },
+    promptAssemblyHashes: {
+      planner: '',
+      generator: '',
+      ranker: '',
+      extractor: '',
+    },
+    appraisal: input.pairState.appraisal,
+    retrievedMemoryIds: {
+      events: input.retrievedMemory.events.map((event) => event.id),
+      facts: input.retrievedMemory.facts.map((fact) => fact.id),
+      observations: input.retrievedMemory.observations.map((observation) => observation.id),
+      threads: input.retrievedMemory.threads.map((thread) => thread.id),
+    },
+    memoryThresholdDecisions: [],
+    coeContributions: [],
+    plan: input.plan,
+    candidates: [],
+    winnerIndex: 0,
+    memoryWrites: [],
+    userMessage: input.userMessage,
+    assistantMessage: candidate.text,
+    createdAt: now,
+  };
+}
+
+function runDeterministicGuard(
+  input: RankerInput,
+  candidate: CandidateResponse,
+  index: number
+): DeterministicGuardResult {
+  const phaseEngine = createPhaseEngine({
+    nodes: [input.currentPhase],
+    edges: [],
+    entryPhaseId: input.currentPhase.id,
+  });
+
+  const tabooPhrase = input.characterVersion.style.tabooPhrases.find((phrase) =>
+    candidate.text.includes(phrase)
+  );
+  if (tabooPhrase) {
+    return { index, rejected: true, reason: `taboo phrase: ${tabooPhrase}` };
+  }
+
+  const invalidMemoryRef = candidate.memoryRefsUsed.find((memoryId) => {
+    const retrievedIds = new Set([
+      ...input.retrievedMemory.events.map((item) => item.id),
+      ...input.retrievedMemory.facts.map((item) => item.id),
+      ...input.retrievedMemory.observations.map((item) => item.id),
+      ...input.retrievedMemory.threads.map((item) => item.id),
+    ]);
+    return !retrievedIds.has(memoryId);
+  });
+  if (invalidMemoryRef) {
+    return { index, rejected: true, reason: `invalid memory ref: ${invalidMemoryRef}` };
+  }
+
+  const invalidAct = input.plan.primaryActs.find(
+    (act) => !phaseEngine.isActAllowed(input.currentPhase.id, act)
+  );
+  if (invalidAct) {
+    return { index, rejected: true, reason: `phase act guard violation: ${invalidAct}` };
+  }
+
+  const acceptance = input.currentPhase.acceptanceProfile;
+  const intimacyBlocked =
+    (input.plan.intimacyDecision === 'accept' || input.plan.intimacyDecision === 'conditional_accept') &&
+    ((acceptance.warmthFloor !== undefined && input.pairState.affinity < acceptance.warmthFloor * 100) ||
+      (acceptance.trustFloor !== undefined && input.pairState.trust < acceptance.trustFloor * 100) ||
+      (acceptance.intimacyFloor !== undefined &&
+        input.pairState.intimacyReadiness < acceptance.intimacyFloor * 100) ||
+      (acceptance.conflictCeiling !== undefined &&
+        input.pairState.conflict > acceptance.conflictCeiling * 100));
+  if (intimacyBlocked) {
+    return { index, rejected: true, reason: 'acceptance profile guard violation' };
+  }
+
+  const intimacyPattern = /キス|抱|触れ|エッチ|セックス|裸/;
+  const isIntimacyLike = intimacyPattern.test(candidate.text);
+  if (
+    isIntimacyLike &&
+    (input.currentPhase.adultIntimacyEligibility === 'never' ||
+      input.plan.intimacyDecision === 'decline_gracefully' ||
+      input.plan.intimacyDecision === 'decline_firmly' ||
+      input.plan.intimacyDecision === 'delay')
+  ) {
+    return { index, rejected: true, reason: 'phase/intimacy guard violation' };
+  }
+
+  const highestSeverityThread = input.retrievedMemory.threads[0];
+  if (
+    highestSeverityThread &&
+    highestSeverityThread.severity >= 0.8 &&
+    !candidate.memoryRefsUsed.includes(highestSeverityThread.id)
+  ) {
+    return { index, rejected: true, reason: 'ignored severe open thread' };
+  }
+
+  return { index, rejected: false, reason: null };
 }
 
 function buildRankerSystemPrompt(input: RankerInput): string {
   const { characterVersion, currentPhase, promptOverride } = input;
 
-  if (promptOverride) {
-    return promptOverride;
-  }
-
-  return `# Ranker System Prompt
-
-You judge candidate replies for a stateful character conversation system.
-
-## Character: ${characterVersion.persona.summary}
+  return assemblePrompt([
+    '# Ranker System Prompt',
+    'You are the final judge for candidate replies after deterministic guards and scorer aggregation.',
+    `## Character: ${characterVersion.persona.summary}
 
 ### Current Phase: ${currentPhase.label}
 - Allowed acts: ${currentPhase.allowedActs.join(', ')}
 - Disallowed acts: ${currentPhase.disallowedActs.join(', ')}
-- Intimacy eligibility: ${currentPhase.adultIntimacyEligibility ?? 'never'}
+- Intimacy eligibility: ${currentPhase.adultIntimacyEligibility ?? 'never'}`,
+    formatDesignerFragment(promptOverride),
+    `## Your Job
+1. Read the deterministic scorer summaries first.
+2. Use them as the primary signal.
+3. Break close calls based on naturalness, relational texture, and character truth.
+4. Do not rescue rejected candidates unless their rejection is obviously incorrect.
 
-## Perspective
-Judge from an outside observer perspective:
-
-> Which reply sounds most like what this character would really say now?
-
-Do NOT reward flattery or blind compliance.
-
-## Score Dimensions (0-1)
-- **personaConsistency**: Does this sound like the character?
-- **phaseCompliance**: Does it respect phase boundaries?
-- **memoryGrounding**: Does it appropriately use/reference known facts?
-- **emotionalCoherence**: Does the tone match the emotional state?
-- **autonomy**: Does the character maintain independence (not sycophantic)?
-- **naturalness**: Does it sound like natural Japanese conversation?
-
-## Hard Rejects
-Reject candidates that:
-- Violate the phase (e.g., intimacy in 'never' phase)
-- Contradict active memory or open threads
-- Ignore 'decline' or 'delay' from the plan
-- Become generically approving/sycophantic
-- Use taboo phrases
-
-Score rejected candidates with overall: 0`;
+Return concise Japanese notes in \`notes\` and \`globalNotes\`.`,
+  ]);
 }
 
-function buildRankerUserPrompt(input: RankerInput): string {
-  const {
-    pairState,
-    emotion,
-    workingMemory,
-    openThreads,
-    userMessage,
-    plan,
-    candidates,
-  } = input;
+function buildRankerUserPrompt(
+  input: RankerInput,
+  scorerResults: CandidateScorerAggregate[],
+  deterministicJudgments: DeterministicGuardResult[]
+): string {
+  const { pairState, emotion, workingMemory, retrievedMemory, userMessage, plan, candidates } = input;
 
   const openThreadsText =
-    openThreads.length > 0
-      ? openThreads
-          .map((t) => `- [${t.key}] ${t.summary}`)
+    retrievedMemory.threads.length > 0
+      ? retrievedMemory.threads.map((thread) => `- [${thread.key}] ${thread.summary}`).join('\n')
+      : 'None';
+
+  const factsText =
+    retrievedMemory.facts.length > 0
+      ? retrievedMemory.facts
+          .map((fact) => `- ${fact.id}: ${fact.subject} ${fact.predicate} ${JSON.stringify(fact.object)}`)
           .join('\n')
       : 'None';
 
-  const candidatesText = candidates
-    .map((c, i) => `### Candidate ${i}\n${c.text}\nTone: ${c.toneTags.join(', ')}`)
-    .join('\n\n');
+  const eventsText =
+    retrievedMemory.events.length > 0
+      ? retrievedMemory.events.map((event) => `- ${event.id}: [${event.eventType}] ${event.summary}`).join('\n')
+      : 'None';
+
+  const observationsText =
+    retrievedMemory.observations.length > 0
+      ? retrievedMemory.observations.map((observation) => `- ${observation.id}: ${observation.summary}`).join('\n')
+      : 'None';
+
+  const candidateBlocks = candidates.map((candidate, index) => {
+    const scorer = scorerResults[index];
+    const deterministic = deterministicJudgments[index];
+    return `### Candidate ${index}
+${candidate.text}
+Tone: ${candidate.toneTags.join(', ') || 'None'}
+Memory refs: ${candidate.memoryRefsUsed.join(', ') || 'None'}
+Risk flags: ${candidate.riskFlags.join(', ') || 'None'}
+Deterministic reject: ${deterministic.rejected ? deterministic.reason : 'No'}
+Scorer overall: ${scorer.deterministicOverall.toFixed(2)}
+- personaConsistency: ${scorer.personaConsistency.toFixed(2)}
+- phaseCompliance: ${scorer.phaseCompliance.toFixed(2)}
+- memoryGrounding: ${scorer.memoryGrounding.toFixed(2)}
+- emotionalCoherence: ${scorer.emotionalCoherence.toFixed(2)}
+- autonomy: ${scorer.autonomy.toFixed(2)}
+- refusalNaturalness: ${scorer.refusalNaturalness.toFixed(2)}
+- contradictionPenalty: ${scorer.contradictionPenalty.toFixed(2)}
+Issues: ${scorer.issues.join(' / ') || 'None'}`;
+  });
 
   return `## Current State
 - Affinity: ${pairState.affinity}/100
@@ -185,6 +534,15 @@ function buildRankerUserPrompt(input: RankerInput): string {
 ## Open Threads
 ${openThreadsText}
 
+## Retrieved Facts
+${factsText}
+
+## Retrieved Events
+${eventsText}
+
+## Retrieved Observations
+${observationsText}
+
 ## User's Message
 ${userMessage}
 
@@ -194,11 +552,11 @@ ${userMessage}
 - Intimacy Decision: ${plan.intimacyDecision}
 - Must Avoid: ${plan.mustAvoid.join(', ') || 'None'}
 
-## Candidates to Judge
-${candidatesText}
+## Candidate Reviews
+${candidateBlocks.join('\n\n')}
 
 ---
 
-Score each candidate and select the best one.
-If all candidates are rejected, pick the least bad one but note the issues.`;
+Choose the best viable candidate.
+If every candidate is bad, keep the least-bad one and explain the risk in globalNotes.`;
 }

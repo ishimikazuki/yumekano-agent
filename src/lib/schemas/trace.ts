@@ -2,11 +2,81 @@ import { z } from 'zod';
 import { TurnPlanSchema } from './plan';
 
 /**
+ * PAD state (Pleasure-Arousal-Dominance)
+ */
+export const PADStateSchema = z.object({
+  pleasure: z.number().min(-1).max(1),
+  arousal: z.number().min(-1).max(1),
+  dominance: z.number().min(-1).max(1),
+});
+export type PADState = z.infer<typeof PADStateSchema>;
+
+export const RuntimeEmotionStateSchema = z.object({
+  fastAffect: PADStateSchema,
+  slowMood: PADStateSchema,
+  combined: PADStateSchema,
+  lastUpdatedAt: z.coerce.date(),
+});
+export type RuntimeEmotionState = z.infer<typeof RuntimeEmotionStateSchema>;
+
+export const RelationshipMetricsSchema = z.object({
+  affinity: z.number().min(0).max(100),
+  trust: z.number().min(0).max(100),
+  intimacyReadiness: z.number().min(0).max(100),
+  conflict: z.number().min(0).max(100),
+});
+export type RelationshipMetrics = z.infer<typeof RelationshipMetricsSchema>;
+
+export const RelationshipMetricDeltaSchema = z.object({
+  affinity: z.number(),
+  trust: z.number(),
+  intimacyReadiness: z.number(),
+  conflict: z.number(),
+});
+export type RelationshipMetricDelta = z.infer<typeof RelationshipMetricDeltaSchema>;
+
+export const PhaseTransitionEvaluationSchema = z.object({
+  shouldTransition: z.boolean(),
+  targetPhaseId: z.string().nullable(),
+  reason: z.string(),
+  satisfiedConditions: z.array(z.string()),
+  failedConditions: z.array(z.string()),
+});
+export type PhaseTransitionEvaluation = z.infer<typeof PhaseTransitionEvaluationSchema>;
+
+export const PromptAssemblyHashesSchema = z.object({
+  planner: z.string(),
+  generator: z.string(),
+  ranker: z.string(),
+  extractor: z.string(),
+});
+export type PromptAssemblyHashes = z.infer<typeof PromptAssemblyHashesSchema>;
+
+export const MemoryThresholdDecisionSchema = z.object({
+  kind: z.enum(['event', 'fact']),
+  summary: z.string(),
+  passed: z.boolean(),
+  reason: z.string(),
+});
+export type MemoryThresholdDecision = z.infer<typeof MemoryThresholdDecisionSchema>;
+
+export const PADTransitionContributionSchema = z.object({
+  source: z.enum(['appraisal', 'decay', 'open_thread_bias', 'blend', 'clamp']),
+  axis: z.enum(['pleasure', 'arousal', 'dominance']),
+  delta: z.number(),
+  reason: z.string(),
+});
+export type PADTransitionContribution = z.infer<typeof PADTransitionContributionSchema>;
+
+/**
  * Candidate response with scores
  */
 export const CandidateSchema = z.object({
   index: z.number().int().min(0),
   text: z.string(),
+  toneTags: z.array(z.string()).default([]),
+  memoryRefsUsed: z.array(z.string()).default([]),
+  riskFlags: z.array(z.string()).default([]),
   scores: z.object({
     personaConsistency: z.number().min(0).max(1),
     phaseCompliance: z.number().min(0).max(1),
@@ -27,19 +97,10 @@ export type Candidate = z.infer<typeof CandidateSchema>;
 export const MemoryWriteSchema = z.object({
   type: z.enum(['event', 'fact', 'observation', 'thread_open', 'thread_resolve', 'working_memory']),
   itemId: z.string().uuid().nullable(),
+  sourceTurnId: z.string().uuid().nullable(),
   summary: z.string(),
 });
 export type MemoryWrite = z.infer<typeof MemoryWriteSchema>;
-
-/**
- * PAD state (Pleasure-Arousal-Dominance)
- */
-export const PADStateSchema = z.object({
-  pleasure: z.number().min(-1).max(1),
-  arousal: z.number().min(-1).max(1),
-  dominance: z.number().min(-1).max(1),
-});
-export type PADState = z.infer<typeof PADStateSchema>;
 
 /**
  * Appraisal vector
@@ -75,6 +136,13 @@ export const TurnTraceSchema = z.object({
   phaseIdAfter: z.string(),
   emotionBefore: PADStateSchema,
   emotionAfter: PADStateSchema,
+  emotionStateBefore: RuntimeEmotionStateSchema,
+  emotionStateAfter: RuntimeEmotionStateSchema,
+  relationshipBefore: RelationshipMetricsSchema,
+  relationshipAfter: RelationshipMetricsSchema,
+  relationshipDeltas: RelationshipMetricDeltaSchema,
+  phaseTransitionEvaluation: PhaseTransitionEvaluationSchema,
+  promptAssemblyHashes: PromptAssemblyHashesSchema,
   appraisal: AppraisalVectorSchema,
   retrievedMemoryIds: z.object({
     events: z.array(z.string().uuid()),
@@ -82,6 +150,8 @@ export const TurnTraceSchema = z.object({
     observations: z.array(z.string().uuid()),
     threads: z.array(z.string().uuid()),
   }),
+  memoryThresholdDecisions: z.array(MemoryThresholdDecisionSchema),
+  coeContributions: z.array(PADTransitionContributionSchema),
   plan: TurnPlanSchema,
   candidates: z.array(CandidateSchema),
   winnerIndex: z.number().int().min(0),
@@ -103,6 +173,7 @@ export const PairStateSchema = z.object({
   trust: z.number().min(0).max(100),
   intimacyReadiness: z.number().min(0).max(100),
   conflict: z.number().min(0).max(100),
+  emotion: RuntimeEmotionStateSchema,
   pad: PADStateSchema,
   appraisal: AppraisalVectorSchema,
   openThreadCount: z.number().int().min(0),

@@ -1,4 +1,9 @@
-import type { AppraisalVector, PADState } from '../schemas';
+import type {
+  AppraisalVector,
+  PADState,
+  RuntimeEmotionState,
+  PADTransitionContribution,
+} from '../schemas';
 import {
   getPADContributions,
   PAD_DELTA_NOTICE_THRESHOLD,
@@ -67,6 +72,9 @@ export type CoEExplanation = {
   movementNarrative: string[];
   topDrivers: CoEDriver[];
   axisSummaries: CoEAxisSummary[];
+  actualContributions: PADTransitionContribution[];
+  emotionStateBefore?: RuntimeEmotionState | null;
+  emotionStateAfter?: RuntimeEmotionState | null;
 };
 
 type CoEInput = {
@@ -77,6 +85,9 @@ type CoEInput = {
   intentDelta?: PADState | null;
   stance?: string | null;
   primaryActs?: string[];
+  emotionBeforeState?: RuntimeEmotionState | null;
+  emotionAfterState?: RuntimeEmotionState | null;
+  contributions?: PADTransitionContribution[];
 };
 
 const DRIVER_COUNT = 3;
@@ -93,6 +104,9 @@ export function buildCoEExplanation(input: CoEInput): CoEExplanation {
     intentDelta = null,
     stance = null,
     primaryActs = [],
+    emotionBeforeState = null,
+    emotionAfterState = null,
+    contributions = [],
   } = input;
   const delta: PADState = {
     pleasure: emotionAfter.pleasure - emotionBefore.pleasure,
@@ -136,11 +150,11 @@ export function buildCoEExplanation(input: CoEInput): CoEExplanation {
 
   const beforeEmotion = getPADEmotionLabel(emotionBefore);
   const afterEmotion = getPADEmotionLabel(emotionAfter);
-  const movementNarrative = buildMovementNarrative(appraisal);
+  const movementNarrative = buildMovementNarrative(appraisal, contributions);
   const policySummary = buildPolicySummary(intentReason, intentDelta, stance, primaryActs);
 
   return {
-    summary: buildSummary(delta, topDrivers, intentReason),
+    summary: buildSummary(delta, topDrivers, contributions, intentReason),
     delta,
     intentReason,
     policySummary,
@@ -152,6 +166,9 @@ export function buildCoEExplanation(input: CoEInput): CoEExplanation {
     movementNarrative,
     topDrivers,
     axisSummaries,
+    actualContributions: contributions,
+    emotionStateBefore: emotionBeforeState,
+    emotionStateAfter: emotionAfterState,
   };
 }
 
@@ -172,7 +189,12 @@ function createDriver(
   };
 }
 
-function buildSummary(delta: PADState, topDrivers: CoEDriver[], _intentReason: string | null): string {
+function buildSummary(
+  delta: PADState,
+  topDrivers: CoEDriver[],
+  contributions: PADTransitionContribution[],
+  _intentReason: string | null
+): string {
   const deltaSummary = `快${formatSigned(delta.pleasure)} / 覚醒${formatSigned(delta.arousal)} / 支配感${formatSigned(delta.dominance)}`;
 
   const hasMeaningfulChange =
@@ -192,14 +214,40 @@ function buildSummary(delta: PADState, topDrivers: CoEDriver[], _intentReason: s
           .join('、')}。`
       : '';
 
-  return [lead, driverText].filter(Boolean).join(' ');
+  const transitionText =
+    contributions.length > 0
+      ? `遷移要因: ${contributions
+          .slice()
+          .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+          .slice(0, 2)
+          .map((contribution) => `${translateContributionSource(contribution.source)}(${contribution.axis})${formatSigned(contribution.delta)}`)
+          .join('、')}。`
+      : '';
+
+  return [lead, driverText, transitionText].filter(Boolean).join(' ');
 }
 
 function formatSigned(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(2)}`;
 }
 
-function buildMovementNarrative(appraisal: AppraisalVector): string[] {
+function buildMovementNarrative(
+  appraisal: AppraisalVector,
+  contributions: PADTransitionContribution[]
+): string[] {
+  const actual = contributions
+    .filter((contribution) => Math.abs(contribution.delta) >= PAD_DELTA_NOTICE_THRESHOLD)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 2)
+    .map((contribution) => {
+      const direction = contribution.delta > 0 ? '押し上げた' : '引き下げた';
+      return `${translateContributionSource(contribution.source)}が${AXIS_LABELS[contribution.axis]}を${direction}。`;
+    });
+
+  if (actual.length > 0) {
+    return actual;
+  }
+
   const candidates = [
     {
       score: Math.abs(appraisal.goalCongruence),
@@ -287,6 +335,17 @@ function buildMovementNarrative(appraisal: AppraisalVector): string[] {
     .sort((a, b) => b.score - a.score)
     .slice(0, 3)
     .map((item) => item.text);
+}
+
+function translateContributionSource(source: PADTransitionContribution['source']): string {
+  const map: Record<PADTransitionContribution['source'], string> = {
+    appraisal: 'appraisal寄与',
+    decay: 'baselineへの減衰',
+    open_thread_bias: 'open threadバイアス',
+    blend: 'fast/slowブレンド',
+    clamp: 'clamp補正',
+  };
+  return map[source];
 }
 
 function buildPolicySummary(

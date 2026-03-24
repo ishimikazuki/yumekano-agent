@@ -18,7 +18,12 @@ import {
   type ReactionPack,
 } from './character';
 import { PhaseGraphSchema } from './phase';
-import { AppraisalVectorSchema, PADStateSchema } from './trace';
+import {
+  AppraisalVectorSchema,
+  PADStateSchema,
+  RuntimeEmotionStateSchema,
+} from './trace';
+import { PromptFragmentSchema } from './prompts';
 
 /**
  * Character identity/meta - basic character identity info
@@ -36,12 +41,12 @@ export type CharacterIdentity = z.infer<typeof CharacterIdentitySchema>;
  * Prompt bundle content (raw markdown)
  */
 export const PromptBundleContentSchema = z.object({
-  plannerMd: z.string(),
-  generatorMd: z.string(),
-  generatorIntimacyMd: z.string().default(''),
-  extractorMd: z.string(),
-  reflectorMd: z.string(),
-  rankerMd: z.string(),
+  plannerMd: PromptFragmentSchema,
+  generatorMd: PromptFragmentSchema,
+  generatorIntimacyMd: PromptFragmentSchema,
+  extractorMd: PromptFragmentSchema,
+  reflectorMd: PromptFragmentSchema,
+  rankerMd: PromptFragmentSchema,
 });
 export type PromptBundleContent = z.infer<typeof PromptBundleContentSchema>;
 
@@ -116,6 +121,7 @@ export const SandboxPairStateSchema = z.object({
   trust: z.number().min(0).max(100),
   intimacyReadiness: z.number().min(0).max(100),
   conflict: z.number().min(0).max(100),
+  emotion: RuntimeEmotionStateSchema,
   pad: PADStateSchema,
   appraisal: AppraisalVectorSchema,
   openThreadCount: z.number().int().min(0),

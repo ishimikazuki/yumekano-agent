@@ -207,6 +207,7 @@ function getDefaultDraftData(): DraftData {
         reciprocity: 0.5,
         pressureIntrusiveness: 0.5,
         novelty: 0.5,
+        selfRelevance: 0.5,
       },
       externalization: {
         warmthWeight: 0.3,

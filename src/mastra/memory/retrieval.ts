@@ -1,4 +1,3 @@
-import { memoryRepo } from '@/lib/repositories';
 import {
   MemoryEvent,
   MemoryFact,
@@ -6,12 +5,14 @@ import {
   OpenThread,
   MemoryPolicySpec,
 } from '@/lib/schemas';
+import type { MemoryStore } from './store';
 
 export type RetrievalInput = {
-  pairId: string;
+  scopeId: string;
   userMessage: string;
   memoryPolicy: MemoryPolicySpec;
   recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>;
+  memoryStore: MemoryStore;
 };
 
 export type RetrievalResult = {
@@ -33,26 +34,31 @@ export type RetrievalResult = {
  * 5. Quality reranking
  */
 export async function retrieveMemory(input: RetrievalInput): Promise<RetrievalResult> {
-  const { pairId, userMessage, memoryPolicy, recentDialogue } = input;
+  const { scopeId, userMessage, memoryPolicy, recentDialogue, memoryStore } = input;
   const notes: string[] = [];
 
   // Stage 1: Mandatory retrieval
   notes.push('Stage 1: Mandatory retrieval');
-  const threads = await memoryRepo.getOpenThreads(pairId);
+  const threads = await memoryStore.getOpenThreads(scopeId);
   notes.push(`Found ${threads.length} open threads`);
 
   // Stage 2: Symbolic retrieval - get active facts
   notes.push('Stage 2: Symbolic retrieval');
-  const allFacts = await memoryRepo.getFactsByPair(pairId, { status: 'active' });
+  const allFacts = await memoryStore.getFacts(scopeId, { status: 'active' });
 
   // Filter facts by relevance to message
-  const relevantFacts = filterFactsByRelevance(allFacts, userMessage, recentDialogue);
+  const relevantFacts = filterFactsByRelevance(
+    allFacts,
+    userMessage,
+    recentDialogue,
+    memoryPolicy.contradictionBoost
+  );
   notes.push(`Filtered to ${relevantFacts.length} relevant facts from ${allFacts.length} total`);
 
   // Stage 3: Semantic retrieval (simplified - keyword matching for MVP)
   notes.push('Stage 3: Semantic retrieval (keyword-based for MVP)');
-  const allEvents = await memoryRepo.getEventsByPair(pairId, 100);
-  const allObservations = await memoryRepo.getObservationsByPair(pairId, 50);
+  const allEvents = await memoryStore.getEvents(scopeId, 100);
+  const allObservations = await memoryStore.getObservations(scopeId, 50);
 
   const relevantEvents = filterEventsByRelevance(
     allEvents,
@@ -101,24 +107,36 @@ export async function retrieveMemory(input: RetrievalInput): Promise<RetrievalRe
 function filterFactsByRelevance(
   facts: MemoryFact[],
   message: string,
-  recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>
+  recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>,
+  contradictionBoost: number
 ): MemoryFact[] {
   const context = [
     message,
     ...recentDialogue.slice(-4).map((m) => m.content),
   ].join(' ').toLowerCase();
 
-  return facts.filter((fact) => {
-    // Check if subject or predicate appears in context
-    const subjectMatch = context.includes(fact.subject.toLowerCase());
-    const predicateMatch = context.includes(fact.predicate.toLowerCase());
+  return facts
+    .map((fact) => {
+      const subjectMatch = context.includes(fact.subject.toLowerCase());
+      const predicateMatch = context.includes(fact.predicate.toLowerCase());
+      const objectStr = JSON.stringify(fact.object).toLowerCase();
+      const objectMatch = objectStr.split(/\s+/).some((word) => word.length > 2 && context.includes(word));
+      const contradictionHint =
+        /\b(ちがう|違う|じゃない|ではない|やめて|嫌い|苦手|not|don't)\b/i.test(context) &&
+        fact.status !== 'superseded' &&
+        (subjectMatch || predicateMatch || objectMatch);
 
-    // Check object for keywords
-    const objectStr = JSON.stringify(fact.object).toLowerCase();
-    const objectMatch = objectStr.split(/\s+/).some((word) => context.includes(word));
+      let score = 0;
+      if (subjectMatch) score += 1;
+      if (predicateMatch) score += 1;
+      if (objectMatch) score += 1;
+      if (contradictionHint) score += contradictionBoost;
 
-    return subjectMatch || predicateMatch || objectMatch;
-  });
+      return { fact, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.fact);
 }
 
 /**
@@ -236,11 +254,11 @@ function qualityRerank(
 /**
  * Get working memory for a pair, or create default.
  */
-export async function getOrCreateWorkingMemory(pairId: string) {
-  const existing = await memoryRepo.getWorkingMemory(pairId);
+export async function getOrCreateWorkingMemory(scopeId: string, memoryStore: MemoryStore) {
+  const existing = await memoryStore.getWorkingMemory(scopeId);
   if (existing) return existing;
 
-  const defaultMemory = memoryRepo.getDefaultWorkingMemory();
-  await memoryRepo.setWorkingMemory(pairId, defaultMemory);
+  const defaultMemory = memoryStore.getDefaultWorkingMemory();
+  await memoryStore.setWorkingMemory(scopeId, defaultMemory);
   return defaultMemory;
 }

@@ -169,6 +169,7 @@ type DraftState = {
       reciprocity: number;
       pressureIntrusiveness: number;
       novelty: number;
+      selfRelevance: number;
     };
     externalization: {
       warmthWeight: number;
@@ -351,6 +352,32 @@ export default function WorkspaceSandboxPage() {
     }
   }, [workspaceId]);
 
+  const saveDraftSnapshot = useCallback(async (draftToSave: DraftState) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draftToSave),
+      });
+
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
+            ? payload.error
+            : 'Failed to save draft'
+        );
+      }
+
+      setData((prev) => prev ? { ...prev, draft: payload as DraftState } : null);
+      setHasChanges(false);
+      return payload as DraftState;
+    } finally {
+      setSaving(false);
+    }
+  }, [workspaceId]);
+
   const handleChange = useCallback(<K extends keyof DraftState>(section: K, key: keyof DraftState[K], value: unknown) => {
     setData((prev) => {
       if (!prev) return null;
@@ -369,12 +396,21 @@ export default function WorkspaceSandboxPage() {
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !data) return;
     const userMessage = input.trim();
-    setInput('');
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
     setIsLoading(true);
     try {
+      try {
+        await saveDraftSnapshot(data.draft);
+      } catch (saveError) {
+        console.error('Conversation autosave failed:', saveError);
+        alert(`会話前の自動保存に失敗しました\n${saveError instanceof Error ? saveError.message : 'Unknown error'}`);
+        return;
+      }
+
+      setInput('');
+      setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
+
       const response = await fetch('/api/draft-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -403,8 +439,9 @@ export default function WorkspaceSandboxPage() {
       ]);
     } catch (error) {
       setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${error instanceof Error ? error.message : 'Unknown'}` }]);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const handleReset = async () => {
@@ -454,7 +491,7 @@ export default function WorkspaceSandboxPage() {
             <button onClick={handleReset} className="text-xs text-gray-500 hover:text-gray-700">リセット</button>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {messages.length === 0 && <div className="text-center text-gray-400 py-8 text-sm"><p>編集した内容でテストできるよ</p><p className="mt-1 text-xs">保存してから会話してみてね</p></div>}
+            {messages.length === 0 && <div className="text-center text-gray-400 py-8 text-sm"><p>編集した内容でテストできるよ</p><p className="mt-1 text-xs">送信時に自動保存されるよ</p></div>}
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-pink-500 text-white' : 'bg-white text-gray-900 shadow-sm'}`}>

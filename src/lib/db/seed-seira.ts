@@ -350,6 +350,7 @@ export const seiraEmotion: EmotionSpec = {
     reciprocity: 0.82,
     pressureIntrusiveness: 0.88,
     novelty: 0.57,
+    selfRelevance: 0.74,
   },
   externalization: {
     warmthWeight: 0.84,
@@ -523,7 +524,7 @@ export const seiraPhaseGraph: PhaseGraph = {
         'express_affection',
         'set_boundary',
         'disagree',
-        'repair',
+        'forgive',
         'confront',
       ],
       disallowedActs: [],

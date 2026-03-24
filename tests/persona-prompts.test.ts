@@ -25,6 +25,7 @@ test('planner prefers compiledPersona and keeps prompt bundle text as a prelude'
     retrievedMemory: {
       events: [],
       facts: [],
+      observations: [],
       threads: [],
     },
     recentDialogue: [],
@@ -32,7 +33,8 @@ test('planner prefers compiledPersona and keeps prompt bundle text as a prelude'
     promptOverride: 'CUSTOM PLANNER PRELUDE',
   });
 
-  assert.ok(prompt.startsWith('CUSTOM PLANNER PRELUDE\n\n# Planner System Prompt'));
+  assert.match(prompt, /# Planner System Prompt/);
+  assert.match(prompt, /## Designer Instructions\nCUSTOM PLANNER PRELUDE/);
   assert.match(prompt, /## Compiled Persona/);
   assert.match(prompt, /One-Line Core: 選ばれたいが、傷つく前に軽口で距離を作る子。/);
   assert.equal(prompt.includes('## Persona Summary'), false);
@@ -48,6 +50,7 @@ test('planner falls back to raw persona fields when compiledPersona is missing',
     retrievedMemory: {
       events: [],
       facts: [],
+      observations: [],
       threads: [],
     },
     recentDialogue: [],
@@ -81,6 +84,7 @@ test('generator prefers compiledPersona, keeps authoredExamples, and preserves i
     retrievedMemory: {
       events: [],
       facts: [],
+      observations: [],
       threads: [],
     },
     recentDialogue: [],
@@ -92,9 +96,8 @@ test('generator prefers compiledPersona, keeps authoredExamples, and preserves i
     promptOverride,
   });
 
-  assert.ok(
-    prompt.startsWith('INTIMACY GENERATOR PRELUDE\n\n# Conversation Generator System Prompt')
-  );
+  assert.match(prompt, /# Conversation Generator System Prompt/);
+  assert.match(prompt, /## Designer Instructions\nINTIMACY GENERATOR PRELUDE/);
   assert.match(prompt, /One-Line Core: 選ばれたいが、傷つく前に軽口で距離を作る子。/);
   assert.match(prompt, /### Tone Hints/);
   assert.match(prompt, /\[warm\] ちゃんと見てくれるの、うれしいよ/);
@@ -111,6 +114,7 @@ test('generator falls back to raw persona fields when compiledPersona is missing
     retrievedMemory: {
       events: [],
       facts: [],
+      observations: [],
       threads: [],
     },
     recentDialogue: [],
@@ -119,9 +123,8 @@ test('generator falls back to raw persona fields when compiledPersona is missing
     promptOverride: 'DEFAULT GENERATOR PRELUDE',
   });
 
-  assert.ok(
-    prompt.startsWith('DEFAULT GENERATOR PRELUDE\n\n# Conversation Generator System Prompt')
-  );
+  assert.match(prompt, /# Conversation Generator System Prompt/);
+  assert.match(prompt, /## Designer Instructions\nDEFAULT GENERATOR PRELUDE/);
   assert.match(prompt, /- Summary: 甘えたいけど、傷つく前に軽口で距離を取る子。/);
   assert.match(prompt, /### Vulnerabilities/);
   assert.equal(prompt.includes('One-Line Core:'), false);
