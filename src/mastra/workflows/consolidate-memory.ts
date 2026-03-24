@@ -1,11 +1,15 @@
-import { memoryRepo } from '@/lib/repositories';
+import { characterRepo, pairRepo } from '@/lib/repositories';
+import { createProductionMemoryStore, type MemoryStore } from '../memory/store';
 import { runReflector } from '../agents/reflector';
 import type { CharacterVersion, PairState } from '@/lib/schemas';
-import { characterRepo, pairRepo } from '@/lib/repositories';
 
 export type ConsolidateMemoryInput = {
-  pairId: string;
+  pairId?: string;
+  scopeId?: string;
   mode: 'light' | 'deep';
+  memoryStore?: MemoryStore;
+  pairState?: PairState;
+  characterVersion?: CharacterVersion;
 };
 
 export type ConsolidateMemoryOutput = {
@@ -16,47 +20,40 @@ export type ConsolidateMemoryOutput = {
   summary: string;
 };
 
-/**
- * Memory consolidation workflow.
- *
- * Trigger conditions:
- * - threshold crossed (e.g., 50 new events)
- * - session end
- * - manual dashboard action
- * - scheduled maintenance run
- *
- * Steps:
- * 1. Load recent raw turns and new episodic events
- * 2. Merge duplicates
- * 3. Create/update observation blocks
- * 4. Resolve or refresh open threads
- * 5. Attach or update quality labels
- */
 export async function runConsolidateMemory(
   input: ConsolidateMemoryInput
 ): Promise<ConsolidateMemoryOutput> {
-  const { pairId, mode } = input;
-
-  // Get pair state
-  const pairState = await pairRepo.getState(pairId);
-  if (!pairState) {
-    throw new Error(`Pair state not found for ${pairId}`);
+  const scopeId = input.scopeId ?? input.pairId;
+  if (!scopeId) {
+    throw new Error('scopeId or pairId is required');
   }
 
-  // Get character version
-  const characterVersion = await characterRepo.getVersionById(pairState.activeCharacterVersionId);
-  if (!characterVersion) {
-    throw new Error(`Character version not found`);
-  }
+  const memoryStore = input.memoryStore ?? createProductionMemoryStore();
+  const pairState =
+    input.pairState ??
+    (await (async () => {
+      const state = await pairRepo.getState(scopeId);
+      if (!state) {
+        throw new Error(`Pair state not found for ${scopeId}`);
+      }
+      return state;
+    })());
+  const characterVersion =
+    input.characterVersion ??
+    (await (async () => {
+      const version = await characterRepo.getVersionById(pairState.activeCharacterVersionId);
+      if (!version) {
+        throw new Error(`Character version not found`);
+      }
+      return version;
+    })());
 
-  // Load memory items
-  const eventLimit = mode === 'deep' ? 100 : 30;
-  const recentEvents = await memoryRepo.getEventsByPair(pairId, eventLimit);
-  const existingObservations = await memoryRepo.getObservationsByPair(pairId, 20);
-  const existingOpenThreads = await memoryRepo.getOpenThreads(pairId);
-  const existingGraphFacts = await memoryRepo.getFactsByPair(pairId, { status: 'active' });
+  const eventLimit = input.mode === 'deep' ? 100 : 30;
+  const recentEvents = await memoryStore.getEvents(scopeId, eventLimit);
+  const existingObservations = await memoryStore.getObservations(scopeId, 20);
+  const existingOpenThreads = await memoryStore.getOpenThreads(scopeId);
+  const existingGraphFacts = await memoryStore.getFacts(scopeId, { status: 'active' });
 
-  // Run reflector
   const reflectorResult = await runReflector({
     characterVersion,
     pairState,
@@ -66,57 +63,68 @@ export async function runConsolidateMemory(
     existingGraphFacts,
   });
 
-  // Process results
   let observationsCreated = 0;
   let threadsUpdated = 0;
   let factsMerged = 0;
   let qualityLabelsApplied = 0;
 
-  // Create new observations
-  for (const obs of reflectorResult.newObservations) {
-    await memoryRepo.createObservation({
-      pairId,
-      summary: obs.summary,
-      retrievalKeys: obs.retrievalKeys,
-      salience: obs.salience,
-      windowStartAt: recentEvents.length > 0
-        ? new Date(recentEvents[recentEvents.length - 1].createdAt)
-        : new Date(),
+  const windowStartAt =
+    recentEvents.length > 0 ? new Date(recentEvents[recentEvents.length - 1].createdAt) : new Date();
+
+  for (const observation of reflectorResult.newObservations) {
+    await memoryStore.createObservation({
+      scopeId,
+      summary: observation.summary,
+      retrievalKeys: observation.retrievalKeys,
+      salience: observation.salience,
+      windowStartAt,
       windowEndAt: new Date(),
     });
     observationsCreated++;
   }
 
-  // Process thread updates
   for (const update of reflectorResult.threadUpdates) {
     if (update.action === 'resolve') {
-      await memoryRepo.resolveThread(pairId, update.key);
+      await memoryStore.resolveThread(scopeId, update.key);
       threadsUpdated++;
-    } else if (update.action === 'update' || update.action === 'escalate') {
-      await memoryRepo.createOrUpdateThread({
-        pairId,
-        key: update.key,
-        summary: update.newSummary ?? '',
-        severity: update.newSeverity ?? 0.5,
-      });
-      threadsUpdated++;
+      continue;
     }
+
+    await memoryStore.createOrUpdateThread({
+      scopeId,
+      key: update.key,
+      summary: update.newSummary ?? update.key,
+      severity: update.newSeverity ?? 0.5,
+    });
+    threadsUpdated++;
   }
 
-  // Process fact merges (simplified - just update quality, actual merge is complex)
   for (const merge of reflectorResult.factMerges) {
-    // Mark old facts as superseded and create merged fact
-    for (const factId of merge.factIds.slice(1)) {
-      await memoryRepo.updateFactStatus(factId, 'superseded');
+    const [primaryFactId, ...supersededFactIds] = merge.factIds;
+    for (const factId of supersededFactIds) {
+      await memoryStore.updateFactStatus(factId, 'superseded');
     }
+    await memoryStore.createFact({
+      scopeId,
+      subject: merge.mergedFact.subject,
+      predicate: merge.mergedFact.predicate,
+      object: merge.mergedFact.object,
+      confidence: merge.mergedFact.confidence,
+      supersedesFactId: primaryFactId ?? null,
+    });
     factsMerged++;
   }
 
-  // Apply quality labels
   for (const label of reflectorResult.qualityLabels) {
     if (label.itemType === 'event') {
-      await memoryRepo.updateEventQuality(label.itemId, label.newQualityScore);
+      await memoryStore.updateEventQuality(label.itemId, label.newQualityScore);
+      qualityLabelsApplied++;
+      continue;
     }
+    if (label.itemType === 'fact') {
+      continue;
+    }
+    await memoryStore.updateObservationQuality(label.itemId, label.newQualityScore);
     qualityLabelsApplied++;
   }
 
@@ -129,17 +137,19 @@ export async function runConsolidateMemory(
   };
 }
 
-/**
- * Check if consolidation should be triggered.
- */
-export async function shouldTriggerConsolidation(pairId: string): Promise<boolean> {
-  const recentEvents = await memoryRepo.getEventsByPair(pairId, 100);
-
-  // Trigger if more than 30 events since last consolidation
-  // In production, this would check timestamps
-  if (recentEvents.length >= 30) {
-    return true;
+export async function shouldTriggerConsolidation(input: {
+  pairId?: string;
+  scopeId?: string;
+  memoryStore?: MemoryStore;
+  threshold?: number;
+}): Promise<boolean> {
+  const scopeId = input.scopeId ?? input.pairId;
+  if (!scopeId) {
+    throw new Error('scopeId or pairId is required');
   }
 
-  return false;
+  const memoryStore = input.memoryStore ?? createProductionMemoryStore();
+  const threshold = input.threshold ?? 30;
+  const recentEvents = await memoryStore.getEvents(scopeId, threshold);
+  return recentEvents.length >= threshold;
 }

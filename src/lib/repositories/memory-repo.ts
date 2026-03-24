@@ -14,6 +14,8 @@ import {
   WorkingMemory,
   WorkingMemorySchema,
   PADState,
+  MemoryUsage,
+  MemoryUsageSchema,
 } from '../schemas';
 
 /**
@@ -444,6 +446,46 @@ export const memoryRepo = {
     await db.execute({
       sql: `UPDATE memory_observations SET quality_score = ? WHERE id = ?`,
       args: [qualityScore, observationId],
+    });
+  },
+
+  async createMemoryUsage(input: {
+    memoryItemType: MemoryUsage['memoryItemType'];
+    memoryItemId: string;
+    turnId: string;
+    wasSelected: boolean;
+    wasHelpful: boolean | null;
+    scoreDelta: number | null;
+  }): Promise<MemoryUsage> {
+    const db = getDb();
+    const id = uuid();
+    const now = new Date().toISOString();
+
+    await db.execute({
+      sql: `INSERT INTO memory_usage
+            (id, memory_item_type, memory_item_id, turn_id, was_selected, was_helpful, score_delta, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      args: [
+        id,
+        input.memoryItemType,
+        input.memoryItemId,
+        input.turnId,
+        input.wasSelected ? 1 : 0,
+        input.wasHelpful === null ? null : input.wasHelpful ? 1 : 0,
+        input.scoreDelta,
+        now,
+      ],
+    });
+
+    return MemoryUsageSchema.parse({
+      id,
+      memoryItemType: input.memoryItemType,
+      memoryItemId: input.memoryItemId,
+      turnId: input.turnId,
+      wasSelected: input.wasSelected,
+      wasHelpful: input.wasHelpful,
+      scoreDelta: input.scoreDelta,
+      createdAt: now,
     });
   },
 };

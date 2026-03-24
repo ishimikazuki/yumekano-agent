@@ -5,7 +5,8 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { CoEExplanationCard } from '@/components/CoEExplanationCard';
 import type { CoEExplanation } from '@/lib/rules/coe';
-import { Tooltip } from '@/components/Tooltip';
+import { LabelWithTooltip, type HelpKey } from '@/components/Tooltip';
+import { downloadConversationMarkdown } from '@/lib/workspaces/conversation-export';
 
 // ============ Types ============
 
@@ -112,18 +113,25 @@ type DraftState = {
   };
   persona: {
     summary: string;
+    innerWorldNoteMd?: string;
     values: string[];
-    flaws: string[];
-    insecurities: string[];
-    likes: string[];
-    dislikes: string[];
-    signatureBehaviors: string[];
-    authoredExamples?: Record<string, string[]>;
-    innerWorld?: InnerWorld;
-    surfaceLoop?: SurfaceLoop;
-    anchors?: Anchor[];
-    topicPacks?: TopicPack[];
-    reactionPacks?: ReactionPack[];
+    vulnerabilities: string[];
+    likes?: string[];
+    dislikes?: string[];
+    signatureBehaviors?: string[];
+    authoredExamples: {
+      warm?: string[];
+      playful?: string[];
+      guarded?: string[];
+      conflict?: string[];
+    };
+    legacyAuthoring?: {
+      innerWorld?: InnerWorld;
+      surfaceLoop?: SurfaceLoop;
+      anchors?: Anchor[];
+      topicPacks?: TopicPack[];
+      reactionPacks?: ReactionPack[];
+    };
   };
   style: {
     language: string;
@@ -162,6 +170,7 @@ type DraftState = {
       reciprocity: number;
       pressureIntrusiveness: number;
       novelty: number;
+      selfRelevance: number;
     };
     externalization: {
       warmthWeight: number;
@@ -189,56 +198,29 @@ type WorkspaceWithDraft = {
 };
 
 const TABS = [
-  { id: 'identity', label: 'アイデンティティ' },
-  { id: 'persona', label: 'ペルソナ' },
-  { id: 'style', label: 'スタイル' },
-  { id: 'autonomy', label: '自律性' },
-  { id: 'emotion', label: '感情' },
-  { id: 'phaseGraph', label: 'フェーズ' },
-  { id: 'prompts', label: 'プロンプト' },
-  { id: 'versions', label: 'バージョン' },
+  { id: 'identity', label: 'アイデンティティ', helpKey: 'tab.identity' },
+  { id: 'persona', label: 'ペルソナ', helpKey: 'tab.persona' },
+  { id: 'style', label: 'スタイル', helpKey: 'tab.style' },
+  { id: 'autonomy', label: '自律性', helpKey: 'tab.autonomy' },
+  { id: 'emotion', label: '感情', helpKey: 'tab.emotion' },
+  { id: 'phaseGraph', label: 'フェーズ', helpKey: 'tab.phaseGraph' },
+  { id: 'prompts', label: 'プロンプト', helpKey: 'tab.prompts' },
+  { id: 'versions', label: 'バージョン', helpKey: 'tab.versions' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
-const PLAYGROUND_HELP_TEXTS: Record<string, string> = {
-  アイデンティティ: '表示名・呼称・基本属性。会話中の呼び方や自己紹介の軸になります。',
-  ペルソナ: '性格や価値観、内面設定。返答の一貫性や世界観を作る中心です。',
-  スタイル: '話し方の調整項目。敬語、簡潔さ、遊び心など文体に直接効きます。',
-  自律性: '同調しすぎないための設定。反論・拒否・保留のしやすさを制御します。',
-  感情: 'PAD基準値と変動特性。反応の温度感や回復スピードに影響します。',
-  フェーズ: '関係進行の段階設計。どの条件で進むか・許可される行動を定義します。',
-  プロンプト: '各エージェントの指示文。高度な調整用で、構造設定より優先度は低めです。',
-  バージョン: '公開履歴とロールバック管理。編集内容の安全な切り替えに使います。',
-  会話テスト: '現在のドラフト設定で対話を試せます。保存後の挙動確認に使います。',
-  基本情報: 'キャラクターの概要情報です。',
-  インナーワールド: '根源的な欲求や恐れなど、行動の深層動機を定義します。',
-  サーフェスループ: '普段・ストレス時など状況別の表出パターンを設定します。',
-  アンカー: '強い感情的意味を持つモチーフ。記憶や反応の優先度に影響します。',
-  トピックパック: '特定話題への反応ルール。トリガー語と返答ヒントを定義します。',
-  リアクションパック: '特定状況で出す定型的反応をまとめた設定です。',
-  フェーズノード: '会話段階そのもの。各段階の許可行動と制約を持ちます。',
-  遷移: 'フェーズ間の移動ルール。条件を満たすと次の段階へ進みます。',
-  開始フェーズ: '新規セッション開始時に使う初期フェーズです。',
-  遷移条件: 'フェーズ遷移に必要な判定式。数値・トピック・時間などで指定します。',
-  すべての条件を満たす必要あり: 'ONならAND条件、OFFならOR条件で遷移判定します。',
-  甘えさせない: 'ONで、ユーザー主導の親密要求にすぐ応じにくくなります。',
-  Generator: '最終発話候補を生成するプロンプトです。',
-  Planner: '次ターンの意図・行動計画を決めるプロンプトです。',
-  Extractor: '会話からメモリ候補を抽出するプロンプトです。',
-  Reflector: '会話を振り返り、関係状態の更新を補助するプロンプトです。',
-  Ranker: '候補発話を評価して採用順を決めるプロンプトです。',
-};
-
-function getHelpText(label: string): string {
-  return PLAYGROUND_HELP_TEXTS[label] ?? `${label} の設定項目です。会話挙動に影響します。`;
-}
-
-function HelpLabel({ label, className = 'text-xs font-medium text-gray-700' }: { label: string; className?: string }) {
+function HelpLabel({
+  label,
+  helpKey,
+  className = 'text-xs font-medium text-gray-700',
+}: {
+  label: string;
+  helpKey?: HelpKey;
+  className?: string;
+}) {
   return (
-    <Tooltip content={getHelpText(label)}>
-      <span className={className}>{label}</span>
-    </Tooltip>
+    <LabelWithTooltip label={label} helpKey={helpKey} className={className} />
   );
 }
 
@@ -268,12 +250,61 @@ export default function WorkspaceSandboxPage() {
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  const saveEditorContext = useCallback(async (context: { playgroundSessionId?: string }) => {
+    const response = await fetch(`/api/workspaces/${workspaceId}/editor-context`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(context),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save editor context');
+    }
+  }, [workspaceId]);
+
   useEffect(() => {
     const fetchWorkspace = async () => {
+      setLoading(true);
+      setMessages([]);
+      setSessionId(null);
+
       try {
         const res = await fetch(`/api/workspaces/${workspaceId}`);
         if (!res.ok) throw new Error('Failed to fetch workspace');
         setData(await res.json());
+
+        const contextRes = await fetch(`/api/workspaces/${workspaceId}/editor-context`);
+        if (!contextRes.ok) {
+          console.error('Failed to fetch editor context');
+          return;
+        }
+
+        const contextData = await contextRes.json() as {
+          playgroundSessionId?: string;
+        };
+
+        if (!contextData.playgroundSessionId) return;
+
+        const sessionRes = await fetch(
+          `/api/workspaces/${workspaceId}/playground-session?sessionId=${encodeURIComponent(contextData.playgroundSessionId)}`
+        );
+
+        if (sessionRes.status === 404) {
+          await saveEditorContext({});
+          return;
+        }
+
+        if (!sessionRes.ok) {
+          throw new Error('Failed to restore playground session');
+        }
+
+        const sessionData = await sessionRes.json() as {
+          sessionId: string;
+          messages: Message[];
+        };
+
+        setSessionId(sessionData.sessionId);
+        setMessages(sessionData.messages);
       } catch (error) {
         console.error('Failed to fetch workspace:', error);
       } finally {
@@ -281,7 +312,7 @@ export default function WorkspaceSandboxPage() {
       }
     };
     fetchWorkspace();
-  }, [workspaceId]);
+  }, [saveEditorContext, workspaceId]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -322,6 +353,32 @@ export default function WorkspaceSandboxPage() {
     }
   }, [workspaceId]);
 
+  const saveDraftSnapshot = useCallback(async (draftToSave: DraftState) => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draftToSave),
+      });
+
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
+            ? payload.error
+            : 'Failed to save draft'
+        );
+      }
+
+      setData((prev) => prev ? { ...prev, draft: payload as DraftState } : null);
+      setHasChanges(false);
+      return payload as DraftState;
+    } finally {
+      setSaving(false);
+    }
+  }, [workspaceId]);
+
   const handleChange = useCallback(<K extends keyof DraftState>(section: K, key: keyof DraftState[K], value: unknown) => {
     setData((prev) => {
       if (!prev) return null;
@@ -340,12 +397,21 @@ export default function WorkspaceSandboxPage() {
 
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || !data) return;
     const userMessage = input.trim();
-    setInput('');
-    setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
     setIsLoading(true);
     try {
+      try {
+        await saveDraftSnapshot(data.draft);
+      } catch (saveError) {
+        console.error('Conversation autosave failed:', saveError);
+        alert(`会話前の自動保存に失敗しました\n${saveError instanceof Error ? saveError.message : 'Unknown error'}`);
+        return;
+      }
+
+      setInput('');
+      setMessages((prev) => [...prev, { role: 'user', content: userMessage }]);
+
       const response = await fetch('/api/draft-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -353,7 +419,14 @@ export default function WorkspaceSandboxPage() {
       });
       if (!response.ok) throw new Error((await response.json()).error || 'Draft chat failed');
       const responseData = await response.json();
-      if (!sessionId && responseData.sessionId) setSessionId(responseData.sessionId);
+      if (!sessionId && responseData.sessionId) {
+        setSessionId(responseData.sessionId);
+        try {
+          await saveEditorContext({ playgroundSessionId: responseData.sessionId });
+        } catch (contextError) {
+          console.error('Failed to persist playground session:', contextError);
+        }
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -367,11 +440,36 @@ export default function WorkspaceSandboxPage() {
       ]);
     } catch (error) {
       setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${error instanceof Error ? error.message : 'Unknown'}` }]);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
-  const handleReset = () => { setMessages([]); setSessionId(null); };
+  const handleReset = async () => {
+    setMessages([]);
+    setSessionId(null);
+
+    try {
+      await saveEditorContext({});
+    } catch (error) {
+      console.error('Failed to reset editor context:', error);
+    }
+  };
+
+  const handleExportMarkdown = useCallback(() => {
+    if (!data || messages.length === 0) {
+      return;
+    }
+
+    downloadConversationMarkdown({
+      title: `${data.draft.identity.displayName} sandbox conversation`,
+      mode: 'sandbox',
+      characterName: data.draft.identity.displayName,
+      workspaceName: data.name,
+      sessionId,
+      messages,
+    });
+  }, [data, messages, sessionId]);
 
   if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-500">Loading...</div></div>;
   if (!data) return <div className="text-center py-12"><p className="text-red-500">ワークスペースが見つかりません</p><Link href={`/characters/${characterId}`} className="text-pink-500 hover:underline mt-4 inline-block">キャラクターに戻る</Link></div>;
@@ -401,11 +499,24 @@ export default function WorkspaceSandboxPage() {
         {/* Left: Chat */}
         <div className="flex flex-col bg-gray-50" style={{ width: `${100 - rightPanelWidth}%` }}>
           <div className="px-4 py-2 border-b bg-white flex items-center justify-between">
-            <HelpLabel label="会話テスト" className="text-sm font-medium text-gray-700" />
-            <button onClick={handleReset} className="text-xs text-gray-500 hover:text-gray-700">リセット</button>
+            <HelpLabel
+              label="会話テスト"
+              helpKey="workspace.chatTest"
+              className="text-sm font-medium text-gray-700"
+            />
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExportMarkdown}
+                disabled={messages.length === 0}
+                className="text-xs text-gray-500 hover:text-gray-700 disabled:cursor-not-allowed disabled:text-gray-300"
+              >
+                MD出力
+              </button>
+              <button onClick={handleReset} className="text-xs text-gray-500 hover:text-gray-700">リセット</button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {messages.length === 0 && <div className="text-center text-gray-400 py-8 text-sm"><p>編集した内容でテストできるよ</p><p className="mt-1 text-xs">保存してから会話してみてね</p></div>}
+            {messages.length === 0 && <div className="text-center text-gray-400 py-8 text-sm"><p>編集した内容でテストできるよ</p><p className="mt-1 text-xs">送信時に自動保存されるよ</p></div>}
             {messages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${msg.role === 'user' ? 'bg-pink-500 text-white' : 'bg-white text-gray-900 shadow-sm'}`}>
@@ -440,7 +551,7 @@ export default function WorkspaceSandboxPage() {
             <nav className="flex gap-1 py-1.5">
               {TABS.map((tab) => (
                 <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-2 py-1 text-xs font-medium whitespace-nowrap rounded transition-colors ${activeTab === tab.id ? 'bg-pink-100 text-pink-700' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  <HelpLabel label={tab.label} className="text-inherit" />
+                  <HelpLabel label={tab.label} helpKey={tab.helpKey} className="text-inherit" />
                 </button>
               ))}
             </nav>
@@ -467,11 +578,11 @@ function IdentityEditor({ data, onChange }: { data: DraftState['identity']; onCh
     <div className="space-y-4">
       <h2 className="text-base font-semibold text-gray-900">アイデンティティ</h2>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="表示名" value={data.displayName} onChange={(v) => onChange('displayName', v)} />
-        <Field label="年齢" type="number" value={data.age ?? ''} onChange={(v) => onChange('age', v ? parseInt(v) : undefined)} />
-        <Field label="一人称" value={data.firstPerson} onChange={(v) => onChange('firstPerson', v)} />
-        <Field label="二人称" value={data.secondPerson} onChange={(v) => onChange('secondPerson', v)} />
-        <div className="col-span-2"><Field label="職業・役割" value={data.occupation ?? ''} onChange={(v) => onChange('occupation', v || undefined)} /></div>
+        <Field label="表示名" helpKey="field.identity.displayName" value={data.displayName} onChange={(v) => onChange('displayName', v)} />
+        <Field label="年齢" helpKey="field.identity.age" type="number" value={data.age ?? ''} onChange={(v) => onChange('age', v ? parseInt(v) : undefined)} />
+        <Field label="一人称" helpKey="field.identity.firstPerson" value={data.firstPerson} onChange={(v) => onChange('firstPerson', v)} />
+        <Field label="二人称" helpKey="field.identity.secondPerson" value={data.secondPerson} onChange={(v) => onChange('secondPerson', v)} />
+        <div className="col-span-2"><Field label="職業・役割" helpKey="field.identity.occupation" value={data.occupation ?? ''} onChange={(v) => onChange('occupation', v || undefined)} /></div>
       </div>
     </div>
   );
@@ -479,7 +590,7 @@ function IdentityEditor({ data, onChange }: { data: DraftState['identity']; onCh
 
 // ============ Persona Editor ============
 function PersonaEditor({ data, onChange }: { data: DraftState['persona']; onChange: (k: keyof DraftState['persona'], v: unknown) => void }) {
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ basic: true, innerWorld: true, surfaceLoop: true, anchors: true, topicPacks: true, reactionPacks: true });
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({ basic: true, examples: true });
   const toggle = (key: string) => setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   return (
@@ -487,134 +598,51 @@ function PersonaEditor({ data, onChange }: { data: DraftState['persona']; onChan
       <h2 className="text-base font-semibold text-gray-900">ペルソナ</h2>
 
       {/* Basic */}
-      <Section title="基本情報" expanded={expandedSections.basic} onToggle={() => toggle('basic')}>
-        <TextArea label="サマリー" value={data.summary} onChange={(v) => onChange('summary', v)} rows={2} />
-        <ArrayEditor label="価値観" values={data.values} onChange={(v) => onChange('values', v)} />
-        <ArrayEditor label="欠点" values={data.flaws} onChange={(v) => onChange('flaws', v)} />
-        <ArrayEditor label="不安・弱み" values={data.insecurities} onChange={(v) => onChange('insecurities', v)} />
-        <ArrayEditor label="好きなもの" values={data.likes} onChange={(v) => onChange('likes', v)} />
-        <ArrayEditor label="嫌いなもの" values={data.dislikes} onChange={(v) => onChange('dislikes', v)} />
-        <ArrayEditor label="シグネチャ行動" values={data.signatureBehaviors} onChange={(v) => onChange('signatureBehaviors', v)} />
+      <Section title="基本情報" helpKey="section.persona.basic" expanded={expandedSections.basic} onToggle={() => toggle('basic')}>
+        <TextArea label="サマリー" helpKey="field.persona.summary" value={data.summary} onChange={(v) => onChange('summary', v)} rows={2} />
+        <TextArea
+          label="内面メモ"
+          helpKey="field.persona.innerWorldNoteMd"
+          value={data.innerWorldNoteMd ?? ''}
+          onChange={(v) => onChange('innerWorldNoteMd', v || undefined)}
+          rows={6}
+          placeholder="彼女が本当に欲しいもの、恐れていること、防御的になるきっかけ、親しさや関係をどう受け取るかを自由に書いてね"
+        />
+        <ArrayEditor label="価値観" helpKey="field.persona.values" values={data.values} onChange={(v) => onChange('values', v)} />
+        <ArrayEditor label="弱さ・傷つきやすさ" helpKey="field.persona.vulnerabilities" values={data.vulnerabilities} onChange={(v) => onChange('vulnerabilities', v)} />
+        <ArrayEditor label="好きなもの" helpKey="field.persona.likes" values={data.likes ?? []} onChange={(v) => onChange('likes', v)} />
+        <ArrayEditor label="嫌いなもの" helpKey="field.persona.dislikes" values={data.dislikes ?? []} onChange={(v) => onChange('dislikes', v)} />
+        <ArrayEditor label="シグネチャ行動" helpKey="field.persona.signatureBehaviors" values={data.signatureBehaviors ?? []} onChange={(v) => onChange('signatureBehaviors', v)} />
       </Section>
 
-      {/* Inner World */}
-      <Section title="インナーワールド" expanded={expandedSections.innerWorld} onToggle={() => toggle('innerWorld')}>
-        <InnerWorldEditor data={data.innerWorld} onChange={(v) => onChange('innerWorld', v)} />
-      </Section>
-
-      {/* Surface Loop */}
-      <Section title="サーフェスループ" expanded={expandedSections.surfaceLoop} onToggle={() => toggle('surfaceLoop')}>
-        <SurfaceLoopEditor data={data.surfaceLoop} onChange={(v) => onChange('surfaceLoop', v)} />
-      </Section>
-
-      {/* Anchors */}
-      <Section title="アンカー" expanded={expandedSections.anchors} onToggle={() => toggle('anchors')}>
-        <AnchorsEditor data={data.anchors || []} onChange={(v) => onChange('anchors', v)} />
-      </Section>
-
-      {/* Topic Packs */}
-      <Section title="トピックパック" expanded={expandedSections.topicPacks} onToggle={() => toggle('topicPacks')}>
-        <TopicPacksEditor data={data.topicPacks || []} onChange={(v) => onChange('topicPacks', v)} />
-      </Section>
-
-      {/* Reaction Packs */}
-      <Section title="リアクションパック" expanded={expandedSections.reactionPacks} onToggle={() => toggle('reactionPacks')}>
-        <ReactionPacksEditor data={data.reactionPacks || []} onChange={(v) => onChange('reactionPacks', v)} />
+      <Section title="発話例" expanded={expandedSections.examples} onToggle={() => toggle('examples')}>
+        <AuthoredExamplesEditor
+          data={data.authoredExamples}
+          onChange={(v) => onChange('authoredExamples', v)}
+        />
       </Section>
     </div>
   );
 }
 
-function InnerWorldEditor({ data, onChange }: { data?: InnerWorld; onChange: (v: InnerWorld) => void }) {
-  const d = data || { coreDesire: '', fear: '' };
-  const update = (k: keyof InnerWorld, v: string) => onChange({ ...d, [k]: v || undefined });
-  return (
-    <div className="space-y-3">
-      <Field label="コア欲求" value={d.coreDesire} onChange={(v) => update('coreDesire', v)} placeholder="最も望んでいること" />
-      <Field label="恐れ" value={d.fear} onChange={(v) => update('fear', v)} placeholder="最も恐れていること" />
-      <Field label="トラウマ" value={d.wound ?? ''} onChange={(v) => update('wound', v)} placeholder="過去の傷（任意）" />
-      <Field label="対処法" value={d.coping ?? ''} onChange={(v) => update('coping', v)} placeholder="ストレス対処法（任意）" />
-      <Field label="成長アーク" value={d.growthArc ?? ''} onChange={(v) => update('growthArc', v)} placeholder="どう成長できるか（任意）" />
-    </div>
-  );
-}
+function AuthoredExamplesEditor({
+  data,
+  onChange,
+}: {
+  data: DraftState['persona']['authoredExamples'];
+  onChange: (v: DraftState['persona']['authoredExamples']) => void;
+}) {
+  const update = (
+    key: keyof DraftState['persona']['authoredExamples'],
+    values: string[]
+  ) => onChange({ ...data, [key]: values.length > 0 ? values : undefined });
 
-function SurfaceLoopEditor({ data, onChange }: { data?: SurfaceLoop; onChange: (v: SurfaceLoop) => void }) {
-  const d = data || { defaultMood: '', stressBehavior: '', joyBehavior: '', conflictStyle: '', affectionStyle: '' };
-  const update = (k: keyof SurfaceLoop, v: string) => onChange({ ...d, [k]: v });
   return (
     <div className="space-y-3">
-      <Field label="デフォルト気分" value={d.defaultMood} onChange={(v) => update('defaultMood', v)} placeholder="普段の気分" />
-      <Field label="ストレス時" value={d.stressBehavior} onChange={(v) => update('stressBehavior', v)} placeholder="ストレス時の振る舞い" />
-      <Field label="喜び時" value={d.joyBehavior} onChange={(v) => update('joyBehavior', v)} placeholder="嬉しい時の振る舞い" />
-      <Field label="対立時" value={d.conflictStyle} onChange={(v) => update('conflictStyle', v)} placeholder="対立の対処法" />
-      <Field label="愛情表現" value={d.affectionStyle} onChange={(v) => update('affectionStyle', v)} placeholder="愛情の示し方" />
-    </div>
-  );
-}
-
-function AnchorsEditor({ data, onChange }: { data: Anchor[]; onChange: (v: Anchor[]) => void }) {
-  const add = () => onChange([...data, { key: `anchor_${Date.now()}`, label: '新しいアンカー', description: 'このアイテムの説明', emotionalSignificance: 'なぜこれが大切なのか' }]);
-  const remove = (i: number) => onChange(data.filter((_, idx) => idx !== i));
-  const update = (i: number, k: keyof Anchor, v: string) => onChange(data.map((a, idx) => idx === i ? { ...a, [k]: v } : a));
-  return (
-    <div className="space-y-3">
-      {data.map((anchor, i) => (
-        <div key={anchor.key} className="p-3 bg-gray-50 rounded-lg space-y-2">
-          <div className="flex justify-between items-center">
-            <Field label="ラベル" value={anchor.label} onChange={(v) => update(i, 'label', v)} className="flex-1" />
-            <button onClick={() => remove(i)} className="ml-2 text-red-400 hover:text-red-600 text-xs">削除</button>
-          </div>
-          <Field label="キー" value={anchor.key} onChange={(v) => update(i, 'key', v)} />
-          <TextArea label="説明" value={anchor.description} onChange={(v) => update(i, 'description', v)} rows={2} />
-          <TextArea label="感情的意味" value={anchor.emotionalSignificance} onChange={(v) => update(i, 'emotionalSignificance', v)} rows={2} />
-        </div>
-      ))}
-      <button onClick={add} className="w-full py-2 border-2 border-dashed border-gray-300 text-gray-500 text-sm rounded-lg hover:border-pink-300 hover:text-pink-500">+ アンカーを追加</button>
-    </div>
-  );
-}
-
-function TopicPacksEditor({ data, onChange }: { data: TopicPack[]; onChange: (v: TopicPack[]) => void }) {
-  const add = () => onChange([...data, { key: `topic_${Date.now()}`, label: '新しいトピック', triggers: ['トリガーワード'], responseHints: ['このトピックでの応答ヒント'] }]);
-  const remove = (i: number) => onChange(data.filter((_, idx) => idx !== i));
-  const update = (i: number, k: keyof TopicPack, v: unknown) => onChange(data.map((t, idx) => idx === i ? { ...t, [k]: v } : t));
-  return (
-    <div className="space-y-3">
-      {data.map((topic, i) => (
-        <div key={topic.key} className="p-3 bg-gray-50 rounded-lg space-y-2">
-          <div className="flex justify-between items-center">
-            <Field label="ラベル" value={topic.label} onChange={(v) => update(i, 'label', v)} className="flex-1" />
-            <button onClick={() => remove(i)} className="ml-2 text-red-400 hover:text-red-600 text-xs">削除</button>
-          </div>
-          <Field label="キー" value={topic.key} onChange={(v) => update(i, 'key', v)} />
-          <ArrayEditor label="トリガー" values={topic.triggers} onChange={(v) => update(i, 'triggers', v)} />
-          <ArrayEditor label="応答ヒント" values={topic.responseHints} onChange={(v) => update(i, 'responseHints', v)} />
-        </div>
-      ))}
-      <button onClick={add} className="w-full py-2 border-2 border-dashed border-gray-300 text-gray-500 text-sm rounded-lg hover:border-pink-300 hover:text-pink-500">+ トピックを追加</button>
-    </div>
-  );
-}
-
-function ReactionPacksEditor({ data, onChange }: { data: ReactionPack[]; onChange: (v: ReactionPack[]) => void }) {
-  const add = () => onChange([...data, { key: `reaction_${Date.now()}`, label: '新しいリアクション', trigger: 'このリアクションを引き起こす状況', responses: ['応答例1', '応答例2'] }]);
-  const remove = (i: number) => onChange(data.filter((_, idx) => idx !== i));
-  const update = (i: number, k: keyof ReactionPack, v: unknown) => onChange(data.map((r, idx) => idx === i ? { ...r, [k]: v } : r));
-  return (
-    <div className="space-y-3">
-      {data.map((reaction, i) => (
-        <div key={reaction.key} className="p-3 bg-gray-50 rounded-lg space-y-2">
-          <div className="flex justify-between items-center">
-            <Field label="ラベル" value={reaction.label} onChange={(v) => update(i, 'label', v)} className="flex-1" />
-            <button onClick={() => remove(i)} className="ml-2 text-red-400 hover:text-red-600 text-xs">削除</button>
-          </div>
-          <Field label="キー" value={reaction.key} onChange={(v) => update(i, 'key', v)} />
-          <Field label="トリガー" value={reaction.trigger} onChange={(v) => update(i, 'trigger', v)} placeholder="何がこのリアクションを引き起こすか" />
-          <ArrayEditor label="応答例" values={reaction.responses} onChange={(v) => update(i, 'responses', v)} />
-        </div>
-      ))}
-      <button onClick={add} className="w-full py-2 border-2 border-dashed border-gray-300 text-gray-500 text-sm rounded-lg hover:border-pink-300 hover:text-pink-500">+ リアクションを追加</button>
+      <ArrayEditor label="優しい時" values={data.warm ?? []} onChange={(v) => update('warm', v)} />
+      <ArrayEditor label="じゃれた時" values={data.playful ?? []} onChange={(v) => update('playful', v)} />
+      <ArrayEditor label="警戒している時" values={data.guarded ?? []} onChange={(v) => update('guarded', v)} />
+      <ArrayEditor label="ぶつかった時" values={data.conflict ?? []} onChange={(v) => update('conflict', v)} />
     </div>
   );
 }
@@ -625,19 +653,19 @@ function StyleEditor({ data, onChange }: { data: DraftState['style']; onChange: 
     <div className="space-y-5">
       <h2 className="text-base font-semibold text-gray-900">スタイル</h2>
       <div className="grid grid-cols-2 gap-3">
-        <Select label="言語" value={data.language} onChange={(v) => onChange('language', v)} options={[{ value: 'ja', label: '日本語' }]} />
-        <Select label="敬語レベル" value={data.politenessDefault} onChange={(v) => onChange('politenessDefault', v)} options={[{ value: 'casual', label: 'カジュアル' }, { value: 'mixed', label: 'ミックス' }, { value: 'polite', label: '丁寧' }]} />
+        <Select label="言語" helpKey="field.style.language" value={data.language} onChange={(v) => onChange('language', v)} options={[{ value: 'ja', label: '日本語' }]} />
+        <Select label="敬語レベル" helpKey="field.style.politenessDefault" value={data.politenessDefault} onChange={(v) => onChange('politenessDefault', v)} options={[{ value: 'casual', label: 'カジュアル' }, { value: 'mixed', label: 'ミックス' }, { value: 'polite', label: '丁寧' }]} />
       </div>
       <div className="space-y-3">
-        <SliderField label="簡潔さ" value={data.terseness} onChange={(v) => onChange('terseness', v)} />
-        <SliderField label="直接性" value={data.directness} onChange={(v) => onChange('directness', v)} />
-        <SliderField label="遊び心" value={data.playfulness} onChange={(v) => onChange('playfulness', v)} />
-        <SliderField label="からかい" value={data.teasing} onChange={(v) => onChange('teasing', v)} />
-        <SliderField label="主導性" value={data.initiative} onChange={(v) => onChange('initiative', v)} />
-        <SliderField label="絵文字率" value={data.emojiRate} onChange={(v) => onChange('emojiRate', v)} />
+        <SliderField label="簡潔さ" helpKey="field.style.terseness" value={data.terseness} onChange={(v) => onChange('terseness', v)} />
+        <SliderField label="直接性" helpKey="field.style.directness" value={data.directness} onChange={(v) => onChange('directness', v)} />
+        <SliderField label="遊び心" helpKey="field.style.playfulness" value={data.playfulness} onChange={(v) => onChange('playfulness', v)} />
+        <SliderField label="からかい" helpKey="field.style.teasing" value={data.teasing} onChange={(v) => onChange('teasing', v)} />
+        <SliderField label="主導性" helpKey="field.style.initiative" value={data.initiative} onChange={(v) => onChange('initiative', v)} />
+        <SliderField label="絵文字率" helpKey="field.style.emojiRate" value={data.emojiRate} onChange={(v) => onChange('emojiRate', v)} />
       </div>
-      <ArrayEditor label="シグネチャフレーズ" values={data.signaturePhrases} onChange={(v) => onChange('signaturePhrases', v)} />
-      <ArrayEditor label="タブーフレーズ" values={data.tabooPhrases} onChange={(v) => onChange('tabooPhrases', v)} />
+      <ArrayEditor label="シグネチャフレーズ" helpKey="field.style.signaturePhrases" values={data.signaturePhrases} onChange={(v) => onChange('signaturePhrases', v)} />
+      <ArrayEditor label="タブーフレーズ" helpKey="field.style.tabooPhrases" values={data.tabooPhrases} onChange={(v) => onChange('tabooPhrases', v)} />
     </div>
   );
 }
@@ -648,16 +676,16 @@ function AutonomyEditor({ data, onChange }: { data: DraftState['autonomy']; onCh
     <div className="space-y-5">
       <div><h2 className="text-base font-semibold text-gray-900">自律性</h2><p className="text-xs text-gray-500 mt-1">ユーザーの要求に対する反応傾向</p></div>
       <div className="space-y-3">
-        <SliderField label="反論しやすさ" value={data.disagreeReadiness} onChange={(v) => onChange('disagreeReadiness', v)} />
-        <SliderField label="断りやすさ" value={data.refusalReadiness} onChange={(v) => onChange('refusalReadiness', v)} />
-        <SliderField label="待たせやすさ" value={data.delayReadiness} onChange={(v) => onChange('delayReadiness', v)} />
-        <SliderField label="仲直りしやすさ" value={data.repairReadiness} onChange={(v) => onChange('repairReadiness', v)} />
-        <SliderField label="引きずりやすさ" value={data.conflictCarryover} onChange={(v) => onChange('conflictCarryover', v)} />
+        <SliderField label="反論しやすさ" helpKey="field.autonomy.disagreeReadiness" value={data.disagreeReadiness} onChange={(v) => onChange('disagreeReadiness', v)} />
+        <SliderField label="断りやすさ" helpKey="field.autonomy.refusalReadiness" value={data.refusalReadiness} onChange={(v) => onChange('refusalReadiness', v)} />
+        <SliderField label="待たせやすさ" helpKey="field.autonomy.delayReadiness" value={data.delayReadiness} onChange={(v) => onChange('delayReadiness', v)} />
+        <SliderField label="仲直りしやすさ" helpKey="field.autonomy.repairReadiness" value={data.repairReadiness} onChange={(v) => onChange('repairReadiness', v)} />
+        <SliderField label="引きずりやすさ" helpKey="field.autonomy.conflictCarryover" value={data.conflictCarryover} onChange={(v) => onChange('conflictCarryover', v)} />
       </div>
       <div className="flex items-center gap-2 pt-3 border-t">
         <input type="checkbox" id="intimacy" checked={data.intimacyNeverOnDemand} onChange={(e) => onChange('intimacyNeverOnDemand', e.target.checked)} className="w-4 h-4 text-pink-500 rounded" />
         <label htmlFor="intimacy">
-          <HelpLabel label="甘えさせない" className="text-sm text-gray-700" />
+          <HelpLabel label="甘えさせない" helpKey="field.autonomy.intimacyNeverOnDemand" className="text-sm text-gray-700" />
         </label>
       </div>
     </div>
@@ -675,18 +703,21 @@ function EmotionEditor({ data, onChange }: { data: DraftState['emotion']; onChan
       <div className="space-y-3">
         <SliderField
           label="快"
+          helpKey="field.emotion.pleasure"
           value={(baseline.pleasure + 1) / 2}
           onChange={(v) => updateBaseline('pleasure', v * 2 - 1)}
           showValue={baseline.pleasure.toFixed(2)}
         />
         <SliderField
           label="覚醒"
+          helpKey="field.emotion.arousal"
           value={(baseline.arousal + 1) / 2}
           onChange={(v) => updateBaseline('arousal', v * 2 - 1)}
           showValue={baseline.arousal.toFixed(2)}
         />
         <SliderField
           label="支配感"
+          helpKey="field.emotion.dominance"
           value={(baseline.dominance + 1) / 2}
           onChange={(v) => updateBaseline('dominance', v * 2 - 1)}
           showValue={baseline.dominance.toFixed(2)}
@@ -752,7 +783,7 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h3>
-            <HelpLabel label="フェーズノード" className="text-sm font-medium text-gray-700" />
+            <HelpLabel label="フェーズノード" helpKey="section.phaseGraph.nodes" className="text-sm font-medium text-gray-700" />
           </h3>
           <button onClick={addNode} className="text-xs text-pink-600 hover:text-pink-700">+ 追加</button>
         </div>
@@ -773,7 +804,7 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h3>
-            <HelpLabel label="遷移" className="text-sm font-medium text-gray-700" />
+            <HelpLabel label="遷移" helpKey="section.phaseGraph.edges" className="text-sm font-medium text-gray-700" />
           </h3>
           <button onClick={addEdge} disabled={data.nodes.length < 2} className="text-xs text-pink-600 hover:text-pink-700 disabled:text-gray-400">+ 追加</button>
         </div>
@@ -794,7 +825,7 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
       {/* Entry Phase */}
       <div>
         <label className="block mb-1">
-          <HelpLabel label="開始フェーズ" />
+          <HelpLabel label="開始フェーズ" helpKey="section.phaseGraph.startPhase" />
         </label>
         <select value={data.entryPhaseId} onChange={(e) => onChange({ ...data, entryPhaseId: e.target.value })} className="w-full px-3 py-2 text-sm border rounded-lg">
           {data.nodes.map(n => <option key={n.id} value={n.id}>{n.label}</option>)}
@@ -808,13 +839,13 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
             <h3 className="text-sm font-medium text-gray-900">フェーズ編集: {selectedNode.label}</h3>
             <button onClick={() => deleteNode(selectedNode.id)} className="text-xs text-red-500 hover:text-red-700">削除</button>
           </div>
-          <Field label="ラベル" value={selectedNode.label} onChange={(v) => updateNode(selectedNode.id, { label: v })} />
-          <TextArea label="説明" value={selectedNode.description} onChange={(v) => updateNode(selectedNode.id, { description: v })} rows={2} />
-          <Select label="モード" value={selectedNode.mode} onChange={(v) => updateNode(selectedNode.id, { mode: v as PhaseNode['mode'] })} options={[{ value: 'entry', label: 'Entry' }, { value: 'relationship', label: 'Relationship' }, { value: 'girlfriend', label: 'Girlfriend' }]} />
-          <ArrayEditor label="許可アクト" values={selectedNode.allowedActs} onChange={(v) => updateNode(selectedNode.id, { allowedActs: v })} />
-          <ArrayEditor label="禁止アクト" values={selectedNode.disallowedActs} onChange={(v) => updateNode(selectedNode.id, { disallowedActs: v })} />
-          <Select label="親密性" value={selectedNode.adultIntimacyEligibility || 'never'} onChange={(v) => updateNode(selectedNode.id, { adultIntimacyEligibility: v as PhaseNode['adultIntimacyEligibility'] })} options={[{ value: 'never', label: '不可' }, { value: 'conditional', label: '条件付き' }, { value: 'allowed', label: '許可' }]} />
-          <TextArea label="ノート" value={selectedNode.authoredNotes || ''} onChange={(v) => updateNode(selectedNode.id, { authoredNotes: v || undefined })} rows={2} />
+          <Field label="ラベル" helpKey="field.phaseGraph.node.label" value={selectedNode.label} onChange={(v) => updateNode(selectedNode.id, { label: v })} />
+          <TextArea label="説明" helpKey="field.phaseGraph.node.description" value={selectedNode.description} onChange={(v) => updateNode(selectedNode.id, { description: v })} rows={2} />
+          <Select label="モード" helpKey="field.phaseGraph.node.mode" value={selectedNode.mode} onChange={(v) => updateNode(selectedNode.id, { mode: v as PhaseNode['mode'] })} options={[{ value: 'entry', label: 'Entry' }, { value: 'relationship', label: 'Relationship' }, { value: 'girlfriend', label: 'Girlfriend' }]} />
+          <ArrayEditor label="許可アクト" helpKey="field.phaseGraph.node.allowedActs" values={selectedNode.allowedActs} onChange={(v) => updateNode(selectedNode.id, { allowedActs: v })} />
+          <ArrayEditor label="禁止アクト" helpKey="field.phaseGraph.node.disallowedActs" values={selectedNode.disallowedActs} onChange={(v) => updateNode(selectedNode.id, { disallowedActs: v })} />
+          <Select label="親密性" helpKey="field.phaseGraph.node.adultIntimacyEligibility" value={selectedNode.adultIntimacyEligibility || 'never'} onChange={(v) => updateNode(selectedNode.id, { adultIntimacyEligibility: v as PhaseNode['adultIntimacyEligibility'] })} options={[{ value: 'never', label: '不可' }, { value: 'conditional', label: '条件付き' }, { value: 'allowed', label: '許可' }]} />
+          <TextArea label="ノート" helpKey="field.phaseGraph.node.authoredNotes" value={selectedNode.authoredNotes || ''} onChange={(v) => updateNode(selectedNode.id, { authoredNotes: v || undefined })} rows={2} />
         </div>
       )}
 
@@ -825,13 +856,13 @@ function PhaseGraphEditor({ data, onChange }: { data: PhaseGraph; onChange: (v: 
             <h3 className="text-sm font-medium text-gray-900">遷移編集</h3>
             <button onClick={() => deleteEdge(selectedEdge.id)} className="text-xs text-red-500 hover:text-red-700">削除</button>
           </div>
-          <Select label="From" value={selectedEdge.from} onChange={(v) => updateEdge(selectedEdge.id, { from: v })} options={data.nodes.map(n => ({ value: n.id, label: n.label }))} />
-          <Select label="To" value={selectedEdge.to} onChange={(v) => updateEdge(selectedEdge.id, { to: v })} options={data.nodes.map(n => ({ value: n.id, label: n.label }))} />
+          <Select label="From" helpKey="field.phaseGraph.edge.from" value={selectedEdge.from} onChange={(v) => updateEdge(selectedEdge.id, { from: v })} options={data.nodes.map(n => ({ value: n.id, label: n.label }))} />
+          <Select label="To" helpKey="field.phaseGraph.edge.to" value={selectedEdge.to} onChange={(v) => updateEdge(selectedEdge.id, { to: v })} options={data.nodes.map(n => ({ value: n.id, label: n.label }))} />
           <div className="flex items-center gap-2">
             <input type="checkbox" checked={selectedEdge.allMustPass} onChange={(e) => updateEdge(selectedEdge.id, { allMustPass: e.target.checked })} className="w-4 h-4 text-pink-500 rounded" />
-            <HelpLabel label="すべての条件を満たす必要あり" className="text-sm text-gray-700" />
+            <HelpLabel label="すべての条件を満たす必要あり" helpKey="field.phaseGraph.edge.allMustPass" className="text-sm text-gray-700" />
           </div>
-          <TextArea label="ビート（演出ノート）" value={selectedEdge.authoredBeat || ''} onChange={(v) => updateEdge(selectedEdge.id, { authoredBeat: v || undefined })} rows={2} />
+          <TextArea label="ビート（演出ノート）" helpKey="field.phaseGraph.edge.authoredBeat" value={selectedEdge.authoredBeat || ''} onChange={(v) => updateEdge(selectedEdge.id, { authoredBeat: v || undefined })} rows={2} />
 
           {/* Conditions Editor */}
           <ConditionsEditor
@@ -885,7 +916,7 @@ function ConditionsEditor({ conditions, onChange }: { conditions: TransitionCond
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <label>
-          <HelpLabel label="遷移条件" />
+          <HelpLabel label="遷移条件" helpKey="field.phaseGraph.edge.conditions" />
         </label>
         <div className="flex gap-1">
           <button onClick={() => addCondition('metric')} className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">+数値</button>
@@ -985,13 +1016,13 @@ function ConditionsEditor({ conditions, onChange }: { conditions: TransitionCond
 // ============ Prompts Editor ============
 function PromptsEditor({ data, onChange }: { data: DraftState['prompts']; onChange: (k: keyof DraftState['prompts'], v: unknown) => void }) {
   const [activePrompt, setActivePrompt] = useState<keyof DraftState['prompts']>('generatorMd');
-  const prompts: { key: keyof DraftState['prompts']; label: string }[] = [
-    { key: 'generatorMd', label: 'Generator' },
-    { key: 'generatorIntimacyMd', label: 'Generator (Intimacy)' },
-    { key: 'plannerMd', label: 'Planner' },
-    { key: 'extractorMd', label: 'Extractor' },
-    { key: 'reflectorMd', label: 'Reflector' },
-    { key: 'rankerMd', label: 'Ranker' },
+  const prompts: { key: keyof DraftState['prompts']; label: string; helpKey: HelpKey }[] = [
+    { key: 'generatorMd', label: 'Generator', helpKey: 'prompt.generator' },
+    { key: 'generatorIntimacyMd', label: 'Generator (Intimacy)', helpKey: 'prompt.generatorIntimacy' },
+    { key: 'plannerMd', label: 'Planner', helpKey: 'prompt.planner' },
+    { key: 'extractorMd', label: 'Extractor', helpKey: 'prompt.extractor' },
+    { key: 'reflectorMd', label: 'Reflector', helpKey: 'prompt.reflector' },
+    { key: 'rankerMd', label: 'Ranker', helpKey: 'prompt.ranker' },
   ];
   return (
     <div className="space-y-3 h-full flex flex-col">
@@ -999,7 +1030,7 @@ function PromptsEditor({ data, onChange }: { data: DraftState['prompts']; onChan
       <div className="flex gap-1 flex-wrap">
         {prompts.map((p) => (
           <button key={p.key} onClick={() => setActivePrompt(p.key)} className={`px-2 py-1 text-xs rounded ${activePrompt === p.key ? 'bg-pink-100 text-pink-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            <HelpLabel label={p.label} className="text-inherit" />
+            <HelpLabel label={p.label} helpKey={p.helpKey} className="text-inherit" />
           </button>
         ))}
       </div>
@@ -1206,11 +1237,23 @@ function VersionsEditor({ characterId, workspaceId }: { characterId: string; wor
 }
 
 // ============ Utility Components ============
-function Section({ title, expanded, onToggle, children }: { title: string; expanded?: boolean; onToggle: () => void; children: React.ReactNode }) {
+function Section({
+  title,
+  helpKey,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  helpKey?: HelpKey;
+  expanded?: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <div className="border rounded-lg">
       <button onClick={onToggle} className="w-full px-3 py-2 flex items-center justify-between text-sm font-medium text-gray-700 hover:bg-gray-50">
-        <HelpLabel label={title} className="text-sm font-medium text-gray-700" />
+        <HelpLabel label={title} helpKey={helpKey} className="text-sm font-medium text-gray-700" />
         <span className="text-gray-400">{expanded ? '▼' : '▶'}</span>
       </button>
       {expanded && <div className="px-3 pb-3 space-y-3">{children}</div>}
@@ -1218,46 +1261,98 @@ function Section({ title, expanded, onToggle, children }: { title: string; expan
   );
 }
 
-function Field({ label, value, onChange, type = 'text', placeholder, className }: { label: string; value: string | number; onChange: (v: string) => void; type?: string; placeholder?: string; className?: string }) {
+function Field({
+  label,
+  helpKey,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+  className,
+}: {
+  label: string;
+  helpKey?: HelpKey;
+  value: string | number;
+  onChange: (v: string) => void;
+  type?: string;
+  placeholder?: string;
+  className?: string;
+}) {
   return (
     <div className={className}>
       <label className="block mb-1">
-        <HelpLabel label={label} />
+        <HelpLabel label={label} helpKey={helpKey} />
       </label>
       <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500" />
     </div>
   );
 }
 
-function TextArea({ label, value, onChange, rows = 2, placeholder }: { label: string; value: string; onChange: (v: string) => void; rows?: number; placeholder?: string }) {
+function TextArea({
+  label,
+  helpKey,
+  value,
+  onChange,
+  rows = 2,
+  placeholder,
+}: {
+  label: string;
+  helpKey?: HelpKey;
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
+  placeholder?: string;
+}) {
   return (
     <div>
       <label className="block mb-1">
-        <HelpLabel label={label} />
+        <HelpLabel label={label} helpKey={helpKey} />
       </label>
       <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={rows} placeholder={placeholder} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500" />
     </div>
   );
 }
 
-function Select({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+function Select({
+  label,
+  helpKey,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  helpKey?: HelpKey;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
   return (
     <div>
       <label className="block mb-1">
-        <HelpLabel label={label} />
+        <HelpLabel label={label} helpKey={helpKey} />
       </label>
       <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-pink-500">{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
     </div>
   );
 }
 
-function ArrayEditor({ label, values, onChange }: { label: string; values: string[]; onChange: (values: string[]) => void }) {
+function ArrayEditor({
+  label,
+  helpKey,
+  values,
+  onChange,
+}: {
+  label: string;
+  helpKey?: HelpKey;
+  values: string[];
+  onChange: (values: string[]) => void;
+}) {
   const [newValue, setNewValue] = useState('');
   const addValue = () => { if (newValue.trim()) { onChange([...values, newValue.trim()]); setNewValue(''); } };
   return (
     <div>
       <label className="block mb-1.5">
-        <HelpLabel label={label} />
+        <HelpLabel label={label} helpKey={helpKey} />
       </label>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {values.map((v, i) => <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-pink-50 text-pink-700 rounded-full text-xs">{v}<button onClick={() => onChange(values.filter((_, idx) => idx !== i))} className="text-pink-400 hover:text-pink-600">×</button></span>)}
@@ -1270,10 +1365,22 @@ function ArrayEditor({ label, values, onChange }: { label: string; values: strin
   );
 }
 
-function SliderField({ label, value, onChange, showValue }: { label: string; value: number; onChange: (v: number) => void; showValue?: string }) {
+function SliderField({
+  label,
+  helpKey,
+  value,
+  onChange,
+  showValue,
+}: {
+  label: string;
+  helpKey?: HelpKey;
+  value: number;
+  onChange: (v: number) => void;
+  showValue?: string;
+}) {
   return (
     <div>
-      <div className="flex justify-between mb-1"><label><HelpLabel label={label} /></label><span className="text-xs text-gray-500">{showValue ?? `${Math.round(value * 100)}%`}</span></div>
+      <div className="flex justify-between mb-1"><label><HelpLabel label={label} helpKey={helpKey} /></label><span className="text-xs text-gray-500">{showValue ?? `${Math.round(value * 100)}%`}</span></div>
       <input type="range" min="0" max="1" step="0.01" value={value} onChange={(e) => onChange(parseFloat(e.target.value))} className="w-full h-1.5 bg-gray-200 rounded-lg accent-pink-500" />
     </div>
   );

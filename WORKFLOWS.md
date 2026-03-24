@@ -3,6 +3,7 @@
 ## 1. `chat_turn`
 
 The core runtime workflow.
+`chat_turn`, `draft_chat_turn`, and `run_eval_suite` now share the same internal `executeTurn()` path and only swap context loading / persistence adapters.
 
 ### Input
 ```ts
@@ -36,7 +37,7 @@ Returns:
 Builds the appraisal vector from message + memory + state.
 
 #### 4. `update_emotion`
-Updates fast affect and slow PAD.
+Updates fast affect and slow mood, then persists `fast / slow / combined` PAD layers.
 
 #### 5. `plan_turn`
 Calls planner agent with structured output.
@@ -48,7 +49,7 @@ Applies deterministic phase-edge checks against planner proposal.
 Generates 3–5 reply candidates.
 
 #### 8. `rank_candidates`
-Scores and selects one candidate.
+Runs deterministic guard checks first, then scorer aggregation, then an LLM judge, then deterministic fallback/tie-break.
 
 #### 9. `persist_turn`
 Writes:
@@ -58,6 +59,7 @@ Writes:
 - episodic events
 - graph facts
 - open thread changes
+- sourceTurn-linked memory writes with threshold decisions
 
 #### 10. `schedule_consolidation_if_needed`
 Triggers background consolidation if thresholds are met.
@@ -89,7 +91,8 @@ Triggers background consolidation if thresholds are met.
 ### Input
 ```ts
 {
-  pairId: string
+  pairId?: string
+  scopeId?: string
   mode: "light" | "deep"
 }
 ```
@@ -107,6 +110,14 @@ This keeps indefinite retention without stuffing the live prompt.
 ---
 
 ## 3. `run_eval_suite`
+
+Uses the same `executeTurn()` engine as production, but injects the requested character version / phase graph / prompt bundle instead of the current live release.
+
+---
+
+## 4. `run_model_matrix`
+
+Runs `run_eval_suite` repeatedly with different logical model-role overrides after logic changes are complete.
 
 ### Input
 ```ts

@@ -1,4 +1,10 @@
-import { PADState, AppraisalVector, EmotionSpec } from '../schemas';
+import {
+  PADState,
+  AppraisalVector,
+  EmotionSpec,
+  RuntimeEmotionState,
+  PADTransitionContribution,
+} from '../schemas';
 
 /**
  * PAD (Pleasure-Arousal-Dominance) state management.
@@ -9,17 +15,19 @@ import { PADState, AppraisalVector, EmotionSpec } from '../schemas';
  */
 
 export type PADInput = {
-  currentPAD: PADState;
+  currentEmotion: RuntimeEmotionState;
   appraisal: AppraisalVector;
   emotionSpec: EmotionSpec;
   hasOpenThreads: boolean;
   turnsSinceLastUpdate: number;
+  now?: Date;
 };
 
 export type PADUpdate = {
-  fastAffect: PADState;
-  slowMood: PADState;
-  combined: PADState;
+  before: RuntimeEmotionState;
+  after: RuntimeEmotionState;
+  contributions: PADTransitionContribution[];
+  blendFactor: number;
 };
 
 export type PADContributionFactorKey = keyof AppraisalVector | 'uncertainty';
@@ -53,52 +61,105 @@ export const PAD_DELTA_NOTICE_THRESHOLD = 0.05;
 const APPRAISAL_MIDPOINT = 0.5;
 const FAST_AFFECT_GAIN = 0.5;
 
+export function createRuntimeEmotionState(
+  combined: PADState,
+  at: Date = new Date()
+): RuntimeEmotionState {
+  const clamped = clampPAD(combined);
+  return {
+    fastAffect: clamped,
+    slowMood: clamped,
+    combined: clamped,
+    lastUpdatedAt: at,
+  };
+}
+
 /**
  * Update PAD state based on appraisal.
  */
 export function updatePAD(input: PADInput): PADUpdate {
-  const { currentPAD, appraisal, emotionSpec, hasOpenThreads, turnsSinceLastUpdate } = input;
+  const {
+    currentEmotion,
+    appraisal,
+    emotionSpec,
+    hasOpenThreads,
+    turnsSinceLastUpdate,
+    now = new Date(),
+  } = input;
   const baseline = emotionSpec.baselinePAD;
 
-  // Calculate fast affect from appraisal
-  const fastAffect = computeFastAffect(appraisal, baseline);
+  const contributions: PADTransitionContribution[] = [];
+  const rawFastAffect = computeFastAffect(appraisal, baseline);
+  const fastAffect = clampPAD(rawFastAffect);
 
-  // Calculate decay for slow mood
+  for (const contribution of getPADContributions(appraisal)) {
+    contributions.push({
+      source: 'appraisal',
+      axis: contribution.axis,
+      delta: contribution.contribution,
+      reason: `${contribution.factorKey} -> ${contribution.axis}`,
+    });
+  }
+
   const decayedMood = applyDecay(
-    currentPAD,
+    currentEmotion.slowMood,
     baseline,
     emotionSpec.recovery,
     turnsSinceLastUpdate
   );
+  pushAxisDeltas(contributions, 'decay', currentEmotion.slowMood, decayedMood, 'baseline recovery');
 
-  // Blend fast affect into slow mood
-  const blendFactor = 0.3; // How much fast affect influences slow mood
-  const slowMood: PADState = {
-    pleasure: decayedMood.pleasure + (fastAffect.pleasure - baseline.pleasure) * blendFactor,
-    arousal: decayedMood.arousal + (fastAffect.arousal - baseline.arousal) * blendFactor,
-    dominance: decayedMood.dominance + (fastAffect.dominance - baseline.dominance) * blendFactor,
+  const openThreadBiasedMood: PADState = {
+    pleasure: decayedMood.pleasure - (hasOpenThreads ? 0.05 : 0),
+    arousal: decayedMood.arousal,
+    dominance: decayedMood.dominance - (hasOpenThreads ? 0.03 : 0),
   };
+  pushAxisDeltas(
+    contributions,
+    'open_thread_bias',
+    decayedMood,
+    openThreadBiasedMood,
+    'unresolved threads slow recovery'
+  );
 
-  // Open threads bias recovery and baseline negatively
-  if (hasOpenThreads) {
-    slowMood.pleasure -= 0.05;
-    slowMood.dominance -= 0.03;
-  }
-
-  // Clamp values
-  const clampedSlowMood = clampPAD(slowMood);
-
-  // Combined state for external use (weighted average)
-  const combined: PADState = {
-    pleasure: fastAffect.pleasure * 0.6 + clampedSlowMood.pleasure * 0.4,
-    arousal: fastAffect.arousal * 0.6 + clampedSlowMood.arousal * 0.4,
-    dominance: fastAffect.dominance * 0.6 + clampedSlowMood.dominance * 0.4,
+  const blendFactor = 0.3;
+  const rawSlowMood: PADState = {
+    pleasure:
+      openThreadBiasedMood.pleasure + (fastAffect.pleasure - baseline.pleasure) * blendFactor,
+    arousal:
+      openThreadBiasedMood.arousal + (fastAffect.arousal - baseline.arousal) * blendFactor,
+    dominance:
+      openThreadBiasedMood.dominance + (fastAffect.dominance - baseline.dominance) * blendFactor,
   };
+  pushAxisDeltas(
+    contributions,
+    'blend',
+    openThreadBiasedMood,
+    rawSlowMood,
+    'fast affect blended into slow mood'
+  );
+
+  const slowMood = clampPAD(rawSlowMood);
+  pushAxisDeltas(contributions, 'clamp', rawSlowMood, slowMood, 'slow mood clamped to PAD range');
+
+  const rawCombined: PADState = {
+    pleasure: fastAffect.pleasure * 0.6 + slowMood.pleasure * 0.4,
+    arousal: fastAffect.arousal * 0.6 + slowMood.arousal * 0.4,
+    dominance: fastAffect.dominance * 0.6 + slowMood.dominance * 0.4,
+  };
+  const combined = clampPAD(rawCombined);
+  pushAxisDeltas(contributions, 'clamp', rawCombined, combined, 'combined state clamped to PAD range');
 
   return {
-    fastAffect: clampPAD(fastAffect),
-    slowMood: clampedSlowMood,
-    combined: clampPAD(combined),
+    before: currentEmotion,
+    after: {
+      fastAffect,
+      slowMood,
+      combined,
+      lastUpdatedAt: now,
+    },
+    contributions,
+    blendFactor,
   };
 }
 
@@ -218,12 +279,34 @@ function applyDecay(
 /**
  * Clamp PAD values to valid range.
  */
-function clampPAD(pad: PADState): PADState {
+export function clampPAD(pad: PADState): PADState {
   return {
     pleasure: Math.max(-1, Math.min(1, pad.pleasure)),
     arousal: Math.max(-1, Math.min(1, pad.arousal)),
     dominance: Math.max(-1, Math.min(1, pad.dominance)),
   };
+}
+
+function pushAxisDeltas(
+  contributions: PADTransitionContribution[],
+  source: PADTransitionContribution['source'],
+  before: PADState,
+  after: PADState,
+  reason: string
+) {
+  for (const axis of ['pleasure', 'arousal', 'dominance'] as const) {
+    const delta = after[axis] - before[axis];
+    if (Math.abs(delta) < 0.0001) {
+      continue;
+    }
+
+    contributions.push({
+      source,
+      axis,
+      delta,
+      reason,
+    });
+  }
 }
 
 /**

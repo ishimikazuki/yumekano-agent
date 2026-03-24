@@ -139,7 +139,7 @@ Why this shape:
 ## Step E — Planner
 Planner outputs typed `TurnPlan`:
 - stance
-- dialogue acts
+- primary / secondary dialogue acts
 - memory focus
 - phase transition proposal
 - intimacy decision
@@ -176,8 +176,16 @@ Score candidates on:
 
 Use a mixed ranker:
 - deterministic hard rejects first
-- model-based scorer second
-- deterministic tie-breaks last
+- scorer aggregation second
+- LLM judge third
+- deterministic tie-breaks / fallback last
+
+Trace now also stores:
+- `fast / slow / combined` emotion before/after
+- relationship metric deltas
+- phase transition evaluation payload
+- assembled prompt hashes
+- memory threshold decisions
 
 ## Step H — Writeback
 After final selection:
@@ -186,6 +194,7 @@ After final selection:
 - write episodic events
 - write graph facts
 - update open threads
+- record memory-usage analytics
 - schedule/refire consolidation if needed
 
 ## Step I — Trace

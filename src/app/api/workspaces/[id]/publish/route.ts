@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/client';
+import { preparePublishedPersona } from '@/lib/persona';
 import { workspaceRepo } from '@/lib/repositories';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const { draft, characterId } = workspace;
+    const preparedPersona = await preparePublishedPersona(draft.persona);
     const db = getDb();
     const now = new Date().toISOString();
 
@@ -101,7 +103,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         characterId,
         newVersionNumber,
         label,
-        JSON.stringify(draft.persona),
+        JSON.stringify(preparedPersona),
         JSON.stringify(draft.style),
         JSON.stringify(draft.autonomy),
         JSON.stringify(draft.emotion),

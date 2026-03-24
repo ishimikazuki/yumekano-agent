@@ -42,6 +42,7 @@ yarn-error.log*
 
 # playwright logs
 .playwright-mcp/
+.serena/
 
 # screenshots
 *.png
@@ -53,3 +54,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 video-assets/
+
+# tutorial video local artifacts
+tutorial-video/node_modules/
+tutorial-video/out/

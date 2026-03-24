@@ -7,15 +7,13 @@
  */
 
 import type {
-  CharacterVersion,
   PhaseGraph,
-  PersonaSpec,
+  PersonaAuthoring,
   StyleSpec,
   AutonomySpec,
   EmotionSpec,
   MemoryPolicySpec,
   CharacterIdentity,
-  ExtendedPersonaSpec,
   PromptBundleContent,
 } from '../schemas';
 
@@ -32,7 +30,7 @@ export interface CharacterAssets {
   identity: CharacterIdentity;
 
   // Configuration
-  persona: ExtendedPersonaSpec;
+  persona: PersonaAuthoring;
   style: StyleSpec;
   autonomy: AutonomySpec;
   emotion: EmotionSpec;

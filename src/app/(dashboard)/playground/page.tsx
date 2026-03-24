@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { CoEExplanationCard } from '@/components/CoEExplanationCard';
 import type { CoEExplanation } from '@/lib/rules/coe';
+import { downloadConversationMarkdown } from '@/lib/workspaces/conversation-export';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -197,6 +198,21 @@ function PlaygroundContent() {
     setSessionId(null);
   };
 
+  const handleExportMarkdown = () => {
+    if (messages.length === 0) {
+      return;
+    }
+
+    downloadConversationMarkdown({
+      title: `${character?.displayName ?? 'Yumekano'} conversation`,
+      mode,
+      characterName: character?.displayName ?? null,
+      workspaceName: workspace?.name ?? null,
+      sessionId,
+      messages,
+    });
+  };
+
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)]">
       {/* Header */}
@@ -253,6 +269,13 @@ function PlaygroundContent() {
               className="border rounded px-2 py-1 w-32"
             />
           </div>
+          <button
+            onClick={handleExportMarkdown}
+            disabled={messages.length === 0}
+            className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-300"
+          >
+            MD出力
+          </button>
           <button
             onClick={handleReset}
             className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"

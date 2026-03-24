@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { releaseRepo, characterRepo } from '@/lib/repositories';
 import { getDb } from '@/lib/db/client';
+import { preparePublishedPersona } from '@/lib/persona';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 
@@ -67,6 +68,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const preparedPersona = await preparePublishedPersona(version.persona);
+    if (JSON.stringify(preparedPersona) !== JSON.stringify(version.persona)) {
+      await characterRepo.updateVersionPersona(characterVersionId, preparedPersona);
+    }
+
     // Update version status to published if draft
     if (version.status === 'draft') {
       await characterRepo.updateVersionStatus(characterVersionId, 'published');
@@ -126,6 +132,7 @@ export async function PATCH(request: NextRequest) {
 
     const db = getDb();
     const now = new Date().toISOString();
+    const preparedPersona = await preparePublishedPersona(targetVersion.persona);
 
     const maxVersionResult = await db.execute({
       sql: 'SELECT COALESCE(MAX(version_number), 0) as max_version FROM character_versions WHERE character_id = ?',
@@ -147,7 +154,7 @@ export async function PATCH(request: NextRequest) {
         targetRelease.characterId,
         newVersionNumber,
         rollbackLabel,
-        JSON.stringify(targetVersion.persona),
+        JSON.stringify(preparedPersona),
         JSON.stringify(targetVersion.style),
         JSON.stringify(targetVersion.autonomy),
         JSON.stringify(targetVersion.emotion),

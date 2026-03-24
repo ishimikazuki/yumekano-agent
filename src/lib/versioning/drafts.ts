@@ -7,9 +7,10 @@
 
 import { v4 as uuid } from 'uuid';
 import { characterRepo } from '../repositories';
+import { toPersonaAuthoring } from '../persona';
 import type {
   CharacterVersion,
-  PersonaSpec,
+  PersonaAuthoring,
   StyleSpec,
   AutonomySpec,
   EmotionSpec,
@@ -17,7 +18,7 @@ import type {
 } from '../schemas';
 
 export interface DraftData {
-  persona: PersonaSpec;
+  persona: PersonaAuthoring;
   style: StyleSpec;
   autonomy: AutonomySpec;
   emotion: EmotionSpec;
@@ -56,7 +57,7 @@ export async function createDraft(input: {
       throw new Error(`Base version ${baseVersionId} not found`);
     }
     baseData = {
-      persona: baseVersion.persona,
+      persona: toPersonaAuthoring(baseVersion.persona),
       style: baseVersion.style,
       autonomy: baseVersion.autonomy,
       emotion: baseVersion.emotion,
@@ -161,9 +162,9 @@ function getDefaultDraftData(): DraftData {
   return {
     persona: {
       summary: '',
+      innerWorldNoteMd: '',
       values: [],
-      flaws: [],
-      insecurities: [],
+      vulnerabilities: [],
       likes: [],
       dislikes: [],
       signatureBehaviors: [],
@@ -206,6 +207,7 @@ function getDefaultDraftData(): DraftData {
         reciprocity: 0.5,
         pressureIntrusiveness: 0.5,
         novelty: 0.5,
+        selfRelevance: 0.5,
       },
       externalization: {
         warmthWeight: 0.3,

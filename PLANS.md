@@ -23,9 +23,27 @@
 - [x] 処理フロー視覚化ドキュメント作成（非エンジニア向け）
 - [x] LPとしてVercelにデプロイ (https://lp-gray-six.vercel.app)
 - [x] デザイナー観点の総合デバッグ（主要ページ巡回、即時修正、再検証）
+- [x] 親密時専用 Generator prompt variant の追加（runtime + dashboard）
+- [x] persona authoring 簡素化 + publish-time compiledPersona 対応
+- [x] appraisal sensitivity の中立点補正 + 落とし物返却シグナル追加
+- [x] planner / generator / ranker prompt 契約を schema-first で再整合
+- [x] prompt bundle を全文置換ではなく runtime context + designer fragment 合成に修正
+- [x] pair / sandbox / trace に fast/slow/combined PAD レイヤーと prompt hash を追加
+- [x] memory writeback に sourceTurnId / threshold 判定 / fact supersession を接続
+- [x] prompt contract drift を検知するテスト追加
+- [x] production / draft / eval が共有する `executeTurn()` ベースの turn engine を導入
+- [x] ranker を deterministic guard → scorer → LLM judge → deterministic fallback に再配線
+- [x] sandbox memory events / facts / observations / open threads / usage を永続化
+- [x] draft chat でも retrieval / writeback / consolidation trigger を production parity に接続
+- [x] eval suite が指定 character version / prompt bundle を shared engine に流すよう修正
+- [x] model matrix を logic 修正後に回せる workflow を追加
+- [x] Browser Use CLI で production live デバッグを実施し、sandbox upsert 方言差分と eval 二重起動競合を修正
+- [x] production rerun で legacy character parse / trace insert / pair state update の live SQL不整合を修正して再デプロイ
+- [x] ワークスペース/Playground 会話テストに Markdown エクスポートを追加し、本番デプロイまで完了
+- [x] ローカル専用生成物を ignore 整理し、デプロイ済み修正だけが git 差分として残る状態にした
 
 ### 残作業
-- [x] 親密時専用 Generator prompt variant の追加（runtime + dashboard）
+- [ ] ワークスペース会話テストの送信前 autosave UX を仕上げて必要ならデプロイする
 - [ ] anchors/innerWorldをAPIレスポンスに含める
 - [ ] E2Eテスト作成
 - [ ] 本番デプロイ設定
@@ -36,6 +54,7 @@
 3. 本番環境へのデプロイ準備
 
 ## 発見・予想外のこと
+- 2026-03-23: モデル切り替え設定は `.env` の `CONVERSATION_MODEL` / `ANALYSIS_MODEL` コメントではなく、`src/mastra/providers/model-roles.ts` の固定ロール定義が実際の参照元になっていた。
 - 2026-03-19: トレース画面にはPAD差分があるが、感情変化の理由（appraisal寄与とplanner意図）が明示されておらず、デザイナーの都度確認コストが高かった。
 - 2026-03-19: `/api/characters` が配列を返す実装に対し、一部ダッシュボード画面（Playground / Releases / Evals）が `data.characters` 前提で読み込み、キャラクターが空表示になる不整合を確認。
 - 2026-03-19: `DATABASE_URL` が Supabase(PostgreSQL) のとき、DNS解決失敗 (`ENOTFOUND`) が発生すると全APIが500化し、キャラが未作成表示になることを確認。
@@ -45,11 +64,30 @@
 - 2026-03-21: メモリ画面と評価画面に stub 実装が残っており、実データ確認や評価実行ができなかった。
 - 2026-03-21: 評価実行を同期APIで待たせる実装だと、1リクエストが数分ぶら下がり UI 上ほぼハングに見えることを確認。
 - 2026-03-23: PAD 更新式が 0..1 appraisal の中立値 0.5 をそのまま加算しており、中立入力でも快・覚醒・支配感が上振れしやすいことを確認。
+- 2026-03-23: appraisal sensitivity が 0..1 系の値全体にそのまま乗算されており、中立入力でも controllability / certainty / attachmentSecurity / novelty が 0.5 未満へ潰れて「拾ってくれたのに不快寄り」な説明が出ることを確認。
+- 2026-03-23: workspace sandbox は `sandbox_pair_state` テーブルがあるのに未使用で、PAD/phase/関係メトリクスを毎ターン baseline / entry に戻していたため、表示上も挙動上も「ずっと station_meeting / ずっと同じ PAD」に見えることを確認。
+- 2026-03-23: phase engine 自体はあるが、runtime から `topics / events / turnsSinceLastTransition / daysSinceEntry` をほぼ空で渡しており、さらに trust/affinity/intimacy/conflict も更新されないため、graph 条件が満たせず phase progression が止まりやすかった。
 - 2026-03-23: Generator prompt が単一スロットのみで、親密時だけ表現を切り替えたくても workflow に生ファイル prompt を直書きしないと実現できない状態だった。
 - 2026-03-23: `db:migrate` の `_migrations` 管理テーブル定義が libsql/SQLite 非互換で、既存 local.db への列追加 migration がそのままでは流れなかった。
 - 2026-03-23: ローカル起動中の Next.js アプリは `.env` の PostgreSQL を参照しており、local.db だけ migration しても dashboard 保存確認には不十分だった。
+- 2026-03-23: planner / generator は prompt bundle の文字列を丸ごと system prompt として返しており、動的に組み立てた persona ブロックが消えていた。compiledPersona を効かせるには prompt bundle を「前置き」として結合する必要があった。
+- 2026-03-23: Vercel preview deploy は preview 環境変数が未設定で、ローカル `.env` の `localhost` PostgreSQL を拾って API が失敗した。production env では既存 `DATABASE_URL` が有効で、characters/workspace/draft-chat の確認は production で通った。
+- 2026-03-23: ワークスペースの会話テスト履歴は `playground_turns` に保存済みだが、画面側が React state の `messages` / `sessionId` しか見ておらず、リロード時に復元されていなかった。
+- 2026-03-24: `pair_state` / `sandbox_pair_state` は combined PAD のみ保存しており、slow mood の carry-over が永続化されていなかった。trace も assembled prompt hash や relationship delta を持たず、contract drift の再検証が難しかった。
+- 2026-03-24: `run_eval_suite` は shared engine を使わず current release の `runChatTurn()` を叩いていたため、指定 character version の評価にならない経路があった。
+- 2026-03-24: draft sandbox は pair state だけ持続し、memory layer と consolidation が未接続だったため、本番との差分が大きかった。
+- 2026-03-24: libSQL migration では `DEFAULT now()` が新規 sandbox memory table 追加時に失敗し、SQLite 互換の `datetime('now')` に寄せる必要があった。
+- 2026-03-24: live Vercel の `/api/draft-chat` は PostgreSQL 上で `INSERT OR REPLACE` により `syntax error at or near "OR"` を返していた。local/libsql では見えず、Browser Use CLI 経由の本番 sandbox 送信で初めて再現した。
+- 2026-03-24: eval API は `existingRun` の事前確認だけでは同時起動を防げず、UI と API の同時実行で同一 version に `running` が2件立った。
+- 2026-03-24: ワークスペース編集UIはローカル state に draft 全体を保持しているが、保存 API は section 単位だけだったため、会話送信前に「最新の全編集内容」を確実に反映させる入口がなかった。
+- 2026-03-24: live production の `/api/evals` は published character version の旧 `emotion_json` を strict parse しており、`appraisalSensitivity.selfRelevance` 欠損で 500 になった。workspace 側の legacy normalization が character repo 側に漏れていた。
+- 2026-03-24: live production `/api/chat` rerun で `turn_traces` INSERT の placeholder 数不足と `pair_state` UPDATE の `pad_json` 二重代入が顕在化した。draft/sandbox と分かれた経路では見えにくく、本番 trace 永続化で初めて落ちた。
+- 2026-03-24: Browser Use CLI は session を増やしすぎると `BrowserStartEvent ... timed out after 30.0s` が出やすく、fresh session より既存 session 再利用の方が安定した。
+- 2026-03-24: 会話履歴の Markdown 出力は `messages` state をそのまま使うだけで十分で、永続化済みの `playgroundSessionId` 復元とも自然に噛み合った。追加 API を作らずに実装できた。
+- 2026-03-24: `.serena/` や `tutorial-video/out` などのローカル専用生成物が未追跡差分として残り、デプロイ済みコードとの差分把握を邪魔していた。
 
 ## 決定したこと
+- 2026-03-23: `conversationHigh` は `grok-4.20-reasoning`、`analysisMedium` は `grok-4-1-fast-reasoning` に切り替える。理由: ユーザー向け返信生成は最高品質を優先しつつ、planner / ranker / extractor / eval scorer 群は高速 reasoning で総レイテンシとコストのバランスを取るため。
 - 2026-03-19: CoE説明は共通ロジック（`buildCoEExplanation`）で生成し、`/api/chat` と `/api/draft-chat` から毎ターン返してUI表示する。理由: Playground/Workspace/Traceで同じ説明軸を保ち、検証観点を揃えるため。
 - 2026-03-19: `GET /api/characters` のレスポンスを `{ characters }` に統一する。理由: 既存ダッシュボード画面の読み込み形式と合わせ、キャラ一覧の空表示（セイラが消えたように見える）を防ぐため。
 - 2026-03-19: DBクライアントに「PostgreSQL接続失敗時の `local.db` フォールバック」を実装。理由: 開発環境ネットワーク障害時でもローカル検証を継続でき、UIが空表示で詰まるのを防ぐため。
@@ -60,9 +98,28 @@
 - 2026-03-21: 評価実行は `202 Accepted` で即時返却し、バックグラウンド実行 + ポーリング表示にする。理由: 数分単位の同期待ちを避け、UI をハングさせないため。
 - 2026-03-21: 共通メタデータを `Yumekano Dashboard` に更新し、`lang=\"ja\"` を設定する。理由: デザイナー向け画面としてのブランド整合性とアクセシビリティを改善するため。
 - 2026-03-23: PAD 寄与計算は 0..1 appraisal を中立点 0.5 基準に再中心化し、fast affect の全体ゲインを 0.5 に抑える。理由: PAD 文献の双極スケール前提と、実験で観測される小さめの変化幅に近づけるため。
+- 2026-03-23: appraisal sensitivity も 0..1 系は中立点 0.5 基準で適用し、落とし物を返す/届ける系の発話は goalCongruence の前向きシグナルとして扱う。理由: 感度を下げても中立がネガティブ化しないようにしつつ、助けてもらった場面を最低限ポジティブに解釈できるようにするため。
+- 2026-03-23: sandbox では `sandbox_pair_state` に PAD / activePhase / relationship metrics を保存し、次ターンはその状態から再開する。理由: 会話テストで感情とフェーズが連続して変化する本来の体験に戻すため。
+- 2026-03-23: phase engine への `topics / events / time` 入力は共通 helper で補完し、engine が妥当な遷移を返したときは planner が target を空欄でも phase を進める。理由: graph を authority に保ちつつ、planner の書き漏れだけで遷移が凍結しないようにするため。
+- 2026-03-23: trust / affinity / intimacyReadiness / conflict は appraisal ベースの小さなデルタで毎ターン更新する。理由: high-threshold な phase edge が永遠に満たせない状態を解消し、関係進行を stateful にするため。
 - 2026-03-23: 親密時専用の生成指示は `generatorIntimacyMd` として prompt bundle / workspace draft に保存し、`intimacyDecision` が `accept` / `conditional_accept` のときだけ選択する。理由: workflow にハードコードせず、ダッシュボード編集・公開版バージョン管理・draft/prod 一貫性を保つため。
 - 2026-03-23: `_migrations` 管理テーブルは DB 共通SQLに寄せ、既存 local.db に 004 migration を適用できるようにする。理由: libsql 開発環境でも新しい prompt variant 列を安全に追加できるようにするため。
 - 2026-03-23: ローカル検証時は `.env` の PostgreSQL にも 004 migration を適用してから dashboard 保存を確認する。理由: 実際に起動中アプリが使っている保存先とスキーマを一致させるため。
+- 2026-03-23: persona の編集面は `summary` / `innerWorldNoteMd` / `vulnerabilities` / `authoredExamples` を中心に簡素化し、旧 `innerWorld` / `surfaceLoop` / `anchors` / `topicPacks` / `reactionPacks` は `legacyAuthoring` に退避して読み取り互換を維持する。理由: 非エンジニア向け編集体験を軽くしつつ、既存 draft/version を壊さず publish-time に低トークンな runtime persona を作るため。
+- 2026-03-23: デプロイ確認は production alias `yumekano-codex-spec-v2.vercel.app` で行い、workspace の保存・draft-chat までを確認する。理由: preview では Vercel の preview env 未設定により DB 接続検証が成立しなかったため。
+- 2026-03-23: 会話テスト履歴の継続は `workspace_editor_context.playgroundSessionId` を保存し、`playground_turns` から復元する。理由: 既存の永続化基盤を再利用して、リロードでは消えず、リセット時だけ明示的に切り替わる挙動にするため。
+- 2026-03-24: prompt bundle の各フィールドは runtime system prompt を置換せず、designer fragment として invariant context に合成する。理由: character / phase / autonomy / style / memory 文脈を prompt 編集で消せないようにするため。
+- 2026-03-24: runtime emotion は fastAffect / slowMood / combined / lastUpdatedAt を永続化し、turn trace に relationship delta・phase evaluation・prompt hash・memory threshold 判定を残す。理由: CoE と PAD の説明責務を実際の状態遷移に近づけ、designer が turn を再構築できるようにするため。
+- 2026-03-24: turn path の本体は `executeTurn()` に集約し、prod/draft/eval は context load と persistence adapter だけを持つ。理由: phase/memory/ranker/trace の配線差分を環境ごとに増やさないため。
+- 2026-03-24: sandbox でも events / facts / observations / open threads / memory usage を独立テーブルに保存し、retrieval / writeback / consolidation を共通 helper 経由で動かす。理由: playground を production parity の検証環境に戻すため。
+- 2026-03-24: ranker は scorer 群を runtime に実配線し、acceptanceProfile・`isActAllowed()`・memory ref 妥当性・open thread を deterministic guard に取り込む。理由: LLM judge を最終裁定へ下げ、同一入力での再現性を高めるため。
+- 2026-03-24: workspace editor context と sandbox pair state の upsert は `ON CONFLICT` に統一する。理由: SQLite / PostgreSQL の両方で live sandbox write path を壊さないため。
+- 2026-03-24: eval の単一 active run 保証は read-before-write ではなく DB partial unique index で担保し、API は unique conflict を 409 に正規化する。理由: 同時クリックや再送で二重 run が生成される race を止めるため。
+- 2026-03-24: ワークスペース会話テストは送信前に draft 全体を自動保存してから `draft-chat` を呼ぶ。理由: タブまたぎの未保存編集も含めて、会話テストを常に最新 draft で実行できるようにするため。
+- 2026-03-24: published character version の読み込みも workspace と同じ legacy config normalization を通す。理由: live DB に残る旧 emotion/style/autonomy shape で eval や release 画面が 500 にならないようにするため。
+- 2026-03-24: `turn_traces` と `pair_state` の SQL は expanded runtime payload でも placeholder 数と PAD 更新列が一意になるよう固定する。理由: production chat path が trace 永続化と pair state 更新の両方で Postgres 実行時に落ちないようにするため。
+- 2026-03-24: 会話履歴エクスポートは client-side で Markdown を生成し、ワークスペース会話テストと Playground の両方に `MD出力` ボタンを置く。理由: 既存の `messages` 表示状態をそのまま保存でき、サーバー API や DB スキーマを増やさずに最短で使い勝手を上げられるため。
+- 2026-03-24: ローカル専用生成物は `.gitignore` に寄せ、誤って push 対象に見えないようにする。理由: 「デプロイ済みなのに未プッシュ差分が多い」状態を減らし、実コード差分だけを追いやすくするため。
 
 ## 既知の問題
 - xAI APIの応答に10-30秒かかることがある

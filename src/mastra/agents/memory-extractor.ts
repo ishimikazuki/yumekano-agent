@@ -1,6 +1,7 @@
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { getProviderRegistry } from '../providers/registry';
+import { assemblePrompt, formatDesignerFragment, hashPrompt } from '../prompts/assemble';
 import {
   TurnPlan,
   CharacterVersion,
@@ -74,6 +75,7 @@ export type MemoryExtractionResult = z.infer<typeof MemoryExtractionSchema>;
 export type MemoryExtractorOutput = {
   extraction: MemoryExtractionResult;
   modelId: string;
+  systemPromptHash: string;
 };
 
 /**
@@ -99,21 +101,18 @@ export async function runMemoryExtractor(
   return {
     extraction: result.object,
     modelId: `${modelInfo.provider}/${modelInfo.modelId}`,
+    systemPromptHash: hashPrompt(systemPrompt),
   };
 }
 
-function buildExtractorSystemPrompt(input: MemoryExtractorInput): string {
+export function buildExtractorSystemPrompt(input: MemoryExtractorInput): string {
   const { promptOverride } = input;
 
-  if (promptOverride) {
-    return promptOverride;
-  }
-
-  return `# Memory Extractor System Prompt
-
-You convert a completed turn into durable memory artifacts.
-
-## Principles
+  return assemblePrompt([
+    '# Memory Extractor System Prompt',
+    'You convert a completed turn into durable memory artifacts.',
+    formatDesignerFragment(promptOverride),
+    `## Principles
 1. Save only what can matter later.
 2. Separate stable facts from one-off events.
 3. Preserve corrections explicitly.
@@ -154,7 +153,8 @@ Unresolved issues that should affect future turns:
 - 0.0-0.3: Routine interaction, no need to remember
 - 0.4-0.6: Worth noting, may be referenced later
 - 0.7-0.9: Important, should influence future behavior
-- 1.0: Critical, must not be forgotten`;
+- 1.0: Critical, must not be forgotten`,
+  ]);
 }
 
 function buildExtractorUserPrompt(input: MemoryExtractorInput): string {

@@ -21,11 +21,11 @@ export type ModelRoleConfig = {
 export const defaultModelRoles: ModelRoleConfig = {
   conversationHigh: {
     provider: 'xai',
-    modelId: 'grok-3',
+    modelId: 'grok-4.20-reasoning',
   },
   analysisMedium: {
     provider: 'xai',
-    modelId: 'grok-3-mini',
+    modelId: 'grok-4-1-fast-reasoning',
   },
   embeddingDefault: {
     provider: 'xai',

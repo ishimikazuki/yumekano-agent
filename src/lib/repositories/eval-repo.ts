@@ -235,6 +235,30 @@ export const evalRepo = {
     );
   },
 
+  async getActiveRun(characterVersionId: string): Promise<EvalRun | null> {
+    const db = getDb();
+    const result = await db.execute({
+      sql: `SELECT * FROM eval_runs
+            WHERE character_version_id = ? AND status IN ('pending', 'running')
+            ORDER BY created_at DESC
+            LIMIT 1`,
+      args: [characterVersionId],
+    });
+
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    return EvalRunSchema.parse({
+      id: row.id,
+      scenarioSetId: row.scenario_set_id,
+      characterVersionId: row.character_version_id,
+      modelRegistrySnapshot: JSON.parse(row.model_registry_snapshot_json as string),
+      status: row.status,
+      summary: row.summary_json ? JSON.parse(row.summary_json as string) : null,
+      createdAt: row.created_at,
+    });
+  },
+
   // ==========================================
   // Eval Case Results
   // ==========================================

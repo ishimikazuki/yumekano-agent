@@ -4,7 +4,7 @@ import { resolveInitialDraftForCharacter } from '@/lib/workspaces/initial-draft'
 import {
   DraftStateSchema,
   CharacterIdentitySchema,
-  ExtendedPersonaSpecSchema,
+  PersonaAuthoringSchema,
   StyleSpecSchema,
   AutonomySpecSchema,
   EmotionSpecSchema,
@@ -95,6 +95,49 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 }
 
+/**
+ * PUT /api/workspaces/[id]
+ * Replace the full draft state.
+ */
+export async function PUT(request: NextRequest, { params }: RouteParams) {
+  try {
+    const { id } = await params;
+    const body = await request.json();
+    const parsed = DraftStateSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid draft payload', details: parsed.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const workspace = await workspaceRepo.getById(id);
+    if (!workspace) {
+      return NextResponse.json(
+        { error: 'Workspace not found' },
+        { status: 404 }
+      );
+    }
+
+    const existingDraft = await workspaceRepo.getDraft(id);
+    if (existingDraft) {
+      await workspaceRepo.replaceDraft(id, parsed.data);
+    } else {
+      await workspaceRepo.initDraft(id, parsed.data);
+    }
+
+    const updated = await workspaceRepo.getDraft(id);
+    return NextResponse.json(updated);
+  } catch (error) {
+    console.error('Replace draft error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 const UpdateDraftSectionSchema = z.object({
   section: z.enum(['identity', 'persona', 'style', 'autonomy', 'emotion', 'memory', 'phaseGraph', 'prompts']),
   value: z.unknown(),
@@ -102,7 +145,7 @@ const UpdateDraftSectionSchema = z.object({
 
 const sectionSchemas = {
   identity: CharacterIdentitySchema,
-  persona: ExtendedPersonaSpecSchema,
+  persona: PersonaAuthoringSchema,
   style: StyleSpecSchema,
   autonomy: AutonomySpecSchema,
   emotion: EmotionSpecSchema,

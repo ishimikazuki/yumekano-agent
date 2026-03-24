@@ -1,23 +1,140 @@
 import { z } from 'zod';
 
 /**
- * Persona specification - character identity and behavior
+ * Example lines for authored tone guidance
  */
-export const PersonaSpecSchema = z.object({
-  summary: z.string().describe('Brief character description'),
-  values: z.array(z.string()).describe('Core values the character holds'),
-  flaws: z.array(z.string()).describe('Character flaws and weaknesses'),
-  insecurities: z.array(z.string()).describe('Personal insecurities'),
-  likes: z.array(z.string()).describe('Things the character enjoys'),
-  dislikes: z.array(z.string()).describe('Things the character dislikes'),
-  signatureBehaviors: z.array(z.string()).describe('Distinctive behavioral patterns'),
-  authoredExamples: z.object({
-    warm: z.array(z.string()).optional(),
-    playful: z.array(z.string()).optional(),
-    guarded: z.array(z.string()).optional(),
-    conflict: z.array(z.string()).optional(),
-  }).describe('Example lines for different emotional states'),
+export const AuthoredExamplesSchema = z.object({
+  warm: z.array(z.string()).optional(),
+  playful: z.array(z.string()).optional(),
+  guarded: z.array(z.string()).optional(),
+  conflict: z.array(z.string()).optional(),
+}).describe('Example lines for different emotional states');
+export type AuthoredExamples = z.infer<typeof AuthoredExamplesSchema>;
+
+/**
+ * Legacy inner world - preserved for backward compatibility
+ */
+export const InnerWorldSchema = z.object({
+  coreDesire: z.string().describe('What the character wants most'),
+  fear: z.string().describe('What the character fears'),
+  wound: z.string().optional().describe('Past emotional wound'),
+  coping: z.string().optional().describe('How they cope with stress'),
+  growthArc: z.string().optional().describe('How they can grow'),
 });
+export type InnerWorld = z.infer<typeof InnerWorldSchema>;
+
+/**
+ * Legacy surface loop - preserved for backward compatibility
+ */
+export const SurfaceLoopSchema = z.object({
+  defaultMood: z.string().describe('Usual emotional state'),
+  stressBehavior: z.string().describe('How they act under stress'),
+  joyBehavior: z.string().describe('How they express happiness'),
+  conflictStyle: z.string().describe('How they handle conflict'),
+  affectionStyle: z.string().describe('How they show love'),
+});
+export type SurfaceLoop = z.infer<typeof SurfaceLoopSchema>;
+
+/**
+ * Legacy anchor - preserved for backward compatibility
+ */
+export const AnchorSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  description: z.string(),
+  emotionalSignificance: z.string(),
+});
+export type Anchor = z.infer<typeof AnchorSchema>;
+
+/**
+ * Legacy topic pack - preserved for backward compatibility
+ */
+export const TopicPackSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  triggers: z.array(z.string()),
+  responseHints: z.array(z.string()),
+  moodBias: z.object({
+    pleasure: z.number().min(-1).max(1).optional(),
+    arousal: z.number().min(-1).max(1).optional(),
+    dominance: z.number().min(-1).max(1).optional(),
+  }).optional(),
+});
+export type TopicPack = z.infer<typeof TopicPackSchema>;
+
+/**
+ * Legacy reaction pack - preserved for backward compatibility
+ */
+export const ReactionPackSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  trigger: z.string().describe('What triggers this reaction'),
+  responses: z.array(z.string()).describe('Example responses'),
+  conditions: z.object({
+    phaseMode: z.enum(['entry', 'relationship', 'girlfriend']).optional(),
+    minTrust: z.number().optional(),
+    maxConflict: z.number().optional(),
+  }).optional(),
+});
+export type ReactionPack = z.infer<typeof ReactionPackSchema>;
+
+/**
+ * Hidden legacy authoring data kept for old drafts and versions
+ */
+export const LegacyPersonaAuthoringSchema = z.object({
+  innerWorld: InnerWorldSchema.optional(),
+  surfaceLoop: SurfaceLoopSchema.optional(),
+  anchors: z.array(AnchorSchema).optional(),
+  topicPacks: z.array(TopicPackSchema).optional(),
+  reactionPacks: z.array(ReactionPackSchema).optional(),
+});
+export type LegacyPersonaAuthoring = z.infer<typeof LegacyPersonaAuthoringSchema>;
+
+/**
+ * Designer-facing persona authoring
+ */
+export const PersonaAuthoringSchema = z.object({
+  summary: z.string().describe('Brief character description'),
+  innerWorldNoteMd: z.string().optional().describe('Freeform notes about inner motives and relational interpretation'),
+  values: z.array(z.string()).describe('Core values the character holds'),
+  vulnerabilities: z.array(z.string()).describe('Merged weaknesses and insecurities'),
+  likes: z.array(z.string()).optional().describe('Things the character enjoys'),
+  dislikes: z.array(z.string()).optional().describe('Things the character dislikes'),
+  signatureBehaviors: z.array(z.string()).optional().describe('Distinctive behavioral patterns'),
+  authoredExamples: AuthoredExamplesSchema,
+  legacyAuthoring: LegacyPersonaAuthoringSchema.optional(),
+});
+export type PersonaAuthoring = z.infer<typeof PersonaAuthoringSchema>;
+
+/**
+ * Publish-time compiled persona for runtime prompting
+ */
+export const CompiledPersonaSchema = z.object({
+  oneLineCore: z.string().describe('Low-token core identity line'),
+  desire: z.string().nullable().describe('Stable primary desire'),
+  fear: z.string().nullable().describe('Stable primary fear'),
+  protectiveStrategy: z.string().nullable().describe('How the character self-protects under stress'),
+  attachmentStyleHint: z.string().nullable().describe('How the character interprets closeness'),
+  conflictPattern: z.string().nullable().describe('How the character tends to handle conflict'),
+  intimacyPattern: z.string().nullable().describe('How intimacy tends to be approached'),
+  motivationalHooks: z.array(z.string()).describe('Stable motivational levers'),
+  softBans: z.array(z.string()).describe('Soft content/behavior bans to avoid'),
+  toneHints: z.array(z.string()).describe('Short stable surface-tone hints'),
+});
+export type CompiledPersona = z.infer<typeof CompiledPersonaSchema>;
+
+/**
+ * Runtime persona - published persona with optional compiled payload
+ */
+export const RuntimePersonaSchema = PersonaAuthoringSchema.extend({
+  compiledPersona: CompiledPersonaSchema.optional(),
+});
+export type RuntimePersona = z.infer<typeof RuntimePersonaSchema>;
+
+/**
+ * Persona specification - runtime character identity and behavior
+ */
+export const PersonaSpecSchema = RuntimePersonaSchema;
 export type PersonaSpec = z.infer<typeof PersonaSpecSchema>;
 
 /**
@@ -74,6 +191,7 @@ export const EmotionSpecSchema = z.object({
     reciprocity: z.number().min(0).max(1),
     pressureIntrusiveness: z.number().min(0).max(1),
     novelty: z.number().min(0).max(1),
+    selfRelevance: z.number().min(0).max(1),
   }).describe('Sensitivity to appraisal dimensions'),
   externalization: z.object({
     warmthWeight: z.number(),

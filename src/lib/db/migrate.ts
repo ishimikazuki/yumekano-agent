@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS pair_state (
   intimacy_readiness REAL NOT NULL DEFAULT 0,
   conflict REAL NOT NULL DEFAULT 0,
   pad_json TEXT NOT NULL,
+  pad_fast_json TEXT,
+  pad_slow_json TEXT,
+  pad_combined_json TEXT,
+  last_emotion_updated_at TIMESTAMPTZ,
   appraisal_json TEXT NOT NULL,
   open_thread_count INTEGER NOT NULL DEFAULT 0,
   last_transition_at TIMESTAMPTZ,
@@ -223,8 +227,17 @@ CREATE TABLE IF NOT EXISTS turn_traces (
   phase_id_after TEXT NOT NULL,
   emotion_before_json TEXT NOT NULL,
   emotion_after_json TEXT NOT NULL,
+  emotion_state_before_json TEXT,
+  emotion_state_after_json TEXT,
+  relationship_before_json TEXT,
+  relationship_after_json TEXT,
+  relationship_deltas_json TEXT,
+  phase_transition_evaluation_json TEXT,
+  prompt_assembly_hashes_json TEXT,
   appraisal_json TEXT NOT NULL,
   retrieved_memory_ids_json TEXT NOT NULL,
+  memory_threshold_decisions_json TEXT,
+  coe_contributions_json TEXT,
   plan_json TEXT NOT NULL,
   candidates_json TEXT NOT NULL,
   winner_index INTEGER NOT NULL,
@@ -321,6 +334,10 @@ CREATE TABLE IF NOT EXISTS sandbox_pair_state (
   intimacy_readiness REAL NOT NULL DEFAULT 0,
   conflict REAL NOT NULL DEFAULT 0,
   pad_json TEXT NOT NULL,
+  pad_fast_json TEXT,
+  pad_slow_json TEXT,
+  pad_combined_json TEXT,
+  last_emotion_updated_at TIMESTAMPTZ,
   appraisal_json TEXT NOT NULL,
   open_thread_count INTEGER NOT NULL DEFAULT 0,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -330,6 +347,85 @@ CREATE TABLE IF NOT EXISTS sandbox_working_memory (
   session_id TEXT PRIMARY KEY REFERENCES playground_sessions(id),
   data_json TEXT NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_events (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  source_turn_id TEXT REFERENCES playground_turns(id),
+  event_type TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  salience REAL NOT NULL,
+  retrieval_keys_json TEXT NOT NULL,
+  emotion_signature_json TEXT,
+  participants_json TEXT NOT NULL,
+  quality_score REAL,
+  supersedes_event_id TEXT REFERENCES sandbox_memory_events(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_events_session
+  ON sandbox_memory_events(session_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_facts (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  subject TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  object_json TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'superseded', 'disputed')),
+  supersedes_fact_id TEXT REFERENCES sandbox_memory_facts(id),
+  source_event_id TEXT REFERENCES sandbox_memory_events(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_facts_session
+  ON sandbox_memory_facts(session_id, status);
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_facts_subject
+  ON sandbox_memory_facts(session_id, subject, predicate);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_observations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  summary TEXT NOT NULL,
+  retrieval_keys_json TEXT NOT NULL,
+  salience REAL NOT NULL,
+  quality_score REAL,
+  window_start_at TEXT NOT NULL,
+  window_end_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_observations_session
+  ON sandbox_memory_observations(session_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_open_threads (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  key TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  severity REAL NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
+  opened_by_event_id TEXT REFERENCES sandbox_memory_events(id),
+  resolved_by_event_id TEXT REFERENCES sandbox_memory_events(id),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(session_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_open_threads_session
+  ON sandbox_memory_open_threads(session_id, status);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_usage (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  memory_item_type TEXT NOT NULL,
+  memory_item_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL REFERENCES playground_turns(id),
+  was_selected INTEGER NOT NULL,
+  was_helpful INTEGER,
+  score_delta REAL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 `;
 
@@ -348,6 +444,150 @@ CREATE INDEX IF NOT EXISTS idx_character_versions_parent ON character_versions(p
 const MIGRATION_004_GENERATOR_INTIMACY_PROMPT = `
 ALTER TABLE prompt_bundle_versions ADD COLUMN generator_intimacy_md TEXT NOT NULL DEFAULT '';
 ALTER TABLE workspace_draft_state ADD COLUMN generator_intimacy_md TEXT NOT NULL DEFAULT '';
+`;
+
+/**
+ * Migration 005: Runtime emotion layers and richer trace payloads
+ */
+const MIGRATION_005_RUNTIME_EMOTION_AND_TRACE = `
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_fast_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_slow_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_combined_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS last_emotion_updated_at TEXT;
+UPDATE pair_state
+SET
+  pad_fast_json = COALESCE(pad_fast_json, pad_json),
+  pad_slow_json = COALESCE(pad_slow_json, pad_json),
+  pad_combined_json = COALESCE(pad_combined_json, pad_json),
+  last_emotion_updated_at = COALESCE(last_emotion_updated_at, CAST(updated_at AS TEXT));
+
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_fast_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_slow_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_combined_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS last_emotion_updated_at TEXT;
+UPDATE sandbox_pair_state
+SET
+  pad_fast_json = COALESCE(pad_fast_json, pad_json),
+  pad_slow_json = COALESCE(pad_slow_json, pad_json),
+  pad_combined_json = COALESCE(pad_combined_json, pad_json),
+  last_emotion_updated_at = COALESCE(last_emotion_updated_at, CAST(updated_at AS TEXT));
+
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_state_before_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_state_after_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_before_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_after_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_deltas_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS phase_transition_evaluation_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS prompt_assembly_hashes_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS memory_threshold_decisions_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_contributions_json TEXT;
+`;
+
+/**
+ * Migration 006: Sandbox durable memory parity
+ */
+const MIGRATION_006_SANDBOX_MEMORY_PARITY = `
+CREATE TABLE IF NOT EXISTS sandbox_memory_events (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  source_turn_id TEXT REFERENCES playground_turns(id),
+  event_type TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  salience REAL NOT NULL,
+  retrieval_keys_json TEXT NOT NULL,
+  emotion_signature_json TEXT,
+  participants_json TEXT NOT NULL,
+  quality_score REAL,
+  supersedes_event_id TEXT REFERENCES sandbox_memory_events(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_events_session
+  ON sandbox_memory_events(session_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_facts (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  subject TEXT NOT NULL,
+  predicate TEXT NOT NULL,
+  object_json TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'superseded', 'disputed')),
+  supersedes_fact_id TEXT REFERENCES sandbox_memory_facts(id),
+  source_event_id TEXT REFERENCES sandbox_memory_events(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_facts_session
+  ON sandbox_memory_facts(session_id, status);
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_facts_subject
+  ON sandbox_memory_facts(session_id, subject, predicate);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_observations (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  summary TEXT NOT NULL,
+  retrieval_keys_json TEXT NOT NULL,
+  salience REAL NOT NULL,
+  quality_score REAL,
+  window_start_at TIMESTAMPTZ NOT NULL,
+  window_end_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_observations_session
+  ON sandbox_memory_observations(session_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_open_threads (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  key TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  severity REAL NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
+  opened_by_event_id TEXT REFERENCES sandbox_memory_events(id),
+  resolved_by_event_id TEXT REFERENCES sandbox_memory_events(id),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(session_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sandbox_memory_open_threads_session
+  ON sandbox_memory_open_threads(session_id, status);
+
+CREATE TABLE IF NOT EXISTS sandbox_memory_usage (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES playground_sessions(id),
+  memory_item_type TEXT NOT NULL,
+  memory_item_id TEXT NOT NULL,
+  turn_id TEXT NOT NULL REFERENCES playground_turns(id),
+  was_selected INTEGER NOT NULL,
+  was_helpful INTEGER,
+  score_delta REAL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`;
+
+const MIGRATION_007_EVAL_ACTIVE_LOCK = `
+UPDATE eval_runs
+SET status = 'failed'
+WHERE id IN (
+  SELECT id
+  FROM (
+    SELECT
+      id,
+      ROW_NUMBER() OVER (
+        PARTITION BY character_version_id
+        ORDER BY created_at DESC, id DESC
+      ) AS row_num
+    FROM eval_runs
+    WHERE status IN ('pending', 'running')
+  ) ranked_active_runs
+  WHERE row_num > 1
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_runs_one_active_per_version
+ON eval_runs(character_version_id)
+WHERE status IN ('pending', 'running');
 `;
 
 /**
@@ -410,6 +650,18 @@ export async function runMigrations() {
   await runMigration(
     '004_generator_intimacy_prompt.sql',
     MIGRATION_004_GENERATOR_INTIMACY_PROMPT
+  );
+  await runMigration(
+    '005_runtime_emotion_and_trace.sql',
+    MIGRATION_005_RUNTIME_EMOTION_AND_TRACE
+  );
+  await runMigration(
+    '006_sandbox_memory_parity.sql',
+    MIGRATION_006_SANDBOX_MEMORY_PARITY
+  );
+  await runMigration(
+    '007_eval_active_lock.sql',
+    MIGRATION_007_EVAL_ACTIVE_LOCK
   );
 
   console.log('All migrations completed');

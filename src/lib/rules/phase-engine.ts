@@ -6,6 +6,7 @@ import {
   PairState,
   PADState,
   OpenThread,
+  type DialogueAct,
 } from '../schemas';
 
 export type PhaseEngineContext = {
@@ -60,7 +61,9 @@ export class PhaseEngine {
    * Get available edges from a phase.
    */
   getEdgesFrom(phaseId: string): PhaseEdge[] {
-    return this.graph.edges.filter((e) => e.from === phaseId);
+    return this.graph.edges
+      .filter((e) => e.from === phaseId)
+      .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   }
 
   /**
@@ -207,12 +210,14 @@ export class PhaseEngine {
   /**
    * Check if an act is allowed in a phase.
    */
-  isActAllowed(phaseId: string, act: string): boolean {
+  isActAllowed(phaseId: string, act: string | DialogueAct): boolean {
     const phase = this.getPhase(phaseId);
     if (!phase) return false;
 
-    if (phase.disallowedActs.includes(act)) return false;
-    if (phase.allowedActs.length > 0 && !phase.allowedActs.includes(act)) {
+    const dialogueAct = act as DialogueAct;
+
+    if (phase.disallowedActs.includes(dialogueAct)) return false;
+    if (phase.allowedActs.length > 0 && !phase.allowedActs.includes(dialogueAct)) {
       return false;
     }
     return true;

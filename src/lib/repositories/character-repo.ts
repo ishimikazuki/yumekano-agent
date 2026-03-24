@@ -1,5 +1,11 @@
 import { getDb } from '../db/client';
 import { v4 as uuid } from 'uuid';
+import { normalizeRuntimePersona } from '../persona';
+import {
+  normalizeLegacyAutonomy,
+  normalizeLegacyEmotion,
+  normalizeLegacyStyle,
+} from './legacy-config-normalization';
 import {
   Character,
   CharacterSchema,
@@ -11,7 +17,28 @@ import {
   AutonomySpec,
   EmotionSpec,
   MemoryPolicySpec,
+  RuntimePersona,
 } from '../schemas';
+
+function parseCharacterVersionRow(row: Record<string, unknown>): CharacterVersion {
+  return CharacterVersionSchema.parse({
+    id: row.id,
+    characterId: row.character_id,
+    versionNumber: row.version_number,
+    label: row.label ? String(row.label) : undefined,
+    status: row.status,
+    persona: normalizeRuntimePersona(JSON.parse(row.persona_json as string)),
+    style: normalizeLegacyStyle(JSON.parse(row.style_json as string)),
+    autonomy: normalizeLegacyAutonomy(JSON.parse(row.autonomy_json as string)),
+    emotion: normalizeLegacyEmotion(JSON.parse(row.emotion_json as string)),
+    memory: JSON.parse(row.memory_policy_json as string),
+    phaseGraphVersionId: row.phase_graph_version_id,
+    promptBundleVersionId: row.prompt_bundle_version_id,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    parentVersionId: row.parent_version_id as string | null,
+  });
+}
 
 /**
  * Repository for character and character version operations.
@@ -104,7 +131,7 @@ export const characterRepo = {
    */
   async createVersion(input: {
     characterId: string;
-    persona: PersonaSpec;
+    persona: RuntimePersona;
     style: StyleSpec;
     autonomy: AutonomySpec;
     emotion: EmotionSpec;
@@ -175,24 +202,7 @@ export const characterRepo = {
 
     if (result.rows.length === 0) return null;
 
-    const row = result.rows[0];
-    return CharacterVersionSchema.parse({
-      id: row.id,
-      characterId: row.character_id,
-      versionNumber: row.version_number,
-      label: row.label ? String(row.label) : undefined,
-      status: row.status,
-      persona: JSON.parse(row.persona_json as string),
-      style: JSON.parse(row.style_json as string),
-      autonomy: JSON.parse(row.autonomy_json as string),
-      emotion: JSON.parse(row.emotion_json as string),
-      memory: JSON.parse(row.memory_policy_json as string),
-      phaseGraphVersionId: row.phase_graph_version_id,
-      promptBundleVersionId: row.prompt_bundle_version_id,
-      createdBy: row.created_by,
-      createdAt: row.created_at,
-      parentVersionId: row.parent_version_id as string | null,
-    });
+    return parseCharacterVersionRow(result.rows[0] as Record<string, unknown>);
   },
 
   /**
@@ -209,24 +219,7 @@ export const characterRepo = {
 
     if (result.rows.length === 0) return null;
 
-    const row = result.rows[0];
-    return CharacterVersionSchema.parse({
-      id: row.id,
-      characterId: row.character_id,
-      versionNumber: row.version_number,
-      label: row.label ? String(row.label) : undefined,
-      status: row.status,
-      persona: JSON.parse(row.persona_json as string),
-      style: JSON.parse(row.style_json as string),
-      autonomy: JSON.parse(row.autonomy_json as string),
-      emotion: JSON.parse(row.emotion_json as string),
-      memory: JSON.parse(row.memory_policy_json as string),
-      phaseGraphVersionId: row.phase_graph_version_id,
-      promptBundleVersionId: row.prompt_bundle_version_id,
-      createdBy: row.created_by,
-      createdAt: row.created_at,
-      parentVersionId: row.parent_version_id as string | null,
-    });
+    return parseCharacterVersionRow(result.rows[0] as Record<string, unknown>);
   },
 
   /**
@@ -241,6 +234,17 @@ export const characterRepo = {
   },
 
   /**
+   * Update the stored runtime persona for a character version.
+   */
+  async updateVersionPersona(id: string, persona: RuntimePersona): Promise<void> {
+    const db = getDb();
+    await db.execute({
+      sql: `UPDATE character_versions SET persona_json = ? WHERE id = ?`,
+      args: [JSON.stringify(persona), id],
+    });
+  },
+
+  /**
    * List versions for a character.
    */
   async listVersions(characterId: string): Promise<CharacterVersion[]> {
@@ -251,23 +255,7 @@ export const characterRepo = {
     });
 
     return result.rows.map((row) =>
-      CharacterVersionSchema.parse({
-        id: row.id,
-        characterId: row.character_id,
-        versionNumber: row.version_number,
-        label: row.label ? String(row.label) : undefined,
-        status: row.status,
-        persona: JSON.parse(row.persona_json as string),
-        style: JSON.parse(row.style_json as string),
-        autonomy: JSON.parse(row.autonomy_json as string),
-        emotion: JSON.parse(row.emotion_json as string),
-        memory: JSON.parse(row.memory_policy_json as string),
-        phaseGraphVersionId: row.phase_graph_version_id,
-        promptBundleVersionId: row.prompt_bundle_version_id,
-        createdBy: row.created_by,
-        createdAt: row.created_at,
-        parentVersionId: row.parent_version_id as string | null,
-      })
+      parseCharacterVersionRow(row as Record<string, unknown>)
     );
   },
 };
