@@ -1,5 +1,6 @@
 # PROJECT_LOG INDEX
 
+- issue-0009-2026-03-24-main-sync-and-live-debug-wrapup.md — live debug修正の取り込み、main同期、wrapup整理
 - issue-0008-2026-03-23-persona-runtime-and-pad-tuning.md — persona authoring簡素化、compiledPersona対応、PAD appraisal tuning
 - issue-0007-2026-03-21-designer-debug-sweep.md — デザイナー観点の総合デバッグと修正
 - 2026-03-21-processing-flow-visual.md — 処理フロー視覚化ドキュメント作成 & LPデプロイ

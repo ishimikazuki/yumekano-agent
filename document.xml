@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>MVP Phase 6 完了 / shared executeTurn 導入 / mixed ranker runtime 配線 / sandbox durable memory parity 対応 / prompt fragment assembly + fast/slow/combined PAD trace 対応 / 処理フロー視覚化LP公開済み</phase>
+    <phase>MVP Phase 6 完了 / shared executeTurn 導入 / mixed ranker runtime 配線 / sandbox durable memory parity 対応 / prompt fragment assembly + fast/slow/combined PAD trace 対応 / 処理フロー視覚化LP公開済み / live debug修正をmainへ同期済み</phase>
   </project_overview>
 
   <architecture>
@@ -59,6 +59,7 @@
     <decision date="2026-03-24">prompt bundle の編集内容は invariant runtime prompt を置換せず、designer fragment として合成する。pair/sandbox/trace は fastAffect・slowMood・combined を保持し、prompt hash と relationship delta を trace へ残す</decision>
     <decision date="2026-03-24">executeTurn を canonical turn engine とし、sandbox memory table 群と mixed ranker を追加して production / draft / eval の分岐を adapter 層に閉じ込める</decision>
     <decision date="2026-03-24">live PostgreSQL でも sandbox write path を壊さないよう workspace/sandbox upsert を `ON CONFLICT` に統一し、eval は partial unique index で単一 active run を強制する</decision>
+    <decision date="2026-03-24">本番履歴の同期は `origin/main` とデプロイ済み修正ブランチを順に merge して `main` へ取り込む。理由: 履歴分岐を force せずに解消し、既に反映済みの修正と remote 側更新の両方を安全に残すため。</decision>
   </decisions>
 
   <logs>PROJECT_LOG/INDEX.md</logs>
