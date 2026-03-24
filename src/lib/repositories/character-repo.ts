@@ -2,6 +2,11 @@ import { getDb } from '../db/client';
 import { v4 as uuid } from 'uuid';
 import { normalizeRuntimePersona } from '../persona';
 import {
+  normalizeLegacyAutonomy,
+  normalizeLegacyEmotion,
+  normalizeLegacyStyle,
+} from './legacy-config-normalization';
+import {
   Character,
   CharacterSchema,
   CharacterVersion,
@@ -23,9 +28,9 @@ function parseCharacterVersionRow(row: Record<string, unknown>): CharacterVersio
     label: row.label ? String(row.label) : undefined,
     status: row.status,
     persona: normalizeRuntimePersona(JSON.parse(row.persona_json as string)),
-    style: JSON.parse(row.style_json as string),
-    autonomy: JSON.parse(row.autonomy_json as string),
-    emotion: JSON.parse(row.emotion_json as string),
+    style: normalizeLegacyStyle(JSON.parse(row.style_json as string)),
+    autonomy: normalizeLegacyAutonomy(JSON.parse(row.autonomy_json as string)),
+    emotion: normalizeLegacyEmotion(JSON.parse(row.emotion_json as string)),
     memory: JSON.parse(row.memory_policy_json as string),
     phaseGraphVersionId: row.phase_graph_version_id,
     promptBundleVersionId: row.prompt_bundle_version_id,

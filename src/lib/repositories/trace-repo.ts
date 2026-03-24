@@ -129,7 +129,7 @@ export const traceRepo = {
              relationship_deltas_json, phase_transition_evaluation_json, prompt_assembly_hashes_json,
              appraisal_json, retrieved_memory_ids_json, memory_threshold_decisions_json, coe_contributions_json,
              plan_json, candidates_json, winner_index, memory_writes_json, user_message, assistant_message, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         id,
         input.pairId,

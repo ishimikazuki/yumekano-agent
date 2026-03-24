@@ -261,12 +261,11 @@ export const pairRepo = {
       args.push(JSON.stringify(updates.emotion.combined));
       sets.push('last_emotion_updated_at = ?');
       args.push(updates.emotion.lastUpdatedAt.toISOString());
-      sets.push('pad_json = ?');
-      args.push(JSON.stringify(updates.emotion.combined));
     }
-    if (updates.pad !== undefined) {
+    const nextPad = updates.pad ?? updates.emotion?.combined;
+    if (nextPad !== undefined) {
       sets.push('pad_json = ?');
-      args.push(JSON.stringify(updates.pad));
+      args.push(JSON.stringify(nextPad));
     }
     if (updates.appraisal !== undefined) {
       sets.push('appraisal_json = ?');

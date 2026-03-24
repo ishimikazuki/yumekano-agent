@@ -27,6 +27,7 @@ export const DialogueActSchema = z.enum([
   'delay',
 
   // Repair acts
+  'repair',
   'apologize',
   'forgive',
   'confront',

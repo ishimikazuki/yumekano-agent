@@ -420,6 +420,7 @@ function translateDialogueAct(act: string): string {
     recommend: 'おすすめを出す',
     refuse: 'はっきり断る',
     delay: '今すぐは決めない',
+    repair: '関係の修復を試みる',
     apologize: '謝意を示す',
     forgive: '受け流して修復する',
     confront: '問題を正面から指摘する',

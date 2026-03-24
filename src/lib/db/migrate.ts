@@ -450,37 +450,37 @@ ALTER TABLE workspace_draft_state ADD COLUMN generator_intimacy_md TEXT NOT NULL
  * Migration 005: Runtime emotion layers and richer trace payloads
  */
 const MIGRATION_005_RUNTIME_EMOTION_AND_TRACE = `
-ALTER TABLE pair_state ADD COLUMN pad_fast_json TEXT;
-ALTER TABLE pair_state ADD COLUMN pad_slow_json TEXT;
-ALTER TABLE pair_state ADD COLUMN pad_combined_json TEXT;
-ALTER TABLE pair_state ADD COLUMN last_emotion_updated_at TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_fast_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_slow_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_combined_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS last_emotion_updated_at TEXT;
 UPDATE pair_state
 SET
   pad_fast_json = COALESCE(pad_fast_json, pad_json),
   pad_slow_json = COALESCE(pad_slow_json, pad_json),
   pad_combined_json = COALESCE(pad_combined_json, pad_json),
-  last_emotion_updated_at = COALESCE(last_emotion_updated_at, updated_at);
+  last_emotion_updated_at = COALESCE(last_emotion_updated_at, CAST(updated_at AS TEXT));
 
-ALTER TABLE sandbox_pair_state ADD COLUMN pad_fast_json TEXT;
-ALTER TABLE sandbox_pair_state ADD COLUMN pad_slow_json TEXT;
-ALTER TABLE sandbox_pair_state ADD COLUMN pad_combined_json TEXT;
-ALTER TABLE sandbox_pair_state ADD COLUMN last_emotion_updated_at TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_fast_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_slow_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_combined_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS last_emotion_updated_at TEXT;
 UPDATE sandbox_pair_state
 SET
   pad_fast_json = COALESCE(pad_fast_json, pad_json),
   pad_slow_json = COALESCE(pad_slow_json, pad_json),
   pad_combined_json = COALESCE(pad_combined_json, pad_json),
-  last_emotion_updated_at = COALESCE(last_emotion_updated_at, updated_at);
+  last_emotion_updated_at = COALESCE(last_emotion_updated_at, CAST(updated_at AS TEXT));
 
-ALTER TABLE turn_traces ADD COLUMN emotion_state_before_json TEXT;
-ALTER TABLE turn_traces ADD COLUMN emotion_state_after_json TEXT;
-ALTER TABLE turn_traces ADD COLUMN relationship_before_json TEXT;
-ALTER TABLE turn_traces ADD COLUMN relationship_after_json TEXT;
-ALTER TABLE turn_traces ADD COLUMN relationship_deltas_json TEXT;
-ALTER TABLE turn_traces ADD COLUMN phase_transition_evaluation_json TEXT;
-ALTER TABLE turn_traces ADD COLUMN prompt_assembly_hashes_json TEXT;
-ALTER TABLE turn_traces ADD COLUMN memory_threshold_decisions_json TEXT;
-ALTER TABLE turn_traces ADD COLUMN coe_contributions_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_state_before_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_state_after_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_before_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_after_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_deltas_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS phase_transition_evaluation_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS prompt_assembly_hashes_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS memory_threshold_decisions_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_contributions_json TEXT;
 `;
 
 /**
@@ -499,7 +499,7 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_events (
   participants_json TEXT NOT NULL,
   quality_score REAL,
   supersedes_event_id TEXT REFERENCES sandbox_memory_events(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_sandbox_memory_events_session
@@ -515,7 +515,7 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_facts (
   status TEXT NOT NULL CHECK (status IN ('active', 'superseded', 'disputed')),
   supersedes_fact_id TEXT REFERENCES sandbox_memory_facts(id),
   source_event_id TEXT REFERENCES sandbox_memory_events(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_sandbox_memory_facts_session
@@ -530,9 +530,9 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_observations (
   retrieval_keys_json TEXT NOT NULL,
   salience REAL NOT NULL,
   quality_score REAL,
-  window_start_at TEXT NOT NULL,
-  window_end_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  window_start_at TIMESTAMPTZ NOT NULL,
+  window_end_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_sandbox_memory_observations_session
@@ -547,7 +547,7 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_open_threads (
   status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
   opened_by_event_id TEXT REFERENCES sandbox_memory_events(id),
   resolved_by_event_id TEXT REFERENCES sandbox_memory_events(id),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(session_id, key)
 );
 
@@ -563,8 +563,31 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_usage (
   was_selected INTEGER NOT NULL,
   was_helpful INTEGER,
   score_delta REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+`;
+
+const MIGRATION_007_EVAL_ACTIVE_LOCK = `
+UPDATE eval_runs
+SET status = 'failed'
+WHERE id IN (
+  SELECT id
+  FROM (
+    SELECT
+      id,
+      ROW_NUMBER() OVER (
+        PARTITION BY character_version_id
+        ORDER BY created_at DESC, id DESC
+      ) AS row_num
+    FROM eval_runs
+    WHERE status IN ('pending', 'running')
+  ) ranked_active_runs
+  WHERE row_num > 1
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_runs_one_active_per_version
+ON eval_runs(character_version_id)
+WHERE status IN ('pending', 'running');
 `;
 
 /**
@@ -635,6 +658,10 @@ export async function runMigrations() {
   await runMigration(
     '006_sandbox_memory_parity.sql',
     MIGRATION_006_SANDBOX_MEMORY_PARITY
+  );
+  await runMigration(
+    '007_eval_active_lock.sql',
+    MIGRATION_007_EVAL_ACTIVE_LOCK
   );
 
   console.log('All migrations completed');

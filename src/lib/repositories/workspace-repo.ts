@@ -1,6 +1,12 @@
 import { getDb } from '../db/client';
 import { v4 as uuid } from 'uuid';
 import { normalizePersonaAuthoring } from '../persona';
+import {
+  asNumber,
+  normalizeLegacyAutonomy,
+  normalizeLegacyEmotion,
+  normalizeLegacyStyle,
+} from './legacy-config-normalization';
 import { serializeDraftStateForStorage } from '../workspaces/draft-persistence';
 import {
   Workspace,
@@ -118,83 +124,6 @@ function parseSandboxThreadRow(row: Record<string, unknown>): OpenThread {
     resolvedByEventId: row.resolved_by_event_id,
     updatedAt: row.updated_at,
   });
-}
-
-function normalizeLegacyStyle(value: unknown): unknown {
-  if (!value || typeof value !== 'object') return value;
-  const style = value as Record<string, unknown>;
-
-  return {
-    ...style,
-    language: style.language === 'en' ? 'ja' : style.language,
-    politenessDefault:
-      style.politenessDefault === 'formal' ? 'polite' : style.politenessDefault,
-  };
-}
-
-function normalizeLegacyAutonomy(value: unknown): unknown {
-  if (!value || typeof value !== 'object') return value;
-  const autonomy = value as Record<string, unknown>;
-
-  return {
-    ...autonomy,
-    disagreeReadiness:
-      autonomy.disagreeReadiness ?? autonomy.disagreementReadiness,
-    conflictCarryover: autonomy.conflictCarryover ?? autonomy.conflictSustain,
-    intimacyNeverOnDemand:
-      autonomy.intimacyNeverOnDemand ?? autonomy.intimacyNotOnDemand,
-  };
-}
-
-function asNumber(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-}
-
-function normalizeLegacyEmotion(value: unknown): unknown {
-  if (!value || typeof value !== 'object') return value;
-  const emotion = value as Record<string, unknown>;
-
-  const baselineRaw =
-    (emotion.baselinePAD as Record<string, unknown> | undefined) ??
-    (emotion.baseline as Record<string, unknown> | undefined) ??
-    {};
-  const recoveryRaw =
-    (emotion.recovery as Record<string, unknown> | undefined) ?? {};
-  const appraisalRaw =
-    (emotion.appraisalSensitivity as Record<string, unknown> | undefined) ?? {};
-  const externalizationRaw =
-    (emotion.externalization as Record<string, unknown> | undefined) ?? {};
-
-  return {
-    ...emotion,
-    baselinePAD: {
-      pleasure: asNumber(baselineRaw.pleasure, 0),
-      arousal: asNumber(baselineRaw.arousal, 0),
-      dominance: asNumber(baselineRaw.dominance, 0),
-    },
-    recovery: {
-      pleasureHalfLifeTurns: asNumber(recoveryRaw.pleasureHalfLifeTurns, 5),
-      arousalHalfLifeTurns: asNumber(recoveryRaw.arousalHalfLifeTurns, 3),
-      dominanceHalfLifeTurns: asNumber(recoveryRaw.dominanceHalfLifeTurns, 4),
-    },
-    appraisalSensitivity: {
-      goalCongruence: asNumber(appraisalRaw.goalCongruence, 0.6),
-      controllability: asNumber(appraisalRaw.controllability, 0.5),
-      certainty: asNumber(appraisalRaw.certainty, 0.5),
-      normAlignment: asNumber(appraisalRaw.normAlignment, 0.6),
-      attachmentSecurity: asNumber(appraisalRaw.attachmentSecurity, 0.7),
-      reciprocity: asNumber(appraisalRaw.reciprocity, 0.7),
-      pressureIntrusiveness: asNumber(appraisalRaw.pressureIntrusiveness, 0.6),
-      novelty: asNumber(appraisalRaw.novelty, 0.5),
-      selfRelevance: asNumber(appraisalRaw.selfRelevance, 0.5),
-    },
-    externalization: {
-      warmthWeight: asNumber(externalizationRaw.warmthWeight, 0.8),
-      tersenessWeight: asNumber(externalizationRaw.tersenessWeight, 0.3),
-      directnessWeight: asNumber(externalizationRaw.directnessWeight, 0.5),
-      teasingWeight: asNumber(externalizationRaw.teasingWeight, 0.6),
-    },
-  };
 }
 
 /**
@@ -625,9 +554,10 @@ export const workspaceRepo = {
     const now = new Date().toISOString();
 
     await db.execute({
-      sql: `INSERT OR REPLACE INTO workspace_editor_context (workspace_id, context_json, updated_at)
-            VALUES (?, ?, ?)`,
-      args: [workspaceId, JSON.stringify(context), now],
+      sql: `INSERT INTO workspace_editor_context (workspace_id, context_json, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(workspace_id) DO UPDATE SET context_json = ?, updated_at = ?`,
+      args: [workspaceId, JSON.stringify(context), now, JSON.stringify(context), now],
     });
   },
 
@@ -781,11 +711,30 @@ export const workspaceRepo = {
   }): Promise<SandboxPairState> {
     const db = getDb();
     const now = new Date().toISOString();
+    const combinedJson = JSON.stringify(input.emotion.combined);
+    const fastJson = JSON.stringify(input.emotion.fastAffect);
+    const slowJson = JSON.stringify(input.emotion.slowMood);
+    const appraisalJson = JSON.stringify(input.appraisal);
+    const lastUpdatedAt = input.emotion.lastUpdatedAt.toISOString();
 
     await db.execute({
-      sql: `INSERT OR REPLACE INTO sandbox_pair_state
+      sql: `INSERT INTO sandbox_pair_state
             (session_id, active_phase_id, affinity, trust, intimacy_readiness, conflict, pad_json, pad_fast_json, pad_slow_json, pad_combined_json, last_emotion_updated_at, appraisal_json, open_thread_count, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET
+              active_phase_id = ?,
+              affinity = ?,
+              trust = ?,
+              intimacy_readiness = ?,
+              conflict = ?,
+              pad_json = ?,
+              pad_fast_json = ?,
+              pad_slow_json = ?,
+              pad_combined_json = ?,
+              last_emotion_updated_at = ?,
+              appraisal_json = ?,
+              open_thread_count = ?,
+              updated_at = ?`,
       args: [
         input.sessionId,
         input.activePhaseId,
@@ -793,12 +742,25 @@ export const workspaceRepo = {
         input.trust,
         input.intimacyReadiness,
         input.conflict,
-        JSON.stringify(input.emotion.combined),
-        JSON.stringify(input.emotion.fastAffect),
-        JSON.stringify(input.emotion.slowMood),
-        JSON.stringify(input.emotion.combined),
-        input.emotion.lastUpdatedAt.toISOString(),
-        JSON.stringify(input.appraisal),
+        combinedJson,
+        fastJson,
+        slowJson,
+        combinedJson,
+        lastUpdatedAt,
+        appraisalJson,
+        input.openThreadCount,
+        now,
+        input.activePhaseId,
+        input.affinity,
+        input.trust,
+        input.intimacyReadiness,
+        input.conflict,
+        combinedJson,
+        fastJson,
+        slowJson,
+        combinedJson,
+        lastUpdatedAt,
+        appraisalJson,
         input.openThreadCount,
         now,
       ],

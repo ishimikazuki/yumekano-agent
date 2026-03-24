@@ -37,6 +37,10 @@
 - [x] draft chat でも retrieval / writeback / consolidation trigger を production parity に接続
 - [x] eval suite が指定 character version / prompt bundle を shared engine に流すよう修正
 - [x] model matrix を logic 修正後に回せる workflow を追加
+- [x] Browser Use CLI で production live デバッグを実施し、sandbox upsert 方言差分と eval 二重起動競合を修正
+- [x] production rerun で legacy character parse / trace insert / pair state update の live SQL不整合を修正して再デプロイ
+- [x] ワークスペース/Playground 会話テストに Markdown エクスポートを追加し、本番デプロイまで完了
+- [x] ローカル専用生成物を ignore 整理し、デプロイ済み修正だけが git 差分として残る状態にした
 
 ### 残作業
 - [ ] ワークスペース会話テストの送信前 autosave UX を仕上げて必要ならデプロイする
@@ -73,7 +77,14 @@
 - 2026-03-24: `run_eval_suite` は shared engine を使わず current release の `runChatTurn()` を叩いていたため、指定 character version の評価にならない経路があった。
 - 2026-03-24: draft sandbox は pair state だけ持続し、memory layer と consolidation が未接続だったため、本番との差分が大きかった。
 - 2026-03-24: libSQL migration では `DEFAULT now()` が新規 sandbox memory table 追加時に失敗し、SQLite 互換の `datetime('now')` に寄せる必要があった。
+- 2026-03-24: live Vercel の `/api/draft-chat` は PostgreSQL 上で `INSERT OR REPLACE` により `syntax error at or near "OR"` を返していた。local/libsql では見えず、Browser Use CLI 経由の本番 sandbox 送信で初めて再現した。
+- 2026-03-24: eval API は `existingRun` の事前確認だけでは同時起動を防げず、UI と API の同時実行で同一 version に `running` が2件立った。
 - 2026-03-24: ワークスペース編集UIはローカル state に draft 全体を保持しているが、保存 API は section 単位だけだったため、会話送信前に「最新の全編集内容」を確実に反映させる入口がなかった。
+- 2026-03-24: live production の `/api/evals` は published character version の旧 `emotion_json` を strict parse しており、`appraisalSensitivity.selfRelevance` 欠損で 500 になった。workspace 側の legacy normalization が character repo 側に漏れていた。
+- 2026-03-24: live production `/api/chat` rerun で `turn_traces` INSERT の placeholder 数不足と `pair_state` UPDATE の `pad_json` 二重代入が顕在化した。draft/sandbox と分かれた経路では見えにくく、本番 trace 永続化で初めて落ちた。
+- 2026-03-24: Browser Use CLI は session を増やしすぎると `BrowserStartEvent ... timed out after 30.0s` が出やすく、fresh session より既存 session 再利用の方が安定した。
+- 2026-03-24: 会話履歴の Markdown 出力は `messages` state をそのまま使うだけで十分で、永続化済みの `playgroundSessionId` 復元とも自然に噛み合った。追加 API を作らずに実装できた。
+- 2026-03-24: `.serena/` や `tutorial-video/out` などのローカル専用生成物が未追跡差分として残り、デプロイ済みコードとの差分把握を邪魔していた。
 
 ## 決定したこと
 - 2026-03-23: `conversationHigh` は `grok-4.20-reasoning`、`analysisMedium` は `grok-4-1-fast-reasoning` に切り替える。理由: ユーザー向け返信生成は最高品質を優先しつつ、planner / ranker / extractor / eval scorer 群は高速 reasoning で総レイテンシとコストのバランスを取るため。
@@ -102,7 +113,13 @@
 - 2026-03-24: turn path の本体は `executeTurn()` に集約し、prod/draft/eval は context load と persistence adapter だけを持つ。理由: phase/memory/ranker/trace の配線差分を環境ごとに増やさないため。
 - 2026-03-24: sandbox でも events / facts / observations / open threads / memory usage を独立テーブルに保存し、retrieval / writeback / consolidation を共通 helper 経由で動かす。理由: playground を production parity の検証環境に戻すため。
 - 2026-03-24: ranker は scorer 群を runtime に実配線し、acceptanceProfile・`isActAllowed()`・memory ref 妥当性・open thread を deterministic guard に取り込む。理由: LLM judge を最終裁定へ下げ、同一入力での再現性を高めるため。
+- 2026-03-24: workspace editor context と sandbox pair state の upsert は `ON CONFLICT` に統一する。理由: SQLite / PostgreSQL の両方で live sandbox write path を壊さないため。
+- 2026-03-24: eval の単一 active run 保証は read-before-write ではなく DB partial unique index で担保し、API は unique conflict を 409 に正規化する。理由: 同時クリックや再送で二重 run が生成される race を止めるため。
 - 2026-03-24: ワークスペース会話テストは送信前に draft 全体を自動保存してから `draft-chat` を呼ぶ。理由: タブまたぎの未保存編集も含めて、会話テストを常に最新 draft で実行できるようにするため。
+- 2026-03-24: published character version の読み込みも workspace と同じ legacy config normalization を通す。理由: live DB に残る旧 emotion/style/autonomy shape で eval や release 画面が 500 にならないようにするため。
+- 2026-03-24: `turn_traces` と `pair_state` の SQL は expanded runtime payload でも placeholder 数と PAD 更新列が一意になるよう固定する。理由: production chat path が trace 永続化と pair state 更新の両方で Postgres 実行時に落ちないようにするため。
+- 2026-03-24: 会話履歴エクスポートは client-side で Markdown を生成し、ワークスペース会話テストと Playground の両方に `MD出力` ボタンを置く。理由: 既存の `messages` 表示状態をそのまま保存でき、サーバー API や DB スキーマを増やさずに最短で使い勝手を上げられるため。
+- 2026-03-24: ローカル専用生成物は `.gitignore` に寄せ、誤って push 対象に見えないようにする。理由: 「デプロイ済みなのに未プッシュ差分が多い」状態を減らし、実コード差分だけを追いやすくするため。
 
 ## 既知の問題
 - xAI APIの応答に10-30秒かかることがある

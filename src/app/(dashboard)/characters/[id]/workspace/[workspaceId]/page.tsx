@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CoEExplanationCard } from '@/components/CoEExplanationCard';
 import type { CoEExplanation } from '@/lib/rules/coe';
 import { LabelWithTooltip, type HelpKey } from '@/components/Tooltip';
+import { downloadConversationMarkdown } from '@/lib/workspaces/conversation-export';
 
 // ============ Types ============
 
@@ -455,6 +456,21 @@ export default function WorkspaceSandboxPage() {
     }
   };
 
+  const handleExportMarkdown = useCallback(() => {
+    if (!data || messages.length === 0) {
+      return;
+    }
+
+    downloadConversationMarkdown({
+      title: `${data.draft.identity.displayName} sandbox conversation`,
+      mode: 'sandbox',
+      characterName: data.draft.identity.displayName,
+      workspaceName: data.name,
+      sessionId,
+      messages,
+    });
+  }, [data, messages, sessionId]);
+
   if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-500">Loading...</div></div>;
   if (!data) return <div className="text-center py-12"><p className="text-red-500">ワークスペースが見つかりません</p><Link href={`/characters/${characterId}`} className="text-pink-500 hover:underline mt-4 inline-block">キャラクターに戻る</Link></div>;
 
@@ -488,7 +504,16 @@ export default function WorkspaceSandboxPage() {
               helpKey="workspace.chatTest"
               className="text-sm font-medium text-gray-700"
             />
-            <button onClick={handleReset} className="text-xs text-gray-500 hover:text-gray-700">リセット</button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExportMarkdown}
+                disabled={messages.length === 0}
+                className="text-xs text-gray-500 hover:text-gray-700 disabled:cursor-not-allowed disabled:text-gray-300"
+              >
+                MD出力
+              </button>
+              <button onClick={handleReset} className="text-xs text-gray-500 hover:text-gray-700">リセット</button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {messages.length === 0 && <div className="text-center text-gray-400 py-8 text-sm"><p>編集した内容でテストできるよ</p><p className="mt-1 text-xs">送信時に自動保存されるよ</p></div>}

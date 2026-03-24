@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_events (
   participants_json TEXT NOT NULL,
   quality_score REAL,
   supersedes_event_id TEXT REFERENCES sandbox_memory_events(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_sandbox_memory_events_session
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_facts (
   status TEXT NOT NULL CHECK (status IN ('active', 'superseded', 'disputed')),
   supersedes_fact_id TEXT REFERENCES sandbox_memory_facts(id),
   source_event_id TEXT REFERENCES sandbox_memory_events(id),
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_sandbox_memory_facts_session
@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_observations (
   retrieval_keys_json TEXT NOT NULL,
   salience REAL NOT NULL,
   quality_score REAL,
-  window_start_at TEXT NOT NULL,
-  window_end_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  window_start_at TIMESTAMPTZ NOT NULL,
+  window_end_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_sandbox_memory_observations_session
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_open_threads (
   status TEXT NOT NULL CHECK (status IN ('open', 'resolved')),
   opened_by_event_id TEXT REFERENCES sandbox_memory_events(id),
   resolved_by_event_id TEXT REFERENCES sandbox_memory_events(id),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE(session_id, key)
 );
 
@@ -74,5 +74,5 @@ CREATE TABLE IF NOT EXISTS sandbox_memory_usage (
   was_selected INTEGER NOT NULL,
   was_helpful INTEGER,
   score_delta REAL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

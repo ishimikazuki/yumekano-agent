@@ -43,6 +43,21 @@ function formatCaseResult(result: Awaited<ReturnType<typeof evalRepo.getCaseResu
   };
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const code = 'code' in error ? (error as { code?: unknown }).code : undefined;
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    code === '23505' ||
+    code === 'SQLITE_CONSTRAINT' ||
+    code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+    message.toLowerCase().includes('unique constraint') ||
+    message.toLowerCase().includes('duplicate key')
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -135,9 +150,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const existingRun = (await evalRepo.listEvalRuns(currentVersion.id)).find(
-      (run) => run.status === 'pending' || run.status === 'running'
-    );
+    const existingRun = await evalRepo.getActiveRun(currentVersion.id);
 
     if (existingRun) {
       return NextResponse.json(
@@ -150,11 +163,29 @@ export async function POST(request: NextRequest) {
     }
 
     const scenarioSet = await ensureScenarioSetInDb(characterId, scenarioSetKey);
-    const evalRun = await evalRepo.createRun({
-      characterVersionId: currentVersion.id,
-      scenarioSetId: scenarioSet.id,
-      modelRegistrySnapshot: {},
-    });
+    let evalRun;
+    try {
+      evalRun = await evalRepo.createRun({
+        characterVersionId: currentVersion.id,
+        scenarioSetId: scenarioSet.id,
+        modelRegistrySnapshot: {},
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        const activeRun = await evalRepo.getActiveRun(currentVersion.id);
+        if (activeRun) {
+          return NextResponse.json(
+            {
+              error: 'An eval run is already in progress',
+              evalRun: formatEvalRun(activeRun),
+            },
+            { status: 409 }
+          );
+        }
+      }
+
+      throw error;
+    }
 
     void runEvalSuite({
       evalRunId: evalRun.id,
