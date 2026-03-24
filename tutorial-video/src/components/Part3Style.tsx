@@ -620,17 +620,17 @@ const AutonomyExplanation: React.FC = () => {
 
   const items = [
     {
-      name: "異議準備度",
+      name: "反論しやすさ",
       desc: "反論する傾向",
       color: "#f472b6",
     },
     {
-      name: "拒否準備度",
+      name: "断りやすさ",
       desc: "要求を断る傾向",
       color: "#60a5fa",
     },
     {
-      name: "修復準備度",
+      name: "仲直りしやすさ",
       desc: "関係修復しようとする傾向",
       color: "#4ade80",
     },

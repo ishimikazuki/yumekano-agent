@@ -504,7 +504,7 @@ export const AutonomyScene: React.FC = () => {
     <ScreenshotScene image="07-edit-autonomy.png" title="Autonomy - 自律性">
       {({ imageSize, imageOffset }) => (
         <>
-          {/* 拒否準備度 */}
+          {/* 断りやすさ */}
           <RelativeHighlight
             x={365}
             y={305}
@@ -512,13 +512,13 @@ export const AutonomyScene: React.FC = () => {
             height={50}
             color="#f472b6"
             delay={20}
-            label="拒否準備度"
+            label="断りやすさ"
             labelPosition="left"
             imageSize={imageSize}
             imageOffset={imageOffset}
           />
 
-          {/* 修復準備度 */}
+          {/* 仲直りしやすさ */}
           <RelativeHighlight
             x={365}
             y={415}
@@ -526,7 +526,7 @@ export const AutonomyScene: React.FC = () => {
             height={50}
             color="#60a5fa"
             delay={50}
-            label="修復準備度"
+            label="仲直りしやすさ"
             labelPosition="left"
             imageSize={imageSize}
             imageOffset={imageOffset}
