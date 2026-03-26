@@ -6,6 +6,18 @@ import { resetDraftChatSession } from '@/mastra/workflows/draft-chat-turn';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
+async function ensureWorkspaceExists(workspaceId: string) {
+  const workspace = await workspaceRepo.getById(workspaceId);
+  if (!workspace) {
+    return NextResponse.json(
+      { error: 'Workspace not found' },
+      { status: 404 }
+    );
+  }
+
+  return null;
+}
+
 const PlaygroundSessionLookupSchema = z.object({
   sessionId: z.string().uuid().optional(),
   userId: z.string().min(1).optional(),

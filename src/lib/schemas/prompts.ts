@@ -18,7 +18,7 @@ const PromptBundleFieldShape = {
   extractorMd: PromptFragmentSchema.describe('Memory extractor designer fragment'),
   reflectorMd: PromptFragmentSchema.describe('Reflector designer fragment'),
   rankerMd: PromptFragmentSchema.describe('Ranker designer fragment'),
-} satisfies Record<string, z.ZodType<PromptFragment>>;
+} satisfies z.ZodRawShape;
 
 export const PromptBundleContentSchema = z.object(PromptBundleFieldShape);
 export type PromptBundleContent = z.infer<typeof PromptBundleContentSchema>;
