@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS prompt_bundle_versions (
   version_number INTEGER NOT NULL,
   planner_md TEXT NOT NULL,
   generator_md TEXT NOT NULL,
+  generator_intimacy_md TEXT NOT NULL DEFAULT '',
+  emotion_appraiser_md TEXT NOT NULL DEFAULT '',
   extractor_md TEXT NOT NULL,
   reflector_md TEXT NOT NULL,
   ranker_md TEXT NOT NULL,
@@ -236,6 +238,9 @@ CREATE TABLE IF NOT EXISTS turn_traces (
   prompt_assembly_hashes_json TEXT,
   appraisal_json TEXT NOT NULL,
   retrieved_memory_ids_json TEXT NOT NULL,
+  coe_extraction_json TEXT,
+  emotion_trace_json TEXT,
+  legacy_comparison_json TEXT,
   memory_threshold_decisions_json TEXT,
   coe_contributions_json TEXT,
   plan_json TEXT NOT NULL,
@@ -282,6 +287,8 @@ CREATE TABLE IF NOT EXISTS workspace_draft_state (
   phase_graph_json TEXT NOT NULL,
   planner_md TEXT NOT NULL,
   generator_md TEXT NOT NULL,
+  generator_intimacy_md TEXT NOT NULL DEFAULT '',
+  emotion_appraiser_md TEXT NOT NULL DEFAULT '',
   extractor_md TEXT NOT NULL,
   reflector_md TEXT NOT NULL,
   ranker_md TEXT NOT NULL,
@@ -479,6 +486,9 @@ ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_after_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_deltas_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS phase_transition_evaluation_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS prompt_assembly_hashes_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_extraction_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_trace_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS legacy_comparison_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS memory_threshold_decisions_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_contributions_json TEXT;
 `;
@@ -591,6 +601,18 @@ WHERE status IN ('pending', 'running');
 `;
 
 /**
+ * Migration 008: Canonical prompt bundle parity for emotion appraiser prompt
+ */
+const MIGRATION_008_PROMPT_BUNDLE_PARITY = `
+ALTER TABLE prompt_bundle_versions ADD COLUMN IF NOT EXISTS emotion_appraiser_md TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspace_draft_state ADD COLUMN IF NOT EXISTS emotion_appraiser_md TEXT NOT NULL DEFAULT '';
+UPDATE prompt_bundle_versions
+SET emotion_appraiser_md = COALESCE(emotion_appraiser_md, '');
+UPDATE workspace_draft_state
+SET emotion_appraiser_md = COALESCE(emotion_appraiser_md, '');
+`;
+
+/**
  * Run all migrations.
  */
 export async function runMigrations() {
@@ -662,6 +684,10 @@ export async function runMigrations() {
   await runMigration(
     '007_eval_active_lock.sql',
     MIGRATION_007_EVAL_ACTIVE_LOCK
+  );
+  await runMigration(
+    '008_prompt_bundle_parity.sql',
+    MIGRATION_008_PROMPT_BUNDLE_PARITY
   );
 
   console.log('All migrations completed');

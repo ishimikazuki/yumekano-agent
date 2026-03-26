@@ -2,6 +2,7 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { getProviderRegistry } from '../providers/registry';
 import { assemblePrompt, formatDesignerFragment, hashPrompt } from '../prompts/assemble';
+import { formatEmotionContextSections, type AgentEmotionContext } from './emotion-context';
 import {
   TurnPlan,
   CharacterVersion,
@@ -69,6 +70,7 @@ export type RankerInput = {
   recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>;
   plan: TurnPlan;
   candidates: CandidateResponse[];
+  emotionContext?: AgentEmotionContext;
   promptOverride?: string;
 };
 
@@ -101,6 +103,328 @@ type CandidateScorerAggregate = {
   hardRejectReason: string | null;
   issues: string[];
 };
+
+const PRE_RANKER_GATE_CONFIG = {
+  thresholds: {
+    highPressure: 0.45,
+    lowSafety: -0.3,
+    lowBoundaryRespect: -0.25,
+    strongRepair: 0.45,
+    positiveWarmth: 0.2,
+    severeOpenThread: 0.8,
+  },
+  riskFlags: {
+    hardSafety: [
+      'hard_safety_violation',
+      'safety_violation',
+      'unsafe',
+      'consent_violation',
+      'abuse',
+      'coercive',
+      'sexual_boundary',
+      'self_harm',
+      'violence',
+    ],
+    phaseViolation: ['phase_violation', 'intimacy_phase_violation'],
+    coeContradiction: ['coe_contradiction', 'emotion_contradiction'],
+    memoryContradiction: ['memory_contradiction', 'continuity_break'],
+  },
+  lexical: {
+    intimacy: ['キス', 'ハグ', '抱きしめ', '抱いて', '触って', '触れたい', '裸', 'エッチ', 'セックス'],
+    affection: ['好きだよ', '大好き', '愛してる', '恋人', '付き合って', '会いたい', 'もっと甘えて'],
+    flirt: ['可愛いな', 'ドキドキする', '誘惑', 'いちゃいちゃ', '照れちゃう'],
+    repair: ['ごめん', '謝る', '落ち着いて', 'ゆっくり', '無理しないで', '今はやめとこ', 'また今度'],
+    hostile: ['うるさい', '黙って', '知らない', '勝手にして', 'どうでもいい', '面倒'],
+    coercive: ['逆らわないで', '言うこと聞いて', '黙って従って', '拒否させない', '無理やり', '今すぐしろ'],
+    resolutionClaims: ['もう大丈夫', '気にしてない', '解決した', 'なかったことに', '平気だよ'],
+  },
+  warmToneTags: ['warm', 'playful', 'intimate', 'flirty', 'affectionate', 'sweet'],
+  affectionToneTags: ['intimate', 'flirty', 'affectionate', 'sweet'],
+  repairToneTags: ['repair', 'careful', 'steady', 'gentle', 'boundary'],
+  hostileToneTags: ['angry', 'cold', 'hostile', 'dismissive', 'hurt'],
+} as const;
+
+type CandidateSignals = {
+  hasIntimacyAdvance: boolean;
+  hasAffectionateAdvance: boolean;
+  hasWarmSurface: boolean;
+  hasFlirt: boolean;
+  hasRepairTone: boolean;
+  hasHostileTone: boolean;
+  hasCoerciveTone: boolean;
+  claimsResolution: boolean;
+};
+
+function normalizeText(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function includesAny(text: string, terms: readonly string[]): boolean {
+  const normalized = normalizeText(text);
+  return terms.some((term) => normalized.includes(normalizeText(term)));
+}
+
+function hasRiskFlag(
+  candidate: CandidateResponse,
+  categories: readonly string[]
+): string | null {
+  const matched = candidate.riskFlags.find((flag) =>
+    categories.some((category) => normalizeText(flag).includes(normalizeText(category)))
+  );
+  return matched ?? null;
+}
+
+function buildCandidateSignals(candidate: CandidateResponse): CandidateSignals {
+  const toneTags = candidate.toneTags.map(normalizeText);
+  const text = candidate.text;
+  const hasWarmSurface = PRE_RANKER_GATE_CONFIG.warmToneTags.some((tag) =>
+    toneTags.includes(tag)
+  );
+
+  const hasIntimacyAdvance =
+    includesAny(text, PRE_RANKER_GATE_CONFIG.lexical.intimacy) ||
+    toneTags.includes('intimate');
+  const hasAffectionateAdvance =
+    hasIntimacyAdvance ||
+    includesAny(text, PRE_RANKER_GATE_CONFIG.lexical.affection) ||
+    PRE_RANKER_GATE_CONFIG.affectionToneTags.some((tag) => toneTags.includes(tag));
+
+  return {
+    hasIntimacyAdvance,
+    hasAffectionateAdvance,
+    hasWarmSurface,
+    hasFlirt:
+      includesAny(text, PRE_RANKER_GATE_CONFIG.lexical.flirt) ||
+      toneTags.includes('flirty'),
+    hasRepairTone:
+      includesAny(text, PRE_RANKER_GATE_CONFIG.lexical.repair) ||
+      PRE_RANKER_GATE_CONFIG.repairToneTags.some((tag) => toneTags.includes(tag)),
+    hasHostileTone:
+      includesAny(text, PRE_RANKER_GATE_CONFIG.lexical.hostile) ||
+      PRE_RANKER_GATE_CONFIG.hostileToneTags.some((tag) => toneTags.includes(tag)),
+    hasCoerciveTone:
+      includesAny(text, PRE_RANKER_GATE_CONFIG.lexical.coercive) ||
+      toneTags.includes('coercive'),
+    claimsResolution: includesAny(text, PRE_RANKER_GATE_CONFIG.lexical.resolutionClaims),
+  };
+}
+
+function getRetrievedMemoryIds(input: RankerInput): Set<string> {
+  return new Set([
+    ...input.retrievedMemory.events.map((item) => item.id),
+    ...input.retrievedMemory.facts.map((item) => item.id),
+    ...input.retrievedMemory.observations.map((item) => item.id),
+    ...input.retrievedMemory.threads.map((item) => item.id),
+  ]);
+}
+
+function normalizeMetricThreshold(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return value <= 1 ? value * 100 : value;
+}
+
+function extractCorrectionPairs(corrections: string[]): Array<{ oldValue: string; newValue: string }> {
+  const pairs: Array<{ oldValue: string; newValue: string }> = [];
+
+  for (const correction of corrections) {
+    const match =
+      correction.match(/(.+?)じゃなくて(.+)/u) ??
+      correction.match(/(.+?)ではなくて(.+)/u) ??
+      correction.match(/(.+?)じゃない、?(.+)/u);
+
+    if (!match) {
+      continue;
+    }
+
+    const oldValue = match[1]?.trim();
+    const newValue = match[2]?.trim();
+    if (oldValue && newValue) {
+      pairs.push({ oldValue, newValue });
+    }
+  }
+
+  return pairs;
+}
+
+function findHardSafetyViolation(
+  input: RankerInput,
+  candidate: CandidateResponse,
+  signals: CandidateSignals
+): string | null {
+  const riskFlag = hasRiskFlag(candidate, PRE_RANKER_GATE_CONFIG.riskFlags.hardSafety);
+  if (riskFlag) {
+    return `hard safety violation: ${riskFlag}`;
+  }
+
+  const tabooPhrase = input.characterVersion.style.tabooPhrases.find((phrase) =>
+    candidate.text.includes(phrase)
+  );
+  if (tabooPhrase) {
+    return `taboo phrase: ${tabooPhrase}`;
+  }
+
+  if (signals.hasCoerciveTone) {
+    return 'hard safety violation: coercive language';
+  }
+
+  return null;
+}
+
+function findPhaseViolation(
+  input: RankerInput,
+  candidate: CandidateResponse,
+  signals: CandidateSignals
+): string | null {
+  const riskFlag = hasRiskFlag(candidate, PRE_RANKER_GATE_CONFIG.riskFlags.phaseViolation);
+  if (riskFlag) {
+    return `phase violation: ${riskFlag}`;
+  }
+
+  const phaseEngine = createPhaseEngine({
+    nodes: [input.currentPhase],
+    edges: [],
+    entryPhaseId: input.currentPhase.id,
+  });
+
+  const invalidAct = input.plan.primaryActs.find(
+    (act) => !phaseEngine.isActAllowed(input.currentPhase.id, act)
+  );
+  if (invalidAct) {
+    return `phase act guard violation: ${invalidAct}`;
+  }
+
+  const mustAvoidMatch = input.plan.mustAvoid.find(
+    (phrase) => phrase.trim().length > 0 && candidate.text.includes(phrase)
+  );
+  if (mustAvoidMatch) {
+    return `must-avoid violation: ${mustAvoidMatch}`;
+  }
+
+  if (
+    input.currentPhase.disallowedActs.includes('express_affection') &&
+    signals.hasAffectionateAdvance
+  ) {
+    return 'phase violation: disallowed affection';
+  }
+
+  if (input.currentPhase.disallowedActs.includes('flirt') && signals.hasFlirt) {
+    return 'phase violation: disallowed flirtation';
+  }
+
+  const acceptance = input.currentPhase.acceptanceProfile;
+  const intimacyBlocked =
+    (input.plan.intimacyDecision === 'accept' ||
+      input.plan.intimacyDecision === 'conditional_accept') &&
+    ((acceptance.warmthFloor !== undefined &&
+      input.pairState.affinity < normalizeMetricThreshold(acceptance.warmthFloor)!) ||
+      (acceptance.trustFloor !== undefined &&
+        input.pairState.trust < normalizeMetricThreshold(acceptance.trustFloor)!) ||
+      (acceptance.intimacyFloor !== undefined &&
+        input.pairState.intimacyReadiness <
+          normalizeMetricThreshold(acceptance.intimacyFloor)!) ||
+      (acceptance.conflictCeiling !== undefined &&
+        input.pairState.conflict > normalizeMetricThreshold(acceptance.conflictCeiling)!));
+  if (intimacyBlocked && signals.hasIntimacyAdvance) {
+    return 'acceptance profile guard violation';
+  }
+
+  if (
+    signals.hasIntimacyAdvance &&
+    (input.currentPhase.adultIntimacyEligibility === 'never' ||
+      input.plan.intimacyDecision === 'decline_gracefully' ||
+      input.plan.intimacyDecision === 'decline_firmly' ||
+      input.plan.intimacyDecision === 'delay')
+  ) {
+    return 'phase/intimacy guard violation';
+  }
+
+  return null;
+}
+
+function findCoEContradiction(
+  input: RankerInput,
+  candidate: CandidateResponse,
+  signals: CandidateSignals
+): string | null {
+  const riskFlag = hasRiskFlag(candidate, PRE_RANKER_GATE_CONFIG.riskFlags.coeContradiction);
+  if (riskFlag) {
+    return `CoE contradiction: ${riskFlag}`;
+  }
+
+  const appraisal = input.emotionContext?.emotionTrace.relationalAppraisal;
+  if (!appraisal) {
+    return null;
+  }
+
+  const negativeState =
+    appraisal.pressureSignal >= PRE_RANKER_GATE_CONFIG.thresholds.highPressure ||
+    appraisal.safetySignal <= PRE_RANKER_GATE_CONFIG.thresholds.lowSafety ||
+    appraisal.boundaryRespect <= PRE_RANKER_GATE_CONFIG.thresholds.lowBoundaryRespect;
+  if (
+    negativeState &&
+    (signals.hasAffectionateAdvance || signals.hasWarmSurface) &&
+    !signals.hasRepairTone
+  ) {
+    return 'contradicts negative CoE state';
+  }
+
+  if (negativeState && signals.claimsResolution) {
+    return 'prematurely resolves active CoE tension';
+  }
+
+  const repairState =
+    appraisal.repairSignal >= PRE_RANKER_GATE_CONFIG.thresholds.strongRepair &&
+    appraisal.warmthSignal >= PRE_RANKER_GATE_CONFIG.thresholds.positiveWarmth &&
+    appraisal.pressureSignal < PRE_RANKER_GATE_CONFIG.thresholds.highPressure;
+  if (repairState && signals.hasHostileTone) {
+    return 'contradicts repair CoE state';
+  }
+
+  return null;
+}
+
+function findMemoryContradiction(
+  input: RankerInput,
+  candidate: CandidateResponse,
+  signals: CandidateSignals
+): string | null {
+  const riskFlag = hasRiskFlag(candidate, PRE_RANKER_GATE_CONFIG.riskFlags.memoryContradiction);
+  if (riskFlag) {
+    return `memory contradiction: ${riskFlag}`;
+  }
+
+  const retrievedIds = getRetrievedMemoryIds(input);
+  const invalidMemoryRef = candidate.memoryRefsUsed.find((memoryId) => !retrievedIds.has(memoryId));
+  if (invalidMemoryRef) {
+    return `invalid memory ref: ${invalidMemoryRef}`;
+  }
+
+  const highestSeverityThread = input.retrievedMemory.threads[0];
+  if (
+    highestSeverityThread &&
+    highestSeverityThread.severity >= PRE_RANKER_GATE_CONFIG.thresholds.severeOpenThread &&
+    !candidate.memoryRefsUsed.includes(highestSeverityThread.id) &&
+    !signals.hasRepairTone
+  ) {
+    return 'ignored severe open thread';
+  }
+
+  const corrections = extractCorrectionPairs(input.workingMemory.knownCorrections);
+  const correctionMatch = corrections.find(
+    ({ oldValue, newValue }) =>
+      oldValue.length >= 2 &&
+      candidate.text.includes(oldValue) &&
+      !candidate.text.includes(newValue)
+  );
+  if (correctionMatch) {
+    return `memory contradiction: repeats corrected detail "${correctionMatch.oldValue}"`;
+  }
+
+  return null;
+}
 
 export async function runRanker(input: RankerInput): Promise<RankerOutput> {
   const registry = getProviderRegistry();
@@ -358,6 +682,9 @@ function buildPseudoTrace(input: RankerInput, candidate: CandidateResponse): Tur
       observations: input.retrievedMemory.observations.map((observation) => observation.id),
       threads: input.retrievedMemory.threads.map((thread) => thread.id),
     },
+    coeExtraction: input.emotionContext?.coeExtraction ?? null,
+    emotionTrace: input.emotionContext?.emotionTrace ?? null,
+    legacyComparison: input.emotionContext?.legacyComparison ?? null,
     memoryThresholdDecisions: [],
     coeContributions: [],
     plan: input.plan,
@@ -370,76 +697,21 @@ function buildPseudoTrace(input: RankerInput, candidate: CandidateResponse): Tur
   };
 }
 
-function runDeterministicGuard(
+export function runDeterministicGuard(
   input: RankerInput,
   candidate: CandidateResponse,
   index: number
 ): DeterministicGuardResult {
-  const phaseEngine = createPhaseEngine({
-    nodes: [input.currentPhase],
-    edges: [],
-    entryPhaseId: input.currentPhase.id,
-  });
+  const signals = buildCandidateSignals(candidate);
+  const reasons = [
+    findHardSafetyViolation(input, candidate, signals),
+    findPhaseViolation(input, candidate, signals),
+    findCoEContradiction(input, candidate, signals),
+    findMemoryContradiction(input, candidate, signals),
+  ].filter((reason): reason is string => Boolean(reason));
 
-  const tabooPhrase = input.characterVersion.style.tabooPhrases.find((phrase) =>
-    candidate.text.includes(phrase)
-  );
-  if (tabooPhrase) {
-    return { index, rejected: true, reason: `taboo phrase: ${tabooPhrase}` };
-  }
-
-  const invalidMemoryRef = candidate.memoryRefsUsed.find((memoryId) => {
-    const retrievedIds = new Set([
-      ...input.retrievedMemory.events.map((item) => item.id),
-      ...input.retrievedMemory.facts.map((item) => item.id),
-      ...input.retrievedMemory.observations.map((item) => item.id),
-      ...input.retrievedMemory.threads.map((item) => item.id),
-    ]);
-    return !retrievedIds.has(memoryId);
-  });
-  if (invalidMemoryRef) {
-    return { index, rejected: true, reason: `invalid memory ref: ${invalidMemoryRef}` };
-  }
-
-  const invalidAct = input.plan.primaryActs.find(
-    (act) => !phaseEngine.isActAllowed(input.currentPhase.id, act)
-  );
-  if (invalidAct) {
-    return { index, rejected: true, reason: `phase act guard violation: ${invalidAct}` };
-  }
-
-  const acceptance = input.currentPhase.acceptanceProfile;
-  const intimacyBlocked =
-    (input.plan.intimacyDecision === 'accept' || input.plan.intimacyDecision === 'conditional_accept') &&
-    ((acceptance.warmthFloor !== undefined && input.pairState.affinity < acceptance.warmthFloor * 100) ||
-      (acceptance.trustFloor !== undefined && input.pairState.trust < acceptance.trustFloor * 100) ||
-      (acceptance.intimacyFloor !== undefined &&
-        input.pairState.intimacyReadiness < acceptance.intimacyFloor * 100) ||
-      (acceptance.conflictCeiling !== undefined &&
-        input.pairState.conflict > acceptance.conflictCeiling * 100));
-  if (intimacyBlocked) {
-    return { index, rejected: true, reason: 'acceptance profile guard violation' };
-  }
-
-  const intimacyPattern = /キス|抱|触れ|エッチ|セックス|裸/;
-  const isIntimacyLike = intimacyPattern.test(candidate.text);
-  if (
-    isIntimacyLike &&
-    (input.currentPhase.adultIntimacyEligibility === 'never' ||
-      input.plan.intimacyDecision === 'decline_gracefully' ||
-      input.plan.intimacyDecision === 'decline_firmly' ||
-      input.plan.intimacyDecision === 'delay')
-  ) {
-    return { index, rejected: true, reason: 'phase/intimacy guard violation' };
-  }
-
-  const highestSeverityThread = input.retrievedMemory.threads[0];
-  if (
-    highestSeverityThread &&
-    highestSeverityThread.severity >= 0.8 &&
-    !candidate.memoryRefsUsed.includes(highestSeverityThread.id)
-  ) {
-    return { index, rejected: true, reason: 'ignored severe open thread' };
+  if (reasons.length > 0) {
+    return { index, rejected: true, reason: reasons[0] };
   }
 
   return { index, rejected: false, reason: null };
@@ -473,7 +745,16 @@ function buildRankerUserPrompt(
   scorerResults: CandidateScorerAggregate[],
   deterministicJudgments: DeterministicGuardResult[]
 ): string {
-  const { pairState, emotion, workingMemory, retrievedMemory, userMessage, plan, candidates } = input;
+  const {
+    pairState,
+    emotion,
+    workingMemory,
+    retrievedMemory,
+    userMessage,
+    plan,
+    candidates,
+    emotionContext,
+  } = input;
 
   const openThreadsText =
     retrievedMemory.threads.length > 0
@@ -542,6 +823,8 @@ ${eventsText}
 
 ## Retrieved Observations
 ${observationsText}
+
+${formatEmotionContextSections(emotionContext)}
 
 ## User's Message
 ${userMessage}

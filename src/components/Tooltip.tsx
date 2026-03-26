@@ -314,6 +314,8 @@ export const HELP_TEXTS = {
     '最終的な返答候補を作るプロンプトです。言い回しや雰囲気を細かく追い込みたい時に効きます。',
   'prompt.generatorIntimacy':
     '親密な空気になった時だけ使う Generator です。通常時と分けることで、甘さを出しつつも常時ベタつくのを防げます。',
+  'prompt.emotionAppraiser':
+    '感情評価や relational appraisal を model prompt で補助したい時の差し込み欄です。今は canonical に保持するための場所として扱い、未使用でも空欄で保存できます。',
   'prompt.planner':
     'このターンで何をするかを先に決めるプロンプトです。返答内容より前に、意図や方針を整える役目です。',
   'prompt.extractor':

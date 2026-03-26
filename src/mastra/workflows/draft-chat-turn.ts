@@ -1,10 +1,11 @@
 import { workspaceRepo } from '@/lib/repositories';
+import { buildPromptBundleVersion } from '@/lib/schemas';
 import { createPhaseEngine } from '@/lib/rules/phase-engine';
 import { createRuntimeEmotionState } from '@/lib/rules/pad';
 import { deriveSandboxPhaseTiming } from '@/lib/rules/phase-runtime';
 import { getOrCreateWorkingMemory } from '../memory/retrieval';
 import { createSandboxMemoryStore } from '../memory/store';
-import { executeTurn } from './execute-turn';
+import { executeTurn, type ExecuteTurnDeps } from './execute-turn';
 import { runConsolidateMemory, shouldTriggerConsolidation } from './consolidate-memory';
 import type {
   PADState,
@@ -24,6 +25,10 @@ export type DraftChatTurnInput = {
   forcePAD?: PADState;
 };
 
+export type DraftChatTurnDeps = {
+  executeTurnDeps?: ExecuteTurnDeps;
+};
+
 export type DraftChatTurnOutput = {
   text: string;
   sessionId: string;
@@ -36,7 +41,10 @@ export type DraftChatTurnOutput = {
 
 export type DraftChatTrace = TurnTrace;
 
-export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<DraftChatTurnOutput> {
+export async function runDraftChatTurn(
+  input: DraftChatTurnInput,
+  deps: DraftChatTurnDeps = {}
+): Promise<DraftChatTurnOutput> {
   const { workspaceId, userId, message } = input;
   const workspace = await workspaceRepo.getWithDraft(workspaceId);
   if (!workspace) {
@@ -51,18 +59,13 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
     { role: 'assistant' as const, content: turn.assistantMessageText },
   ]);
 
-  const promptBundle: PromptBundleVersion = {
+  const promptBundle: PromptBundleVersion = buildPromptBundleVersion({
     id: workspace.id,
     characterId: workspace.characterId,
     versionNumber: 1,
-    plannerMd: workspace.draft.prompts.plannerMd,
-    generatorMd: workspace.draft.prompts.generatorMd,
-    generatorIntimacyMd: workspace.draft.prompts.generatorIntimacyMd,
-    extractorMd: workspace.draft.prompts.extractorMd,
-    reflectorMd: workspace.draft.prompts.reflectorMd,
-    rankerMd: workspace.draft.prompts.rankerMd,
     createdAt: workspace.updatedAt,
-  };
+    prompts: workspace.draft.prompts,
+  });
 
   const characterVersion: CharacterVersion = {
     id: workspace.draft.baseVersionId ?? workspace.characterId,
@@ -198,6 +201,7 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
         }
       },
     },
+    deps: deps.executeTurnDeps,
   });
 
   return {
@@ -211,18 +215,57 @@ export async function runDraftChatTurn(input: DraftChatTurnInput): Promise<Draft
   };
 }
 
+export async function resetDraftChatSession(input: {
+  workspaceId: string;
+  userId: string;
+  sessionId?: string;
+}): Promise<{ deleted: boolean; sessionId: string | null }> {
+  const targetSession = input.sessionId
+    ? await resolveSessionForWorkspaceUser(input.workspaceId, input.userId, input.sessionId)
+    : await workspaceRepo.getLatestSessionForUser(input.workspaceId, input.userId);
+
+  if (!targetSession) {
+    return { deleted: false, sessionId: null };
+  }
+
+  await workspaceRepo.deleteSession(targetSession.id);
+  return {
+    deleted: true,
+    sessionId: targetSession.id,
+  };
+}
+
 async function getOrCreateSession(
   workspaceId: string,
   userId: string,
   sessionId?: string
 ): Promise<PlaygroundSession> {
   if (sessionId) {
-    const existing = await workspaceRepo.getSession(sessionId);
-    if (!existing) {
-      throw new Error(`Session ${sessionId} not found`);
-    }
-    return existing;
+    return resolveSessionForWorkspaceUser(workspaceId, userId, sessionId);
+  }
+
+  const latest = await workspaceRepo.getLatestSessionForUser(workspaceId, userId);
+  if (latest) {
+    return latest;
   }
 
   return workspaceRepo.createSession({ workspaceId, userId });
+}
+
+async function resolveSessionForWorkspaceUser(
+  workspaceId: string,
+  userId: string,
+  sessionId: string
+): Promise<PlaygroundSession> {
+  const existing = await workspaceRepo.getSession(sessionId);
+  if (!existing) {
+    throw new Error(`Session ${sessionId} not found`);
+  }
+  if (existing.workspaceId !== workspaceId) {
+    throw new Error(`Session ${sessionId} does not belong to workspace ${workspaceId}`);
+  }
+  if (existing.userId !== userId) {
+    throw new Error(`Session ${sessionId} does not belong to user ${userId}`);
+  }
+  return existing;
 }

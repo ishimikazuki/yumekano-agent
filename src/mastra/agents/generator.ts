@@ -2,6 +2,7 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { getProviderRegistry } from '../providers/registry';
 import { assemblePrompt, formatDesignerFragment, hashPrompt } from '../prompts/assemble';
+import { formatEmotionContextSections, type AgentEmotionContext } from './emotion-context';
 import {
   TurnPlan,
   CharacterVersion,
@@ -44,6 +45,7 @@ export type GeneratorInput = {
   recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>;
   userMessage: string;
   plan: TurnPlan;
+  emotionContext?: AgentEmotionContext;
   promptOverride?: string;
 };
 
@@ -210,6 +212,7 @@ function buildGeneratorUserPrompt(input: GeneratorInput): string {
     recentDialogue,
     userMessage,
     plan,
+    emotionContext,
   } = input;
 
   const recentDialogueText = recentDialogue
@@ -273,6 +276,8 @@ ${observationsText}
 
 ### Open Threads
 ${threadsText}
+
+${formatEmotionContextSections(emotionContext)}
 
 ## Recent Dialogue
 ${recentDialogueText}

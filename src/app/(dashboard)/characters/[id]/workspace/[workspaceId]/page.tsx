@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { CoEExplanationCard } from '@/components/CoEExplanationCard';
+import type { PromptBundleContent, PromptBundleKey } from '@/lib/schemas';
 import type { CoEExplanation } from '@/lib/rules/coe';
 import { LabelWithTooltip, type HelpKey } from '@/components/Tooltip';
 import { downloadConversationMarkdown } from '@/lib/workspaces/conversation-export';
@@ -180,14 +181,7 @@ type DraftState = {
     };
   };
   phaseGraph: PhaseGraph;
-  prompts: {
-    plannerMd: string;
-    generatorMd: string;
-    generatorIntimacyMd: string;
-    extractorMd: string;
-    reflectorMd: string;
-    rankerMd: string;
-  };
+  prompts: PromptBundleContent;
 };
 
 type WorkspaceWithDraft = {
@@ -282,15 +276,17 @@ export default function WorkspaceSandboxPage() {
         const contextData = await contextRes.json() as {
           playgroundSessionId?: string;
         };
-
-        if (!contextData.playgroundSessionId) return;
-
+        const sessionQuery = contextData.playgroundSessionId
+          ? `sessionId=${encodeURIComponent(contextData.playgroundSessionId)}`
+          : `userId=${encodeURIComponent(userId)}`;
         const sessionRes = await fetch(
-          `/api/workspaces/${workspaceId}/playground-session?sessionId=${encodeURIComponent(contextData.playgroundSessionId)}`
+          `/api/workspaces/${workspaceId}/playground-session?${sessionQuery}`
         );
 
         if (sessionRes.status === 404) {
-          await saveEditorContext({});
+          if (contextData.playgroundSessionId) {
+            await saveEditorContext({});
+          }
           return;
         }
 
@@ -305,6 +301,10 @@ export default function WorkspaceSandboxPage() {
 
         setSessionId(sessionData.sessionId);
         setMessages(sessionData.messages);
+
+        if (!contextData.playgroundSessionId) {
+          await saveEditorContext({ playgroundSessionId: sessionData.sessionId });
+        }
       } catch (error) {
         console.error('Failed to fetch workspace:', error);
       } finally {
@@ -446,6 +446,21 @@ export default function WorkspaceSandboxPage() {
   };
 
   const handleReset = async () => {
+    if (sessionId) {
+      const response = await fetch(`/api/workspaces/${workspaceId}/playground-session`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          userId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reset sandbox session');
+      }
+    }
+
     setMessages([]);
     setSessionId(null);
 
@@ -512,7 +527,16 @@ export default function WorkspaceSandboxPage() {
               >
                 MD出力
               </button>
-              <button onClick={handleReset} className="text-xs text-gray-500 hover:text-gray-700">リセット</button>
+              <button
+                onClick={() => {
+                  void handleReset().catch((error) => {
+                    console.error('Failed to reset sandbox session:', error);
+                  });
+                }}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                リセット
+              </button>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -1014,11 +1038,12 @@ function ConditionsEditor({ conditions, onChange }: { conditions: TransitionCond
 }
 
 // ============ Prompts Editor ============
-function PromptsEditor({ data, onChange }: { data: DraftState['prompts']; onChange: (k: keyof DraftState['prompts'], v: unknown) => void }) {
-  const [activePrompt, setActivePrompt] = useState<keyof DraftState['prompts']>('generatorMd');
-  const prompts: { key: keyof DraftState['prompts']; label: string; helpKey: HelpKey }[] = [
+function PromptsEditor({ data, onChange }: { data: DraftState['prompts']; onChange: (k: PromptBundleKey, v: unknown) => void }) {
+  const [activePrompt, setActivePrompt] = useState<PromptBundleKey>('generatorMd');
+  const prompts: { key: PromptBundleKey; label: string; helpKey: HelpKey }[] = [
     { key: 'generatorMd', label: 'Generator', helpKey: 'prompt.generator' },
     { key: 'generatorIntimacyMd', label: 'Generator (Intimacy)', helpKey: 'prompt.generatorIntimacy' },
+    { key: 'emotionAppraiserMd', label: 'Emotion Appraiser', helpKey: 'prompt.emotionAppraiser' },
     { key: 'plannerMd', label: 'Planner', helpKey: 'prompt.planner' },
     { key: 'extractorMd', label: 'Extractor', helpKey: 'prompt.extractor' },
     { key: 'reflectorMd', label: 'Reflector', helpKey: 'prompt.reflector' },

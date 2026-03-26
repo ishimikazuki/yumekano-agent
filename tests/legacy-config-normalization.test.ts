@@ -7,6 +7,7 @@ import {
 } from '@/lib/repositories/legacy-config-normalization';
 import {
   AutonomySpecSchema,
+  DEFAULT_COE_INTEGRATOR_CONFIG,
   EmotionSpecSchema,
   StyleSpecSchema,
 } from '@/lib/schemas';
@@ -45,6 +46,7 @@ test('legacy emotion normalization backfills missing selfRelevance for published
 
   assert.equal(normalized.baselinePAD.pleasure, 0.1);
   assert.equal(normalized.appraisalSensitivity.selfRelevance, 0.5);
+  assert.deepEqual(normalized.coeIntegrator, DEFAULT_COE_INTEGRATOR_CONFIG);
 });
 
 test('legacy style and autonomy normalization keeps published configs schema-valid', () => {

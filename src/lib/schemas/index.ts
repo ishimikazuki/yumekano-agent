@@ -13,6 +13,8 @@ export {
   PersonaSpecSchema,
   StyleSpecSchema,
   AutonomySpecSchema,
+  CoEIntegratorConfigSchema,
+  DEFAULT_COE_INTEGRATOR_CONFIG,
   EmotionSpecSchema,
   MemoryPolicySpecSchema,
   CharacterVersionStatusSchema,
@@ -31,6 +33,7 @@ export {
   type PersonaSpec,
   type StyleSpec,
   type AutonomySpec,
+  type CoEIntegratorConfig,
   type EmotionSpec,
   type MemoryPolicySpec,
   type CharacterVersionStatus,
@@ -105,6 +108,7 @@ export {
   AppraisalVectorSchema,
   RelationshipMetricsSchema,
   RelationshipMetricDeltaSchema,
+  LegacyEmotionComparisonSchema,
   PhaseTransitionEvaluationSchema,
   PromptAssemblyHashesSchema,
   MemoryThresholdDecisionSchema,
@@ -120,6 +124,7 @@ export {
   type AppraisalVector,
   type RelationshipMetrics,
   type RelationshipMetricDelta,
+  type LegacyEmotionComparison,
   type PhaseTransitionEvaluation,
   type PromptAssemblyHashes,
   type MemoryThresholdDecision,
@@ -130,12 +135,54 @@ export {
   type ChatTurn,
 } from './trace';
 
+// Emotion contract schemas
+export {
+  CoEEvidenceSourceSchema,
+  CoEEvidenceSchema,
+  PairMetricDeltaSchema,
+  EmotionContractSourceSchema,
+  RelationalAppraisalSchema,
+  EmotionUpdateProposalSchema,
+  EmotionTraceSchema,
+  type CoEEvidenceSource,
+  type CoEEvidence,
+  type PairMetricDelta,
+  type EmotionContractSource,
+  type RelationalAppraisal,
+  type EmotionUpdateProposal,
+  type EmotionTrace,
+} from './emotion-contract';
+
+// CoE evidence extractor schemas
+export {
+  InteractionActTypeSchema,
+  InteractionTargetSchema,
+  InteractionPolaritySchema,
+  EvidenceSpanSourceSchema,
+  EvidenceSpanSchema,
+  ExtractedInteractionActSchema,
+  CoEEvidenceExtractorResultSchema,
+  type InteractionActType,
+  type InteractionTarget,
+  type InteractionPolarity,
+  type EvidenceSpanSource,
+  type EvidenceSpan,
+  type ExtractedInteractionAct,
+  type CoEEvidenceExtractorResult,
+} from './coe-evidence-extractor';
+
 // Prompt schemas
 export {
   PromptFragmentSchema,
+  PromptBundleContentSchema,
+  PromptBundleKeySchema,
   PromptBundleRefSchema,
   PromptBundleVersionSchema,
+  buildPromptBundleContent,
+  buildPromptBundleVersion,
   type PromptFragment,
+  type PromptBundleContent,
+  type PromptBundleKey,
   type PromptBundleRef,
   type PromptBundleVersion,
 } from './prompts';
@@ -170,7 +217,6 @@ export {
 export {
   CharacterIdentitySchema,
   WorkspacePersonaSchema,
-  PromptBundleContentSchema,
   DraftStateSchema,
   WorkspaceSchema,
   WorkspaceWithDraftSchema,
@@ -181,7 +227,6 @@ export {
   EditorContextSchema,
   type CharacterIdentity,
   type WorkspacePersona,
-  type PromptBundleContent,
   type DraftState,
   type Workspace,
   type WorkspaceWithDraft,

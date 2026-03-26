@@ -1,3 +1,5 @@
+import { DEFAULT_COE_INTEGRATOR_CONFIG } from '../schemas';
+
 export function asNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -72,5 +74,9 @@ export function normalizeLegacyEmotion(value: unknown): unknown {
       directnessWeight: asNumber(externalizationRaw.directnessWeight, 0.5),
       teasingWeight: asNumber(externalizationRaw.teasingWeight, 0.6),
     },
+    coeIntegrator:
+      emotion.coeIntegrator && typeof emotion.coeIntegrator === 'object'
+        ? emotion.coeIntegrator
+        : DEFAULT_COE_INTEGRATOR_CONFIG,
   };
 }

@@ -1,6 +1,11 @@
 import { getDb } from '../db/client';
 import { v4 as uuid } from 'uuid';
-import { PromptBundleVersion, PromptBundleVersionSchema } from '../schemas';
+import {
+  PromptBundleVersion,
+  type PromptBundleContent,
+  buildPromptBundleContent,
+  buildPromptBundleVersion,
+} from '../schemas';
 
 /**
  * Repository for prompt bundle operations.
@@ -11,16 +16,12 @@ export const promptBundleRepo = {
    */
   async create(input: {
     characterId: string;
-    plannerMd: string;
-    generatorMd: string;
-    generatorIntimacyMd?: string;
-    extractorMd: string;
-    reflectorMd: string;
-    rankerMd: string;
+    prompts: Partial<PromptBundleContent>;
   }): Promise<PromptBundleVersion> {
     const db = getDb();
     const id = uuid();
     const now = new Date().toISOString();
+    const prompts = buildPromptBundleContent(input.prompts);
 
     // Get next version number
     const versionResult = await db.execute({
@@ -30,33 +31,29 @@ export const promptBundleRepo = {
     const versionNumber = versionResult.rows[0].next_version as number;
 
     await db.execute({
-      sql: `INSERT INTO prompt_bundle_versions (id, character_id, version_number, planner_md, generator_md, generator_intimacy_md, extractor_md, reflector_md, ranker_md, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO prompt_bundle_versions (id, character_id, version_number, planner_md, generator_md, generator_intimacy_md, emotion_appraiser_md, extractor_md, reflector_md, ranker_md, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         id,
         input.characterId,
         versionNumber,
-        input.plannerMd,
-        input.generatorMd,
-        input.generatorIntimacyMd ?? '',
-        input.extractorMd,
-        input.reflectorMd,
-        input.rankerMd,
+        prompts.plannerMd,
+        prompts.generatorMd,
+        prompts.generatorIntimacyMd,
+        prompts.emotionAppraiserMd,
+        prompts.extractorMd,
+        prompts.reflectorMd,
+        prompts.rankerMd,
         now,
       ],
     });
 
-    return PromptBundleVersionSchema.parse({
+    return buildPromptBundleVersion({
       id,
       characterId: input.characterId,
       versionNumber,
-      plannerMd: input.plannerMd,
-      generatorMd: input.generatorMd,
-      generatorIntimacyMd: input.generatorIntimacyMd ?? '',
-      extractorMd: input.extractorMd,
-      reflectorMd: input.reflectorMd,
-      rankerMd: input.rankerMd,
       createdAt: now,
+      prompts,
     });
   },
 
@@ -73,17 +70,20 @@ export const promptBundleRepo = {
     if (result.rows.length === 0) return null;
 
     const row = result.rows[0];
-    return PromptBundleVersionSchema.parse({
-      id: row.id,
-      characterId: row.character_id,
-      versionNumber: row.version_number,
-      plannerMd: row.planner_md,
-      generatorMd: row.generator_md,
-      generatorIntimacyMd: row.generator_intimacy_md,
-      extractorMd: row.extractor_md,
-      reflectorMd: row.reflector_md,
-      rankerMd: row.ranker_md,
-      createdAt: row.created_at,
+    return buildPromptBundleVersion({
+      id: String(row.id),
+      characterId: String(row.character_id),
+      versionNumber: Number(row.version_number),
+      createdAt: String(row.created_at),
+      prompts: {
+        plannerMd: row.planner_md as string,
+        generatorMd: row.generator_md as string,
+        generatorIntimacyMd: row.generator_intimacy_md as string | undefined,
+        emotionAppraiserMd: row.emotion_appraiser_md as string | undefined,
+        extractorMd: row.extractor_md as string,
+        reflectorMd: row.reflector_md as string,
+        rankerMd: row.ranker_md as string,
+      },
     });
   },
 
@@ -100,17 +100,20 @@ export const promptBundleRepo = {
     if (result.rows.length === 0) return null;
 
     const row = result.rows[0];
-    return PromptBundleVersionSchema.parse({
-      id: row.id,
-      characterId: row.character_id,
-      versionNumber: row.version_number,
-      plannerMd: row.planner_md,
-      generatorMd: row.generator_md,
-      generatorIntimacyMd: row.generator_intimacy_md,
-      extractorMd: row.extractor_md,
-      reflectorMd: row.reflector_md,
-      rankerMd: row.ranker_md,
-      createdAt: row.created_at,
+    return buildPromptBundleVersion({
+      id: String(row.id),
+      characterId: String(row.character_id),
+      versionNumber: Number(row.version_number),
+      createdAt: String(row.created_at),
+      prompts: {
+        plannerMd: row.planner_md as string,
+        generatorMd: row.generator_md as string,
+        generatorIntimacyMd: row.generator_intimacy_md as string | undefined,
+        emotionAppraiserMd: row.emotion_appraiser_md as string | undefined,
+        extractorMd: row.extractor_md as string,
+        reflectorMd: row.reflector_md as string,
+        rankerMd: row.ranker_md as string,
+      },
     });
   },
 
@@ -125,17 +128,20 @@ export const promptBundleRepo = {
     });
 
     return result.rows.map((row) =>
-      PromptBundleVersionSchema.parse({
-        id: row.id,
-        characterId: row.character_id,
-        versionNumber: row.version_number,
-        plannerMd: row.planner_md,
-        generatorMd: row.generator_md,
-        generatorIntimacyMd: row.generator_intimacy_md,
-        extractorMd: row.extractor_md,
-        reflectorMd: row.reflector_md,
-        rankerMd: row.ranker_md,
-        createdAt: row.created_at,
+      buildPromptBundleVersion({
+        id: String(row.id),
+        characterId: String(row.character_id),
+        versionNumber: Number(row.version_number),
+        createdAt: String(row.created_at),
+        prompts: {
+          plannerMd: row.planner_md as string,
+          generatorMd: row.generator_md as string,
+          generatorIntimacyMd: row.generator_intimacy_md as string | undefined,
+          emotionAppraiserMd: row.emotion_appraiser_md as string | undefined,
+          extractorMd: row.extractor_md as string,
+          reflectorMd: row.reflector_md as string,
+          rankerMd: row.ranker_md as string,
+        },
       })
     );
   },

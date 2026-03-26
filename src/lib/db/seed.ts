@@ -10,7 +10,9 @@ import type {
   EmotionSpec,
   MemoryPolicySpec,
   PhaseGraph,
+  PromptBundleContent,
 } from '../schemas';
+import { DEFAULT_COE_INTEGRATOR_CONFIG } from '../schemas';
 import {
   createSeiraDraftState,
   seiraCompiledPersona,
@@ -107,6 +109,7 @@ const misakiEmotion: EmotionSpec = {
     directnessWeight: 0.5,
     teasingWeight: 0.6,
   },
+  coeIntegrator: DEFAULT_COE_INTEGRATOR_CONFIG,
 };
 
 const misakiMemoryPolicy: MemoryPolicySpec = {
@@ -396,6 +399,16 @@ Reject candidates that:
 - ignore \`not_now\` or \`no\`
 - become generically approving`;
 
+const misakiPrompts: PromptBundleContent = {
+  plannerMd: plannerPrompt,
+  generatorMd: generatorPrompt,
+  generatorIntimacyMd: '',
+  emotionAppraiserMd: '',
+  extractorMd: extractorPrompt,
+  reflectorMd: reflectorPrompt,
+  rankerMd: rankerPrompt,
+};
+
 /**
  * Seed the database with initial data.
  */
@@ -427,11 +440,7 @@ export async function seed() {
     // Create prompt bundle version
     const promptBundleVersion = await promptBundleRepo.create({
       characterId: character.id,
-      plannerMd: plannerPrompt,
-      generatorMd: generatorPrompt,
-      extractorMd: extractorPrompt,
-      reflectorMd: reflectorPrompt,
-      rankerMd: rankerPrompt,
+      prompts: misakiPrompts,
     });
     console.log(`Created prompt bundle version: ${promptBundleVersion.id}`);
 
@@ -488,11 +497,7 @@ export async function seed() {
     // Create prompt bundle version
     const seiraPromptBundleVersion = await promptBundleRepo.create({
       characterId: seiraChar.id,
-      plannerMd: seiraPrompts.plannerMd,
-      generatorMd: seiraPrompts.generatorMd,
-      extractorMd: seiraPrompts.extractorMd,
-      reflectorMd: seiraPrompts.reflectorMd,
-      rankerMd: seiraPrompts.rankerMd,
+      prompts: seiraPrompts,
     });
     console.log(`Created prompt bundle version: ${seiraPromptBundleVersion.id}`);
 

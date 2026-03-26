@@ -25,6 +25,7 @@ import {
   EditorContext,
   EditorContextSchema,
   PromptBundleContentSchema,
+  buildPromptBundleContent,
   WorkingMemory,
   WorkingMemorySchema,
   MemoryEvent,
@@ -126,6 +127,35 @@ function parseSandboxThreadRow(row: Record<string, unknown>): OpenThread {
   });
 }
 
+function parsePlaygroundSessionRow(row: Record<string, unknown>): PlaygroundSession {
+  return PlaygroundSessionSchema.parse({
+    id: row.id,
+    workspaceId: row.workspace_id,
+    userId: row.user_id,
+    isSandbox: Boolean(row.is_sandbox),
+    createdAt: row.created_at,
+  });
+}
+
+async function deleteSessionData(sessionId: string): Promise<void> {
+  const db = getDb();
+  await db.execute({ sql: `DELETE FROM sandbox_memory_usage WHERE session_id = ?`, args: [sessionId] });
+  await db.execute({
+    sql: `DELETE FROM sandbox_memory_open_threads WHERE session_id = ?`,
+    args: [sessionId],
+  });
+  await db.execute({
+    sql: `DELETE FROM sandbox_memory_observations WHERE session_id = ?`,
+    args: [sessionId],
+  });
+  await db.execute({ sql: `DELETE FROM sandbox_memory_facts WHERE session_id = ?`, args: [sessionId] });
+  await db.execute({ sql: `DELETE FROM sandbox_memory_events WHERE session_id = ?`, args: [sessionId] });
+  await db.execute({ sql: `DELETE FROM sandbox_working_memory WHERE session_id = ?`, args: [sessionId] });
+  await db.execute({ sql: `DELETE FROM sandbox_pair_state WHERE session_id = ?`, args: [sessionId] });
+  await db.execute({ sql: `DELETE FROM playground_turns WHERE session_id = ?`, args: [sessionId] });
+  await db.execute({ sql: `DELETE FROM playground_sessions WHERE id = ?`, args: [sessionId] });
+}
+
 /**
  * Repository for workspace and draft operations.
  */
@@ -219,16 +249,8 @@ export const workspaceRepo = {
     // Delete playground data
     const sessions = await db.execute({ sql: `SELECT id FROM playground_sessions WHERE workspace_id = ?`, args: [id] });
     for (const session of sessions.rows) {
-      await db.execute({ sql: `DELETE FROM sandbox_memory_usage WHERE session_id = ?`, args: [session.id] });
-      await db.execute({ sql: `DELETE FROM sandbox_memory_open_threads WHERE session_id = ?`, args: [session.id] });
-      await db.execute({ sql: `DELETE FROM sandbox_memory_observations WHERE session_id = ?`, args: [session.id] });
-      await db.execute({ sql: `DELETE FROM sandbox_memory_facts WHERE session_id = ?`, args: [session.id] });
-      await db.execute({ sql: `DELETE FROM sandbox_memory_events WHERE session_id = ?`, args: [session.id] });
-      await db.execute({ sql: `DELETE FROM sandbox_working_memory WHERE session_id = ?`, args: [session.id] });
-      await db.execute({ sql: `DELETE FROM sandbox_pair_state WHERE session_id = ?`, args: [session.id] });
-      await db.execute({ sql: `DELETE FROM playground_turns WHERE session_id = ?`, args: [session.id] });
+      await deleteSessionData(String(session.id));
     }
-    await db.execute({ sql: `DELETE FROM playground_sessions WHERE workspace_id = ?`, args: [id] });
     // Finally delete workspace
     await db.execute({ sql: `DELETE FROM character_workspaces WHERE id = ?`, args: [id] });
   },
@@ -247,8 +269,8 @@ export const workspaceRepo = {
 
     await db.execute({
       sql: `INSERT INTO workspace_draft_state
-            (workspace_id, identity_json, persona_json, style_json, autonomy_json, emotion_json, memory_policy_json, phase_graph_json, planner_md, generator_md, generator_intimacy_md, extractor_md, reflector_md, ranker_md, base_version_id, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (workspace_id, identity_json, persona_json, style_json, autonomy_json, emotion_json, memory_policy_json, phase_graph_json, planner_md, generator_md, generator_intimacy_md, emotion_appraiser_md, extractor_md, reflector_md, ranker_md, base_version_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         workspaceId,
         serialized.identityJson,
@@ -261,6 +283,7 @@ export const workspaceRepo = {
         serialized.plannerMd,
         serialized.generatorMd,
         serialized.generatorIntimacyMd,
+        serialized.emotionAppraiserMd,
         serialized.extractorMd,
         serialized.reflectorMd,
         serialized.rankerMd,
@@ -286,7 +309,7 @@ export const workspaceRepo = {
 
     await db.execute({
       sql: `UPDATE workspace_draft_state
-            SET identity_json = ?, persona_json = ?, style_json = ?, autonomy_json = ?, emotion_json = ?, memory_policy_json = ?, phase_graph_json = ?, planner_md = ?, generator_md = ?, generator_intimacy_md = ?, extractor_md = ?, reflector_md = ?, ranker_md = ?, base_version_id = ?, updated_at = ?
+            SET identity_json = ?, persona_json = ?, style_json = ?, autonomy_json = ?, emotion_json = ?, memory_policy_json = ?, phase_graph_json = ?, planner_md = ?, generator_md = ?, generator_intimacy_md = ?, emotion_appraiser_md = ?, extractor_md = ?, reflector_md = ?, ranker_md = ?, base_version_id = ?, updated_at = ?
             WHERE workspace_id = ?`,
       args: [
         serialized.identityJson,
@@ -299,6 +322,7 @@ export const workspaceRepo = {
         serialized.plannerMd,
         serialized.generatorMd,
         serialized.generatorIntimacyMd,
+        serialized.emotionAppraiserMd,
         serialized.extractorMd,
         serialized.reflectorMd,
         serialized.rankerMd,
@@ -335,14 +359,15 @@ export const workspaceRepo = {
       emotion: normalizeLegacyEmotion(JSON.parse(row.emotion_json as string)),
       memory: JSON.parse(row.memory_policy_json as string),
       phaseGraph: JSON.parse(row.phase_graph_json as string),
-      prompts: {
+      prompts: buildPromptBundleContent({
         plannerMd: row.planner_md as string,
         generatorMd: row.generator_md as string,
         generatorIntimacyMd: row.generator_intimacy_md as string | undefined,
+        emotionAppraiserMd: row.emotion_appraiser_md as string | undefined,
         extractorMd: row.extractor_md as string,
         reflectorMd: row.reflector_md as string,
         rankerMd: row.ranker_md as string,
-      },
+      }),
       baseVersionId: row.base_version_id as string | null,
     });
   },
@@ -387,12 +412,13 @@ export const workspaceRepo = {
       const prompts = PromptBundleContentSchema.parse(value);
       await db.execute({
         sql: `UPDATE workspace_draft_state
-              SET planner_md = ?, generator_md = ?, generator_intimacy_md = ?, extractor_md = ?, reflector_md = ?, ranker_md = ?, updated_at = ?
+              SET planner_md = ?, generator_md = ?, generator_intimacy_md = ?, emotion_appraiser_md = ?, extractor_md = ?, reflector_md = ?, ranker_md = ?, updated_at = ?
               WHERE workspace_id = ?`,
         args: [
           prompts.plannerMd,
           prompts.generatorMd,
           prompts.generatorIntimacyMd,
+          prompts.emotionAppraiserMd,
           prompts.extractorMd,
           prompts.reflectorMd,
           prompts.rankerMd,
@@ -617,14 +643,27 @@ export const workspaceRepo = {
 
     if (result.rows.length === 0) return null;
 
-    const row = result.rows[0];
-    return PlaygroundSessionSchema.parse({
-      id: row.id,
-      workspaceId: row.workspace_id,
-      userId: row.user_id,
-      isSandbox: Boolean(row.is_sandbox),
-      createdAt: row.created_at,
+    return parsePlaygroundSessionRow(result.rows[0] as Record<string, unknown>);
+  },
+
+  /**
+   * Get the latest sandbox session for a workspace/user pair.
+   */
+  async getLatestSessionForUser(
+    workspaceId: string,
+    userId: string
+  ): Promise<PlaygroundSession | null> {
+    const db = getDb();
+    const result = await db.execute({
+      sql: `SELECT * FROM playground_sessions
+            WHERE workspace_id = ? AND user_id = ?
+            ORDER BY created_at DESC
+            LIMIT 1`,
+      args: [workspaceId, userId],
     });
+
+    if (result.rows.length === 0) return null;
+    return parsePlaygroundSessionRow(result.rows[0] as Record<string, unknown>);
   },
 
   /**
@@ -637,15 +676,20 @@ export const workspaceRepo = {
       args: [workspaceId],
     });
 
-    return result.rows.map((row) =>
-      PlaygroundSessionSchema.parse({
-        id: row.id,
-        workspaceId: row.workspace_id,
-        userId: row.user_id,
-        isSandbox: Boolean(row.is_sandbox),
-        createdAt: row.created_at,
-      })
-    );
+    return result.rows.map((row) => parsePlaygroundSessionRow(row as Record<string, unknown>));
+  },
+
+  /**
+   * Delete a single playground session and its sandbox state.
+   */
+  async deleteSession(sessionId: string): Promise<boolean> {
+    const session = await this.getSession(sessionId);
+    if (!session) {
+      return false;
+    }
+
+    await deleteSessionData(sessionId);
+    return true;
   },
 
   /**

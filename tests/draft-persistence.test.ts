@@ -17,6 +17,7 @@ test('serializeDraftStateForStorage preserves full-draft autosave fields', () =>
   assert.deepStrictEqual(JSON.parse(serialized.identityJson), draft.identity);
   assert.deepStrictEqual(JSON.parse(serialized.phaseGraphJson), draft.phaseGraph);
   assert.equal(serialized.generatorIntimacyMd, draft.prompts.generatorIntimacyMd);
+  assert.equal(serialized.emotionAppraiserMd, draft.prompts.emotionAppraiserMd);
   assert.equal(serialized.rankerMd, draft.prompts.rankerMd);
   assert.equal(serialized.baseVersionId, draft.baseVersionId);
 });

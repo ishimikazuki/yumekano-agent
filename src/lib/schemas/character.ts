@@ -168,6 +168,293 @@ export const AutonomySpecSchema = z.object({
 });
 export type AutonomySpec = z.infer<typeof AutonomySpecSchema>;
 
+const RelationalAxisWeightsSchema = z.object({
+  warmthSignal: z.number(),
+  reciprocitySignal: z.number(),
+  safetySignal: z.number(),
+  boundaryRespect: z.number(),
+  pressureSignal: z.number(),
+  repairSignal: z.number(),
+  intimacySignal: z.number(),
+});
+export type RelationalAxisWeights = z.infer<typeof RelationalAxisWeightsSchema>;
+
+const StateIntegratorModifierSchema = z.object({
+  pleasure: z.number(),
+  arousal: z.number(),
+  dominance: z.number(),
+  trust: z.number(),
+  affinity: z.number(),
+  conflict: z.number(),
+  intimacyReadiness: z.number(),
+});
+export type StateIntegratorModifier = z.infer<typeof StateIntegratorModifierSchema>;
+
+export const DEFAULT_COE_INTEGRATOR_CONFIG = {
+  padWeights: {
+    pleasure: {
+      warmthSignal: 0.22,
+      reciprocitySignal: 0.12,
+      safetySignal: 0.16,
+      boundaryRespect: 0.12,
+      pressureSignal: -0.28,
+      repairSignal: 0.14,
+      intimacySignal: 0.1,
+    },
+    arousal: {
+      warmthSignal: 0.04,
+      reciprocitySignal: 0.02,
+      safetySignal: -0.1,
+      boundaryRespect: -0.06,
+      pressureSignal: 0.24,
+      repairSignal: -0.12,
+      intimacySignal: 0.14,
+    },
+    dominance: {
+      warmthSignal: 0.04,
+      reciprocitySignal: 0.06,
+      safetySignal: 0.24,
+      boundaryRespect: 0.18,
+      pressureSignal: -0.26,
+      repairSignal: 0.12,
+      intimacySignal: 0.08,
+    },
+  },
+  pairWeights: {
+    trust: {
+      warmthSignal: 2.8,
+      reciprocitySignal: 2.2,
+      safetySignal: 3.4,
+      boundaryRespect: 2.4,
+      pressureSignal: -5.6,
+      repairSignal: 3,
+      intimacySignal: 0.8,
+    },
+    affinity: {
+      warmthSignal: 3.4,
+      reciprocitySignal: 2.5,
+      safetySignal: 1.6,
+      boundaryRespect: 1.2,
+      pressureSignal: -4.2,
+      repairSignal: 2.2,
+      intimacySignal: 1.8,
+    },
+    conflict: {
+      warmthSignal: -1.6,
+      reciprocitySignal: -1.4,
+      safetySignal: -2.4,
+      boundaryRespect: -2,
+      pressureSignal: 6.4,
+      repairSignal: -2.8,
+      intimacySignal: -0.6,
+    },
+    intimacyReadiness: {
+      warmthSignal: 1.8,
+      reciprocitySignal: 1.2,
+      safetySignal: 2,
+      boundaryRespect: 1.4,
+      pressureSignal: -5,
+      repairSignal: 1.2,
+      intimacySignal: 3.6,
+    },
+  },
+  impulse: {
+    fastAffectBlend: 1,
+    slowMoodBlend: 0.35,
+    combinedFastRatio: 0.58,
+  },
+  relationship: {
+    neutralBaseline: {
+      affinity: 50,
+      trust: 50,
+      intimacyReadiness: 0,
+      conflict: 0,
+    },
+    quietTurnThreshold: 0.12,
+    quietDecay: {
+      affinity: 0.03,
+      trust: 0.04,
+      intimacyReadiness: 0.08,
+      conflict: 0.12,
+    },
+    edgeResistance: {
+      affinity: 0.9,
+      trust: 0.9,
+      intimacyReadiness: 1.1,
+      conflict: 1,
+    },
+  },
+  phaseModifiers: {
+    entry: {
+      pleasure: 0.95,
+      arousal: 1,
+      dominance: 0.9,
+      trust: 0.95,
+      affinity: 0.95,
+      conflict: 1.1,
+      intimacyReadiness: 0.45,
+    },
+    relationship: {
+      pleasure: 1,
+      arousal: 1,
+      dominance: 1,
+      trust: 1,
+      affinity: 1,
+      conflict: 1,
+      intimacyReadiness: 1,
+    },
+    girlfriend: {
+      pleasure: 1.08,
+      arousal: 0.98,
+      dominance: 1.05,
+      trust: 1.05,
+      affinity: 1.08,
+      conflict: 0.92,
+      intimacyReadiness: 1.15,
+    },
+  },
+  eligibilityModifiers: {
+    never: {
+      pleasure: 0.95,
+      arousal: 1,
+      dominance: 0.95,
+      trust: 1,
+      affinity: 1,
+      conflict: 1.1,
+      intimacyReadiness: 0.15,
+    },
+    conditional: {
+      pleasure: 1,
+      arousal: 1,
+      dominance: 1,
+      trust: 1,
+      affinity: 1,
+      conflict: 1,
+      intimacyReadiness: 1,
+    },
+    allowed: {
+      pleasure: 1.02,
+      arousal: 1,
+      dominance: 1,
+      trust: 1,
+      affinity: 1.05,
+      conflict: 0.95,
+      intimacyReadiness: 1.12,
+    },
+  },
+  openThreadBias: {
+    pleasurePerThreadSeverity: -0.04,
+    dominancePerThreadSeverity: -0.03,
+    trustPerThreadSeverity: -0.7,
+    affinityPerThreadSeverity: -0.5,
+    conflictPerThreadSeverity: 0.8,
+    intimacyPerThreadSeverity: -0.25,
+  },
+  guardrails: {
+    insultShock: {
+      pleasure: -0.12,
+      arousal: 0.08,
+      dominance: -0.08,
+      trust: -2.4,
+      affinity: -1.8,
+      conflict: 3.4,
+      intimacyReadiness: -1.2,
+    },
+    apologyRepair: {
+      pleasure: 0.06,
+      arousal: -0.06,
+      dominance: 0.04,
+      trust: 2.2,
+      affinity: 1.2,
+      conflict: -2.4,
+      intimacyReadiness: 0.6,
+    },
+    sustainedPressure: {
+      pleasure: -0.09,
+      arousal: 0.06,
+      dominance: -0.08,
+      trust: -2.6,
+      affinity: -1.4,
+      conflict: 3,
+      intimacyReadiness: -2.2,
+    },
+    consentBoundary: {
+      pleasure: -0.08,
+      arousal: 0.05,
+      dominance: -0.06,
+      trust: -2.1,
+      affinity: -1,
+      conflict: 2.4,
+      intimacyReadiness: -4,
+    },
+  },
+} as const;
+
+export const CoEIntegratorConfigSchema = z.object({
+  padWeights: z.object({
+    pleasure: RelationalAxisWeightsSchema,
+    arousal: RelationalAxisWeightsSchema,
+    dominance: RelationalAxisWeightsSchema,
+  }),
+  pairWeights: z.object({
+    trust: RelationalAxisWeightsSchema,
+    affinity: RelationalAxisWeightsSchema,
+    conflict: RelationalAxisWeightsSchema,
+    intimacyReadiness: RelationalAxisWeightsSchema,
+  }),
+  impulse: z.object({
+    fastAffectBlend: z.number().min(0).max(2),
+    slowMoodBlend: z.number().min(0).max(1),
+    combinedFastRatio: z.number().min(0).max(1),
+  }),
+  relationship: z.object({
+    neutralBaseline: z.object({
+      affinity: z.number().min(0).max(100),
+      trust: z.number().min(0).max(100),
+      intimacyReadiness: z.number().min(0).max(100),
+      conflict: z.number().min(0).max(100),
+    }),
+    quietTurnThreshold: z.number().min(0).max(1),
+    quietDecay: z.object({
+      affinity: z.number().min(0).max(1),
+      trust: z.number().min(0).max(1),
+      intimacyReadiness: z.number().min(0).max(1),
+      conflict: z.number().min(0).max(1),
+    }),
+    edgeResistance: z.object({
+      affinity: z.number().min(0).max(3),
+      trust: z.number().min(0).max(3),
+      intimacyReadiness: z.number().min(0).max(3),
+      conflict: z.number().min(0).max(3),
+    }),
+  }),
+  phaseModifiers: z.object({
+    entry: StateIntegratorModifierSchema,
+    relationship: StateIntegratorModifierSchema,
+    girlfriend: StateIntegratorModifierSchema,
+  }),
+  eligibilityModifiers: z.object({
+    never: StateIntegratorModifierSchema,
+    conditional: StateIntegratorModifierSchema,
+    allowed: StateIntegratorModifierSchema,
+  }),
+  openThreadBias: z.object({
+    pleasurePerThreadSeverity: z.number().min(-1).max(1),
+    dominancePerThreadSeverity: z.number().min(-1).max(1),
+    trustPerThreadSeverity: z.number(),
+    affinityPerThreadSeverity: z.number(),
+    conflictPerThreadSeverity: z.number(),
+    intimacyPerThreadSeverity: z.number(),
+  }),
+  guardrails: z.object({
+    insultShock: StateIntegratorModifierSchema,
+    apologyRepair: StateIntegratorModifierSchema,
+    sustainedPressure: StateIntegratorModifierSchema,
+    consentBoundary: StateIntegratorModifierSchema,
+  }),
+});
+export type CoEIntegratorConfig = z.infer<typeof CoEIntegratorConfigSchema>;
+
 /**
  * Emotion specification - emotional parameters
  */
@@ -199,6 +486,7 @@ export const EmotionSpecSchema = z.object({
     directnessWeight: z.number(),
     teasingWeight: z.number(),
   }).describe('How emotions affect external behavior'),
+  coeIntegrator: CoEIntegratorConfigSchema.default(DEFAULT_COE_INTEGRATOR_CONFIG),
 });
 export type EmotionSpec = z.infer<typeof EmotionSpecSchema>;
 

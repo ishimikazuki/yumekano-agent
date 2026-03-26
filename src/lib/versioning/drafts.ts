@@ -8,6 +8,7 @@
 import { v4 as uuid } from 'uuid';
 import { characterRepo } from '../repositories';
 import { toPersonaAuthoring } from '../persona';
+import { DEFAULT_COE_INTEGRATOR_CONFIG } from '../schemas';
 import type {
   CharacterVersion,
   PersonaAuthoring,
@@ -215,6 +216,7 @@ function getDefaultDraftData(): DraftData {
         directnessWeight: 0.2,
         teasingWeight: 0.1,
       },
+      coeIntegrator: DEFAULT_COE_INTEGRATOR_CONFIG,
     },
     memory: {
       eventSalienceThreshold: 0.3,

@@ -39,6 +39,9 @@ test('createTrace persists the expanded runtime trace payload', async () => {
         prompt_assembly_hashes_json TEXT,
         appraisal_json TEXT NOT NULL,
         retrieved_memory_ids_json TEXT NOT NULL,
+        coe_extraction_json TEXT,
+        emotion_trace_json TEXT,
+        legacy_comparison_json TEXT,
         memory_threshold_decisions_json TEXT,
         coe_contributions_json TEXT,
         plan_json TEXT NOT NULL,
@@ -157,6 +160,196 @@ test('createTrace persists the expanded runtime trace payload', async () => {
         observations: ['66666666-6666-4666-8666-666666666666'],
         threads: ['77777777-7777-4777-8777-777777777777'],
       },
+      coeExtraction: {
+        interactionActs: [
+          {
+            act: 'support',
+            target: 'relationship',
+            polarity: 'positive',
+            intensity: 0.7,
+            evidenceSpans: [
+              {
+                source: 'user_message',
+                sourceId: null,
+                text: '大丈夫だよ',
+                start: 0,
+                end: 5,
+              },
+            ],
+            confidence: 0.82,
+            uncertaintyNotes: [],
+          },
+        ],
+        confidence: 0.82,
+        uncertaintyNotes: [],
+      },
+      emotionTrace: {
+        source: 'model',
+        evidence: [
+          {
+            source: 'user_message',
+            key: 'support_0',
+            summary: 'support toward relationship: 大丈夫だよ',
+            weight: 0.57,
+            confidence: 0.82,
+            valence: 0.7,
+          },
+        ],
+        relationalAppraisal: {
+          source: 'model',
+          summary: 'Model extraction detected a warm, relationship-positive turn.',
+          warmthSignal: 0.42,
+          reciprocitySignal: 0.28,
+          safetySignal: 0.48,
+          boundaryRespect: 0.14,
+          pressureSignal: 0,
+          repairSignal: 0.08,
+          intimacySignal: 0.1,
+          confidence: 0.82,
+          evidence: [
+            {
+              source: 'user_message',
+              key: 'support_0',
+              summary: 'support toward relationship: 大丈夫だよ',
+              weight: 0.57,
+              confidence: 0.82,
+              valence: 0.7,
+            },
+          ],
+        },
+        proposal: {
+          source: 'model',
+          rationale: 'Model extraction detected a warm, relationship-positive turn.',
+          appraisal: {
+            source: 'model',
+            summary: 'Model extraction detected a warm, relationship-positive turn.',
+            warmthSignal: 0.42,
+            reciprocitySignal: 0.28,
+            safetySignal: 0.48,
+            boundaryRespect: 0.14,
+            pressureSignal: 0,
+            repairSignal: 0.08,
+            intimacySignal: 0.1,
+            confidence: 0.82,
+            evidence: [
+              {
+                source: 'user_message',
+                key: 'support_0',
+                summary: 'support toward relationship: 大丈夫だよ',
+                weight: 0.57,
+                confidence: 0.82,
+                valence: 0.7,
+              },
+            ],
+          },
+          padDelta: {
+            pleasure: 0.02,
+            arousal: 0.01,
+            dominance: 0,
+          },
+          pairDelta: {
+            affinity: 1,
+            trust: 1,
+            intimacyReadiness: 0.2,
+            conflict: 0,
+          },
+          confidence: 0.82,
+          evidence: [
+            {
+              source: 'user_message',
+              key: 'support_0',
+              summary: 'support toward relationship: 大丈夫だよ',
+              weight: 0.57,
+              confidence: 0.82,
+              valence: 0.7,
+            },
+          ],
+        },
+        emotionBefore: {
+          pleasure: -0.8,
+          arousal: -0.8,
+          dominance: 0.8,
+        },
+        emotionAfter: {
+          pleasure: -0.78,
+          arousal: -0.77,
+          dominance: 0.8,
+        },
+        pairMetricsBefore: {
+          affinity: 50,
+          trust: 50,
+          intimacyReadiness: 0,
+          conflict: 0,
+        },
+        pairMetricsAfter: {
+          affinity: 51,
+          trust: 51,
+          intimacyReadiness: 0.2,
+          conflict: 0,
+        },
+        pairMetricDelta: {
+          affinity: 1,
+          trust: 1,
+          intimacyReadiness: 0.2,
+          conflict: 0,
+        },
+      },
+      legacyComparison: {
+        appraisal: {
+          goalCongruence: 0.2,
+          controllability: 0.5,
+          certainty: 0.5,
+          normAlignment: 0.1,
+          attachmentSecurity: 0.6,
+          reciprocity: 0.3,
+          pressureIntrusiveness: 0.1,
+          novelty: 0.6,
+          selfRelevance: 0.5,
+        },
+        emotionAfter: {
+          pleasure: -0.79,
+          arousal: -0.78,
+          dominance: 0.8,
+        },
+        emotionStateAfter: {
+          fastAffect: {
+            pleasure: -0.79,
+            arousal: -0.78,
+            dominance: 0.8,
+          },
+          slowMood: {
+            pleasure: -0.8,
+            arousal: -0.8,
+            dominance: 0.8,
+          },
+          combined: {
+            pleasure: -0.79,
+            arousal: -0.78,
+            dominance: 0.8,
+          },
+          lastUpdatedAt: new Date('2026-03-24T07:05:00.000Z'),
+        },
+        relationshipAfter: {
+          affinity: 50.8,
+          trust: 50.9,
+          intimacyReadiness: 0.1,
+          conflict: 0.2,
+        },
+        relationshipDeltas: {
+          affinity: 0.8,
+          trust: 0.9,
+          intimacyReadiness: 0.1,
+          conflict: 0.2,
+        },
+        coeContributions: [
+          {
+            source: 'appraisal',
+            axis: 'pleasure',
+            delta: 0.01,
+            reason: 'legacy comparison contribution',
+          },
+        ],
+      },
       memoryThresholdDecisions: [
         {
           kind: 'event',
@@ -230,6 +423,9 @@ test('createTrace persists the expanded runtime trace payload', async () => {
     assert.equal(stored?.modelIds.extractor, 'extractor-model');
     assert.equal(stored?.memoryThresholdDecisions.length, 1);
     assert.equal(stored?.coeContributions.length, 1);
+    assert.equal(stored?.coeExtraction?.interactionActs[0]?.act, 'support');
+    assert.equal(stored?.emotionTrace?.relationalAppraisal.warmthSignal, 0.42);
+    assert.equal(stored?.legacyComparison?.relationshipDeltas.trust, 0.9);
   } finally {
     await getDb().close();
 

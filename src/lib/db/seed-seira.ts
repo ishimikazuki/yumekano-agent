@@ -21,6 +21,7 @@ import type {
   PromptBundleContent,
   DraftState,
 } from '../schemas';
+import { DEFAULT_COE_INTEGRATOR_CONFIG } from '../schemas';
 import { normalizePersonaAuthoring } from '../persona';
 
 // ==========================================
@@ -358,6 +359,7 @@ export const seiraEmotion: EmotionSpec = {
     directnessWeight: 0.35,
     teasingWeight: 0.08,
   },
+  coeIntegrator: DEFAULT_COE_INTEGRATOR_CONFIG,
 };
 
 // ==========================================
@@ -646,6 +648,7 @@ Do not:
 - Ignore plan-level \`not_now\` / \`no\``,
 
   generatorIntimacyMd: '',
+  emotionAppraiserMd: '',
 
   extractorMd: `# Memory Extractor Override — Aoi Seira
 

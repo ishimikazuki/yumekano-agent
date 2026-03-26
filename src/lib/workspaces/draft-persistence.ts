@@ -12,6 +12,7 @@ export type SerializedDraftState = {
   plannerMd: string;
   generatorMd: string;
   generatorIntimacyMd: string;
+  emotionAppraiserMd: string;
   extractorMd: string;
   reflectorMd: string;
   rankerMd: string;
@@ -32,6 +33,7 @@ export function serializeDraftStateForStorage(draft: DraftState): SerializedDraf
     plannerMd: prompts.plannerMd,
     generatorMd: prompts.generatorMd,
     generatorIntimacyMd: prompts.generatorIntimacyMd,
+    emotionAppraiserMd: prompts.emotionAppraiserMd,
     extractorMd: prompts.extractorMd,
     reflectorMd: prompts.reflectorMd,
     rankerMd: prompts.rankerMd,

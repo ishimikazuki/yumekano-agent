@@ -65,6 +65,9 @@ function PlaygroundContent() {
   useEffect(() => {
     const loadData = async () => {
       try {
+        setMessages([]);
+        setSessionId(null);
+
         if (workspaceId) {
           // Sandbox mode - load workspace
           const wsRes = await fetch(`/api/workspaces/${workspaceId}`);
@@ -79,6 +82,16 @@ function PlaygroundContent() {
               const charData = await charRes.json();
               setCharacter(charData.character);
             }
+          }
+
+          const sessionRes = await fetch(
+            `/api/workspaces/${workspaceId}/playground-session?userId=${encodeURIComponent(userId)}`
+          );
+
+          if (sessionRes.ok) {
+            const sessionData = await sessionRes.json();
+            setSessionId(sessionData.sessionId);
+            setMessages(sessionData.messages);
           }
         } else {
           // Production mode - load character list
@@ -99,7 +112,7 @@ function PlaygroundContent() {
       }
     };
     loadData();
-  }, [workspaceId]);
+  }, [userId, workspaceId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,7 +206,23 @@ function PlaygroundContent() {
     setIsLoading(false);
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
+    if (mode === 'sandbox' && workspaceId) {
+      const response = await fetch(`/api/workspaces/${workspaceId}/playground-session`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: sessionId ?? undefined,
+          userId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to reset sandbox session');
+      }
+    }
+
     setMessages([]);
     setSessionId(null);
   };
@@ -249,7 +278,7 @@ function PlaygroundContent() {
                 setSelectedCharacterId(e.target.value);
                 const char = characters.find((c) => c.id === e.target.value);
                 if (char) setCharacter(char);
-                handleReset();
+                void handleReset();
               }}
               className="border rounded px-2 py-1 text-sm"
             >
@@ -277,7 +306,11 @@ function PlaygroundContent() {
             MD出力
           </button>
           <button
-            onClick={handleReset}
+            onClick={() => {
+              void handleReset().catch((error) => {
+                console.error('Failed to reset playground:', error);
+              });
+            }}
             className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
           >
             リセット

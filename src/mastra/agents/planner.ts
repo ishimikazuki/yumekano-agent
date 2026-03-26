@@ -1,6 +1,7 @@
 import { generateObject } from 'ai';
 import { getProviderRegistry } from '../providers/registry';
 import { assemblePrompt, formatDesignerFragment, hashPrompt } from '../prompts/assemble';
+import { formatEmotionContextSections, type AgentEmotionContext } from './emotion-context';
 import {
   TurnPlan,
   TurnPlanSchema,
@@ -29,6 +30,7 @@ export type PlannerInput = {
   };
   recentDialogue: Array<{ role: 'user' | 'assistant'; content: string }>;
   userMessage: string;
+  emotionContext?: AgentEmotionContext;
   promptOverride?: string;
 };
 
@@ -160,6 +162,7 @@ function buildPlannerUserPrompt(input: PlannerInput): string {
     retrievedMemory,
     recentDialogue,
     userMessage,
+    emotionContext,
   } = input;
 
   const recentDialogueText = recentDialogue
@@ -225,6 +228,8 @@ ${eventsText}
 
 ## Relevant Observations
 ${observationsText}
+
+${formatEmotionContextSections(emotionContext)}
 
 ## Recent Dialogue
 ${recentDialogueText}

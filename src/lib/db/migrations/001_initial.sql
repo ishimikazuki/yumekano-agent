@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS prompt_bundle_versions (
   version_number INTEGER NOT NULL,
   planner_md TEXT NOT NULL,
   generator_md TEXT NOT NULL,
+  generator_intimacy_md TEXT NOT NULL DEFAULT '',
+  emotion_appraiser_md TEXT NOT NULL DEFAULT '',
   extractor_md TEXT NOT NULL,
   reflector_md TEXT NOT NULL,
   ranker_md TEXT NOT NULL,

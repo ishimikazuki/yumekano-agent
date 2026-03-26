@@ -1,6 +1,9 @@
 import { getDb } from '../db/client';
 import { v4 as uuid } from 'uuid';
 import {
+  CoEEvidenceExtractorResult,
+  EmotionTrace,
+  LegacyEmotionComparison,
   TurnTrace,
   TurnTraceSchema,
   ChatTurn,
@@ -108,6 +111,9 @@ export const traceRepo = {
       observations: string[];
       threads: string[];
     };
+    coeExtraction?: CoEEvidenceExtractorResult | null;
+    emotionTrace?: EmotionTrace | null;
+    legacyComparison?: LegacyEmotionComparison | null;
     memoryThresholdDecisions: MemoryThresholdDecision[];
     coeContributions: PADTransitionContribution[];
     plan: TurnPlan;
@@ -127,9 +133,10 @@ export const traceRepo = {
              phase_id_before, phase_id_after, emotion_before_json, emotion_after_json,
              emotion_state_before_json, emotion_state_after_json, relationship_before_json, relationship_after_json,
              relationship_deltas_json, phase_transition_evaluation_json, prompt_assembly_hashes_json,
-             appraisal_json, retrieved_memory_ids_json, memory_threshold_decisions_json, coe_contributions_json,
+             appraisal_json, retrieved_memory_ids_json, coe_extraction_json, emotion_trace_json, legacy_comparison_json,
+             memory_threshold_decisions_json, coe_contributions_json,
              plan_json, candidates_json, winner_index, memory_writes_json, user_message, assistant_message, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         id,
         input.pairId,
@@ -149,6 +156,9 @@ export const traceRepo = {
         JSON.stringify(input.promptAssemblyHashes),
         JSON.stringify(input.appraisal),
         JSON.stringify(input.retrievedMemoryIds),
+        input.coeExtraction ? JSON.stringify(input.coeExtraction) : null,
+        input.emotionTrace ? JSON.stringify(input.emotionTrace) : null,
+        input.legacyComparison ? JSON.stringify(input.legacyComparison) : null,
         JSON.stringify(input.memoryThresholdDecisions),
         JSON.stringify(input.coeContributions),
         JSON.stringify(input.plan),
@@ -180,6 +190,9 @@ export const traceRepo = {
       promptAssemblyHashes: input.promptAssemblyHashes,
       appraisal: input.appraisal,
       retrievedMemoryIds: input.retrievedMemoryIds,
+      coeExtraction: input.coeExtraction ?? null,
+      emotionTrace: input.emotionTrace ?? null,
+      legacyComparison: input.legacyComparison ?? null,
       memoryThresholdDecisions: input.memoryThresholdDecisions,
       coeContributions: input.coeContributions,
       plan: input.plan,
@@ -245,6 +258,18 @@ export const traceRepo = {
       ),
       appraisal: JSON.parse(row.appraisal_json as string),
       retrievedMemoryIds: JSON.parse(row.retrieved_memory_ids_json as string),
+      coeExtraction: parseJsonWithFallback(
+        row.coe_extraction_json as string | null | undefined,
+        null
+      ),
+      emotionTrace: parseJsonWithFallback(
+        row.emotion_trace_json as string | null | undefined,
+        null
+      ),
+      legacyComparison: parseJsonWithFallback(
+        row.legacy_comparison_json as string | null | undefined,
+        null
+      ),
       memoryThresholdDecisions: JSON.parse((row.memory_threshold_decisions_json ?? '[]') as string),
       coeContributions: JSON.parse((row.coe_contributions_json ?? '[]') as string),
       plan: JSON.parse(row.plan_json as string),
@@ -308,6 +333,18 @@ export const traceRepo = {
         ),
         appraisal: JSON.parse(row.appraisal_json as string),
         retrievedMemoryIds: JSON.parse(row.retrieved_memory_ids_json as string),
+        coeExtraction: parseJsonWithFallback(
+          row.coe_extraction_json as string | null | undefined,
+          null
+        ),
+        emotionTrace: parseJsonWithFallback(
+          row.emotion_trace_json as string | null | undefined,
+          null
+        ),
+        legacyComparison: parseJsonWithFallback(
+          row.legacy_comparison_json as string | null | undefined,
+          null
+        ),
         memoryThresholdDecisions: JSON.parse((row.memory_threshold_decisions_json ?? '[]') as string),
         coeContributions: JSON.parse((row.coe_contributions_json ?? '[]') as string),
         plan: JSON.parse(row.plan_json as string),

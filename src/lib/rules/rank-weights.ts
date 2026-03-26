@@ -92,12 +92,15 @@ export function getWeightsForPhase(phaseType: string): RankWeights {
   switch (phaseType.toLowerCase()) {
     case 'introduction':
     case 'intro':
+    case 'entry':
       return INTRODUCTION_WEIGHTS;
     case 'deepening':
     case 'growing':
+    case 'relationship':
       return DEEPENING_WEIGHTS;
     case 'committed':
     case 'established':
+    case 'girlfriend':
       return COMMITTED_WEIGHTS;
     case 'intimacy':
     case 'intimate':
@@ -134,8 +137,8 @@ export function shouldHardReject(
   thresholds: Partial<Record<keyof RankWeights, number>> = {}
 ): { reject: boolean; reason?: string } {
   const defaultThresholds = {
-    phaseCompliance: 0.3,
-    contradictionPenalty: 0.2,
+    phaseCompliance: 0.4,
+    contradictionPenalty: 0.45,
     personaConsistency: 0.3,
   };
 

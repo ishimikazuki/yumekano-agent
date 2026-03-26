@@ -119,7 +119,7 @@ export function createRawCharacterVersion(): CharacterVersion {
   });
 }
 
-export function createPhaseNode() {
+export function createPhaseNode(overrides: Record<string, unknown> = {}) {
   return PhaseNodeSchema.parse({
     id: 'deepening',
     label: 'Deepening',
@@ -132,6 +132,7 @@ export function createPhaseNode() {
     allowedActs: ['acknowledge', 'tease', 'ask_question'],
     disallowedActs: ['express_affection'],
     adultIntimacyEligibility: 'conditional',
+    ...overrides,
   });
 }
 
@@ -177,7 +178,7 @@ export function createEmotion() {
   });
 }
 
-export function createWorkingMemory() {
+export function createWorkingMemory(overrides: Record<string, unknown> = {}) {
   return WorkingMemorySchema.parse({
     preferredAddressForm: 'かーくん',
     knownLikes: ['映画'],
@@ -187,10 +188,11 @@ export function createWorkingMemory() {
     relationshipStance: 'trust-building',
     knownCorrections: ['敬語より砕けた方が好き'],
     intimacyContextHints: ['急ぎすぎると引く'],
+    ...overrides,
   });
 }
 
-export function createPlan() {
+export function createPlan(overrides: Record<string, unknown> = {}) {
   return TurnPlanSchema.parse({
     stance: 'playful',
     primaryActs: ['acknowledge', 'tease'],
@@ -214,5 +216,6 @@ export function createPlan() {
     },
     mustAvoid: ['急に甘くなりすぎる'],
     plannerReasoning: '彼女は軽口を保ちながら距離を詰めすぎない。',
+    ...overrides,
   });
 }

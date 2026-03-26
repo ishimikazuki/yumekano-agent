@@ -1,39 +1,32 @@
 import { z } from 'zod';
 import { TurnPlanSchema } from './plan';
+import {
+  PADStateSchema,
+  RuntimeEmotionStateSchema,
+  RelationshipMetricsSchema,
+  RelationshipMetricDeltaSchema,
+  PADTransitionContributionSchema,
+  type PADState,
+  type RuntimeEmotionState,
+  type RelationshipMetrics,
+  type RelationshipMetricDelta,
+  type PADTransitionContribution,
+} from './emotion-state';
+import { CoEEvidenceExtractorResultSchema } from './coe-evidence-extractor';
+import { EmotionTraceSchema } from './emotion-contract';
 
-/**
- * PAD state (Pleasure-Arousal-Dominance)
- */
-export const PADStateSchema = z.object({
-  pleasure: z.number().min(-1).max(1),
-  arousal: z.number().min(-1).max(1),
-  dominance: z.number().min(-1).max(1),
-});
-export type PADState = z.infer<typeof PADStateSchema>;
-
-export const RuntimeEmotionStateSchema = z.object({
-  fastAffect: PADStateSchema,
-  slowMood: PADStateSchema,
-  combined: PADStateSchema,
-  lastUpdatedAt: z.coerce.date(),
-});
-export type RuntimeEmotionState = z.infer<typeof RuntimeEmotionStateSchema>;
-
-export const RelationshipMetricsSchema = z.object({
-  affinity: z.number().min(0).max(100),
-  trust: z.number().min(0).max(100),
-  intimacyReadiness: z.number().min(0).max(100),
-  conflict: z.number().min(0).max(100),
-});
-export type RelationshipMetrics = z.infer<typeof RelationshipMetricsSchema>;
-
-export const RelationshipMetricDeltaSchema = z.object({
-  affinity: z.number(),
-  trust: z.number(),
-  intimacyReadiness: z.number(),
-  conflict: z.number(),
-});
-export type RelationshipMetricDelta = z.infer<typeof RelationshipMetricDeltaSchema>;
+export {
+  PADStateSchema,
+  RuntimeEmotionStateSchema,
+  RelationshipMetricsSchema,
+  RelationshipMetricDeltaSchema,
+  PADTransitionContributionSchema,
+  type PADState,
+  type RuntimeEmotionState,
+  type RelationshipMetrics,
+  type RelationshipMetricDelta,
+  type PADTransitionContribution,
+};
 
 export const PhaseTransitionEvaluationSchema = z.object({
   shouldTransition: z.boolean(),
@@ -59,14 +52,6 @@ export const MemoryThresholdDecisionSchema = z.object({
   reason: z.string(),
 });
 export type MemoryThresholdDecision = z.infer<typeof MemoryThresholdDecisionSchema>;
-
-export const PADTransitionContributionSchema = z.object({
-  source: z.enum(['appraisal', 'decay', 'open_thread_bias', 'blend', 'clamp']),
-  axis: z.enum(['pleasure', 'arousal', 'dominance']),
-  delta: z.number(),
-  reason: z.string(),
-});
-export type PADTransitionContribution = z.infer<typeof PADTransitionContributionSchema>;
 
 /**
  * Candidate response with scores
@@ -118,6 +103,16 @@ export const AppraisalVectorSchema = z.object({
 });
 export type AppraisalVector = z.infer<typeof AppraisalVectorSchema>;
 
+export const LegacyEmotionComparisonSchema = z.object({
+  appraisal: AppraisalVectorSchema,
+  emotionAfter: PADStateSchema,
+  emotionStateAfter: RuntimeEmotionStateSchema,
+  relationshipAfter: RelationshipMetricsSchema,
+  relationshipDeltas: RelationshipMetricDeltaSchema,
+  coeContributions: z.array(PADTransitionContributionSchema),
+});
+export type LegacyEmotionComparison = z.infer<typeof LegacyEmotionComparisonSchema>;
+
 /**
  * Turn trace - complete record of a turn for inspection
  */
@@ -150,6 +145,9 @@ export const TurnTraceSchema = z.object({
     observations: z.array(z.string().uuid()),
     threads: z.array(z.string().uuid()),
   }),
+  coeExtraction: CoEEvidenceExtractorResultSchema.nullable().optional(),
+  emotionTrace: EmotionTraceSchema.nullable().optional(),
+  legacyComparison: LegacyEmotionComparisonSchema.nullable().optional(),
   memoryThresholdDecisions: z.array(MemoryThresholdDecisionSchema),
   coeContributions: z.array(PADTransitionContributionSchema),
   plan: TurnPlanSchema,

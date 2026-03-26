@@ -1,6 +1,12 @@
 import { v4 as uuid } from 'uuid';
+import {
+  adaptRelationalAppraisalToLegacyAppraisal,
+  buildRelationalAppraisalFromExtraction,
+} from '@/lib/adapters/coe-emotion-contract';
+import { shouldCompareLegacyEmotionPath } from '@/lib/feature-flags';
 import { createPhaseEngine } from '@/lib/rules/phase-engine';
 import { computeAppraisal } from '@/lib/rules/appraisal';
+import { integrateCoEAppraisal } from '@/lib/rules/coe-integrator';
 import { updatePAD } from '@/lib/rules/pad';
 import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
 import {
@@ -11,12 +17,16 @@ import {
 import { retrieveMemory } from '../memory/retrieval';
 import { processMemoryWrites, recordMemoryUsage } from '../memory/writeback';
 import type { MemoryStore } from '../memory/store';
+import { runCoEEvidenceExtractor } from '../agents/coe-evidence-extractor';
 import { runPlanner } from '../agents/planner';
 import { runGenerator, selectGeneratorPrompt } from '../agents/generator';
 import { runRanker } from '../agents/ranker';
 import { runMemoryExtractor } from '../agents/memory-extractor';
+import { EmotionTraceSchema } from '@/lib/schemas';
 import type {
   CharacterVersion,
+  EmotionTrace,
+  LegacyEmotionComparison,
   PairState,
   PhaseGraph,
   PhaseNode,
@@ -25,6 +35,15 @@ import type {
   PADState,
   TurnTrace,
 } from '@/lib/schemas';
+
+export type ExecuteTurnDeps = {
+  runCoEEvidenceExtractor?: typeof runCoEEvidenceExtractor;
+  runPlanner?: typeof runPlanner;
+  runGenerator?: typeof runGenerator;
+  runRanker?: typeof runRanker;
+  runMemoryExtractor?: typeof runMemoryExtractor;
+  now?: () => Date;
+};
 
 export type ExecuteTurnInput = {
   scopeId: string;
@@ -63,6 +82,7 @@ export type ExecuteTurnInput = {
       characterVersion: CharacterVersion;
     }): Promise<void>;
   };
+  deps?: ExecuteTurnDeps;
 };
 
 export type ExecuteTurnOutput = {
@@ -78,6 +98,14 @@ export type ExecuteTurnOutput = {
 
 export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnOutput> {
   const phaseEngine = createPhaseEngine(input.phaseGraph);
+  const now = input.deps?.now?.() ?? new Date();
+  const coeEvidenceExtractorRunner =
+    input.deps?.runCoEEvidenceExtractor ?? runCoEEvidenceExtractor;
+  const plannerRunner = input.deps?.runPlanner ?? runPlanner;
+  const generatorRunner = input.deps?.runGenerator ?? runGenerator;
+  const rankerRunner = input.deps?.runRanker ?? runRanker;
+  const memoryExtractorRunner =
+    input.deps?.runMemoryExtractor ?? runMemoryExtractor;
 
   const retrievalResult = await retrieveMemory({
     scopeId: input.scopeId,
@@ -87,18 +115,29 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     memoryStore: input.memoryStore,
   });
 
-  const appraisal = computeAppraisal({
+  const coeExtractionResult = await coeEvidenceExtractorRunner({
     userMessage: input.userMessage,
-    characterVersion: input.characterVersion,
-    pairState: input.pairState,
-    workingMemory: input.workingMemory,
-    openThreads: retrievalResult.threads,
     recentDialogue: input.recentDialogue,
     currentPhase: input.currentPhase,
-    retrievedFacts: retrievalResult.facts,
-    retrievedEvents: retrievalResult.events,
-    retrievedObservations: retrievalResult.observations,
+    pairState: input.pairState,
+    workingMemory: input.workingMemory,
+    retrievedMemory: {
+      facts: retrievalResult.facts,
+      events: retrievalResult.events,
+      observations: retrievalResult.observations,
+      threads: retrievalResult.threads,
+    },
+    openThreads: retrievalResult.threads,
   });
+  const relationalAppraisal = buildRelationalAppraisalFromExtraction({
+    extraction: coeExtractionResult.extraction,
+    openThreads: retrievalResult.threads,
+    retrievedObservations: retrievalResult.observations,
+    workingMemory: input.workingMemory,
+    pairState: input.pairState,
+    currentPhase: input.currentPhase,
+  });
+  const appraisal = adaptRelationalAppraisalToLegacyAppraisal(relationalAppraisal);
 
   const relationshipBefore = {
     affinity: input.pairState.affinity,
@@ -108,22 +147,95 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
   };
   const emotionBeforeState = input.pairState.emotion;
   const emotionBefore = emotionBeforeState.combined;
-  const padUpdate = updatePAD({
+  const coeIntegration = integrateCoEAppraisal({
     currentEmotion: input.pairState.emotion,
-    appraisal,
+    currentMetrics: relationshipBefore,
+    appraisal: relationalAppraisal,
     emotionSpec: input.characterVersion.emotion,
-    hasOpenThreads: retrievalResult.threads.length > 0,
+    currentPhase: input.currentPhase,
+    openThreads: retrievalResult.threads,
     turnsSinceLastUpdate: input.turnsSinceLastEmotionUpdate,
-    now: new Date(),
+    interactionActs: coeExtractionResult.extraction.interactionActs,
+    now,
   });
-  const emotionAfterState = padUpdate.after;
+  const emotionAfterState = coeIntegration.after;
   const emotionAfter = emotionAfterState.combined;
-  const relationshipAfter = updateRelationshipMetrics({
-    current: input.pairState,
-    appraisal,
+  const relationshipAfter = coeIntegration.relationshipAfter;
+  const coeContributions = coeIntegration.contributions;
+  const emotionTrace: EmotionTrace = EmotionTraceSchema.parse({
+    source: 'model',
+    evidence: relationalAppraisal.evidence,
+    relationalAppraisal,
+    proposal: {
+      source: 'model',
+      rationale: relationalAppraisal.summary,
+      appraisal: relationalAppraisal,
+      padDelta: {
+        pleasure: Number((emotionAfter.pleasure - emotionBefore.pleasure).toFixed(4)),
+        arousal: Number((emotionAfter.arousal - emotionBefore.arousal).toFixed(4)),
+        dominance: Number((emotionAfter.dominance - emotionBefore.dominance).toFixed(4)),
+      },
+      pairDelta: coeIntegration.pairDelta,
+      confidence: relationalAppraisal.confidence,
+      evidence: relationalAppraisal.evidence,
+    },
     emotionBefore,
     emotionAfter,
+    pairMetricsBefore: relationshipBefore,
+    pairMetricsAfter: relationshipAfter,
+    pairMetricDelta: coeIntegration.pairDelta,
   });
+  const legacyComparison: LegacyEmotionComparison | null = shouldCompareLegacyEmotionPath()
+    ? (() => {
+        const legacyAppraisal = computeAppraisal({
+          userMessage: input.userMessage,
+          characterVersion: input.characterVersion,
+          pairState: input.pairState,
+          workingMemory: input.workingMemory,
+          openThreads: retrievalResult.threads,
+          recentDialogue: input.recentDialogue,
+          currentPhase: input.currentPhase,
+          retrievedFacts: retrievalResult.facts,
+          retrievedEvents: retrievalResult.events,
+          retrievedObservations: retrievalResult.observations,
+        });
+        const legacyPadUpdate = updatePAD({
+          currentEmotion: input.pairState.emotion,
+          appraisal: legacyAppraisal,
+          emotionSpec: input.characterVersion.emotion,
+          hasOpenThreads: retrievalResult.threads.length > 0,
+          turnsSinceLastUpdate: input.turnsSinceLastEmotionUpdate,
+          now,
+        });
+        const legacyRelationshipAfter = updateRelationshipMetrics({
+          current: input.pairState,
+          appraisal: legacyAppraisal,
+          emotionBefore,
+          emotionAfter: legacyPadUpdate.after.combined,
+        });
+
+        return {
+          appraisal: legacyAppraisal,
+          emotionAfter: legacyPadUpdate.after.combined,
+          emotionStateAfter: legacyPadUpdate.after,
+          relationshipAfter: legacyRelationshipAfter,
+          relationshipDeltas: {
+            affinity: legacyRelationshipAfter.affinity - relationshipBefore.affinity,
+            trust: legacyRelationshipAfter.trust - relationshipBefore.trust,
+            intimacyReadiness:
+              legacyRelationshipAfter.intimacyReadiness -
+              relationshipBefore.intimacyReadiness,
+            conflict: legacyRelationshipAfter.conflict - relationshipBefore.conflict,
+          },
+          coeContributions: legacyPadUpdate.contributions,
+        };
+      })()
+    : null;
+  const agentEmotionContext = {
+    coeExtraction: coeExtractionResult.extraction,
+    emotionTrace,
+    legacyComparison,
+  };
   const pairStateAfterUpdate: PairState = {
     ...input.pairState,
     activeCharacterVersionId: input.characterVersion.id,
@@ -131,10 +243,10 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     emotion: emotionAfterState,
     pad: emotionAfter,
     appraisal,
-    updatedAt: new Date(),
+    updatedAt: now,
   };
 
-  const plannerResult = await runPlanner({
+  const plannerResult = await plannerRunner({
     characterVersion: input.characterVersion,
     currentPhase: input.currentPhase,
     pairState: pairStateAfterUpdate,
@@ -148,6 +260,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     },
     recentDialogue: input.recentDialogue,
     userMessage: input.userMessage,
+    emotionContext: agentEmotionContext,
     promptOverride: input.promptBundle.plannerMd,
   });
   const plan = plannerResult.plan;
@@ -157,7 +270,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     emotionBeforeState,
     emotionAfterState,
     appraisal,
-    contributions: padUpdate.contributions,
+    contributions: coeContributions,
     intentReason: plan.emotionDeltaIntent.reason,
     intentDelta: {
       pleasure: plan.emotionDeltaIntent.pleasureDelta,
@@ -202,7 +315,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     plan
   );
 
-  const generatorResult = await runGenerator({
+  const generatorResult = await generatorRunner({
     characterVersion: input.characterVersion,
     currentPhase: activePhase,
     pairState: pairStateForGeneration,
@@ -217,10 +330,11 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     recentDialogue: input.recentDialogue,
     userMessage: input.userMessage,
     plan,
+    emotionContext: agentEmotionContext,
     promptOverride: generatorPrompt,
   });
 
-  const rankerResult = await runRanker({
+  const rankerResult = await rankerRunner({
     characterVersion: input.characterVersion,
     currentPhase: activePhase,
     pairState: pairStateForGeneration,
@@ -235,6 +349,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     userMessage: input.userMessage,
     plan,
     candidates: generatorResult.candidates,
+    emotionContext: agentEmotionContext,
     promptOverride: input.promptBundle.rankerMd,
     recentDialogue: input.recentDialogue,
   });
@@ -263,7 +378,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     },
   });
 
-  const extractorResult = await runMemoryExtractor({
+  const extractorResult = await memoryExtractorRunner({
     characterVersion: input.characterVersion,
     pairStateBefore: input.pairState,
     workingMemoryBefore: input.workingMemory,
@@ -330,8 +445,11 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
       observations: retrievalResult.observations.map((observation) => observation.id),
       threads: retrievalResult.threads.map((thread) => thread.id),
     },
+    coeExtraction: coeExtractionResult.extraction,
+    emotionTrace,
+    legacyComparison,
     memoryThresholdDecisions: memoryWriteResult.thresholdDecisions,
-    coeContributions: padUpdate.contributions,
+    coeContributions,
     plan,
     candidates: rankerResult.candidates,
     winnerIndex: rankerResult.winnerIndex,

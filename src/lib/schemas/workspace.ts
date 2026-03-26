@@ -23,7 +23,7 @@ import {
   PADStateSchema,
   RuntimeEmotionStateSchema,
 } from './trace';
-import { PromptFragmentSchema } from './prompts';
+import { PromptBundleContentSchema, type PromptBundleContent } from './prompts';
 
 /**
  * Character identity/meta - basic character identity info
@@ -36,19 +36,6 @@ export const CharacterIdentitySchema = z.object({
   occupation: z.string().optional().describe('Character occupation/role'),
 });
 export type CharacterIdentity = z.infer<typeof CharacterIdentitySchema>;
-
-/**
- * Prompt bundle content (raw markdown)
- */
-export const PromptBundleContentSchema = z.object({
-  plannerMd: PromptFragmentSchema,
-  generatorMd: PromptFragmentSchema,
-  generatorIntimacyMd: PromptFragmentSchema,
-  extractorMd: PromptFragmentSchema,
-  reflectorMd: PromptFragmentSchema,
-  rankerMd: PromptFragmentSchema,
-});
-export type PromptBundleContent = z.infer<typeof PromptBundleContentSchema>;
 
 /**
  * Draft state - complete editable state for a character

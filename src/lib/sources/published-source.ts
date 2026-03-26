@@ -9,6 +9,7 @@ import {
   promptBundleRepo,
 } from '../repositories';
 import { toPersonaAuthoring } from '../persona';
+import { buildPromptBundleContent } from '../schemas';
 import type { CharacterAssets, CharacterAssetSource } from './character-asset-source';
 
 export class PublishedAssetSource implements CharacterAssetSource {
@@ -89,14 +90,7 @@ export class PublishedAssetSource implements CharacterAssetSource {
       entryPhaseId: phaseGraphVersion.graph.entryPhaseId,
 
       // Prompts
-      prompts: {
-        plannerMd: promptBundle.plannerMd,
-        generatorMd: promptBundle.generatorMd,
-        generatorIntimacyMd: promptBundle.generatorIntimacyMd,
-        extractorMd: promptBundle.extractorMd,
-        reflectorMd: promptBundle.reflectorMd,
-        rankerMd: promptBundle.rankerMd,
-      },
+      prompts: buildPromptBundleContent(promptBundle),
     };
   }
 }

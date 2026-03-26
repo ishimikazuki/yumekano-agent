@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db/client';
 import { preparePublishedPersona } from '@/lib/persona';
-import { workspaceRepo } from '@/lib/repositories';
+import { promptBundleRepo, workspaceRepo } from '@/lib/repositories';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 
@@ -68,28 +68,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
 
     // Create prompt bundle version
-    const promptBundleVersionId = uuid();
-    const promptVersionResult = await db.execute({
-      sql: 'SELECT MAX(version_number) as max_version FROM prompt_bundle_versions WHERE character_id = ?',
-      args: [characterId],
-    });
-    const maxPromptVersion = (promptVersionResult.rows[0]?.max_version as number) || 0;
-
-    await db.execute({
-      sql: `INSERT INTO prompt_bundle_versions (id, character_id, version_number, planner_md, generator_md, generator_intimacy_md, extractor_md, reflector_md, ranker_md, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        promptBundleVersionId,
-        characterId,
-        maxPromptVersion + 1,
-        draft.prompts.plannerMd,
-        draft.prompts.generatorMd,
-        draft.prompts.generatorIntimacyMd,
-        draft.prompts.extractorMd,
-        draft.prompts.reflectorMd,
-        draft.prompts.rankerMd,
-        now,
-      ],
+    const promptBundleVersion = await promptBundleRepo.create({
+      characterId,
+      prompts: draft.prompts,
     });
 
     // Create new character version
@@ -109,7 +90,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         JSON.stringify(draft.emotion),
         JSON.stringify(draft.memory),
         phaseGraphVersionId,
-        promptBundleVersionId,
+        promptBundleVersion.id,
         publishedBy,
         now,
         draft.baseVersionId,
