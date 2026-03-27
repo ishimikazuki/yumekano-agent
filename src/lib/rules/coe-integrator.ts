@@ -465,7 +465,7 @@ export function integrateCoEAppraisal(input: CoEIntegratorInput): CoEIntegratorR
     'appraisal',
     combinedAfterDecay,
     combinedAfterImpulse,
-    `CoE appraisal impulse (${appraisal.summary})`
+    'CoE appraisal impulse'
   );
   if (guardrails.length > 0) {
     pushPadModifierContribution(
