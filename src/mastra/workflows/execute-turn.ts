@@ -1,18 +1,10 @@
 import { v4 as uuid } from 'uuid';
-import {
-  adaptRelationalAppraisalToLegacyAppraisal,
-  buildRelationalAppraisalFromExtraction,
-} from '@/lib/adapters/coe-emotion-contract';
-import { shouldCompareLegacyEmotionPath } from '@/lib/feature-flags';
 import { createPhaseEngine } from '@/lib/rules/phase-engine';
-import { computeAppraisal } from '@/lib/rules/appraisal';
 import { integrateCoEAppraisal } from '@/lib/rules/coe-integrator';
-import { updatePAD } from '@/lib/rules/pad';
 import { buildCoEExplanation, type CoEExplanation } from '@/lib/rules/coe';
 import {
   buildPhaseEngineRuntimeContext,
   resolvePhaseTransition,
-  updateRelationshipMetrics,
 } from '@/lib/rules/phase-runtime';
 import { retrieveMemory } from '../memory/retrieval';
 import { processMemoryWrites, recordMemoryUsage } from '../memory/writeback';
@@ -22,18 +14,20 @@ import { runPlanner } from '../agents/planner';
 import { runGenerator, selectGeneratorPrompt } from '../agents/generator';
 import { runRanker } from '../agents/ranker';
 import { runMemoryExtractor } from '../agents/memory-extractor';
-import { EmotionTraceSchema } from '@/lib/schemas';
 import type {
+  AppraisalVector,
   CharacterVersion,
-  EmotionTrace,
-  LegacyEmotionComparison,
+  CoEEvidenceExtractorResult,
+  PADState,
+  PairMetricDelta,
   PairState,
   PhaseGraph,
   PhaseNode,
   PromptBundleVersion,
-  WorkingMemory,
-  PADState,
+  RelationshipMetrics,
+  RelationalAppraisal,
   TurnTrace,
+  WorkingMemory,
 } from '@/lib/schemas';
 
 export type ExecuteTurnDeps = {
@@ -62,6 +56,7 @@ export type ExecuteTurnInput = {
   turnsSinceLastTransition: number;
   daysSinceEntry: number;
   turnsSinceLastEmotionUpdate: number;
+  enableLegacyComparison?: boolean;
   memoryStore: MemoryStore;
   persistence: {
     createTurnRecord(input: {
@@ -96,10 +91,211 @@ export type ExecuteTurnOutput = {
   pairState: PairState;
 };
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function positive(value: number): number {
+  return Math.max(0, value);
+}
+
+function negative(value: number): number {
+  return Math.max(0, -value);
+}
+
+function buildRelationalSignals(appraisal: RelationalAppraisal) {
+  return {
+    warmthSignal: clamp(
+      appraisal.warmthImpact -
+        positive(appraisal.rejectionImpact) * 0.6 +
+        negative(appraisal.rejectionImpact) * 0.3,
+      -1,
+      1
+    ),
+    reciprocitySignal: clamp(
+      appraisal.reciprocityImpact + appraisal.repairImpact * 0.2,
+      -1,
+      1
+    ),
+    safetySignal: clamp(
+      appraisal.respectImpact +
+        appraisal.boundarySignal * 0.4 -
+        positive(appraisal.threatImpact) * 0.8 -
+        positive(appraisal.pressureImpact) * 0.3 +
+        appraisal.repairImpact * 0.15 +
+        negative(appraisal.threatImpact) * 0.3 +
+        negative(appraisal.pressureImpact) * 0.2,
+      -1,
+      1
+    ),
+    boundaryRespect: clamp(
+      (appraisal.respectImpact + appraisal.boundarySignal) * 0.5 -
+        positive(appraisal.threatImpact) * 0.25 +
+        appraisal.repairImpact * 0.1 +
+        negative(appraisal.threatImpact) * 0.15,
+      -1,
+      1
+    ),
+    pressureSignal: clamp(
+      positive(appraisal.pressureImpact) +
+        positive(appraisal.threatImpact) * 0.5 +
+        negative(appraisal.boundarySignal) * 0.35 +
+        positive(appraisal.rejectionImpact) * 0.25,
+      0,
+      1
+    ),
+    repairSignal: clamp(
+      appraisal.repairImpact - positive(appraisal.rejectionImpact) * 0.25,
+      -1,
+      1
+    ),
+    intimacySignal: clamp(
+      appraisal.intimacySignal -
+        positive(appraisal.threatImpact) * 0.15 -
+        positive(appraisal.pressureImpact) * 0.1,
+      -1,
+      1
+    ),
+  };
+}
+
+function mapInteractionTarget(target: string): string {
+  switch (target) {
+    case 'character':
+      return 'assistant';
+    case 'self':
+      return 'user';
+    case 'relationship':
+    case 'boundary':
+      return 'relationship';
+    case 'topic':
+    case 'memory':
+    case 'phase':
+      return 'topic';
+    default:
+      return 'third_party';
+  }
+}
+
+function mapInteractionPolarity(polarity: string): number {
+  switch (polarity) {
+    case 'positive':
+      return 1;
+    case 'negative':
+      return -1;
+    default:
+      return 0;
+  }
+}
+
+function toPadDelta(before: PADState, after: PADState): PADState {
+  return {
+    pleasure: Number((after.pleasure - before.pleasure).toFixed(4)),
+    arousal: Number((after.arousal - before.arousal).toFixed(4)),
+    dominance: Number((after.dominance - before.dominance).toFixed(4)),
+  };
+}
+
+function toAppraisalVector(appraisal: RelationalAppraisal): AppraisalVector {
+  const signals = buildRelationalSignals(appraisal);
+  const relevance = Math.max(
+    Math.abs(appraisal.warmthImpact),
+    Math.abs(appraisal.rejectionImpact),
+    Math.abs(appraisal.respectImpact),
+    Math.abs(appraisal.threatImpact),
+    Math.abs(appraisal.pressureImpact),
+    Math.abs(appraisal.repairImpact),
+    Math.abs(appraisal.reciprocityImpact),
+    Math.abs(appraisal.intimacySignal)
+  );
+
+  return {
+    goalCongruence: clamp(
+      appraisal.warmthImpact +
+        appraisal.reciprocityImpact * 0.5 -
+        positive(appraisal.rejectionImpact) * 0.5 -
+        positive(appraisal.pressureImpact) * 0.3,
+      -1,
+      1
+    ),
+    controllability: clamp(
+      1 - positive(appraisal.pressureImpact) * 0.5 - positive(appraisal.threatImpact) * 0.5,
+      0,
+      1
+    ),
+    certainty: appraisal.certainty,
+    normAlignment: clamp(appraisal.respectImpact + appraisal.boundarySignal * 0.5, -1, 1),
+    attachmentSecurity: clamp((signals.safetySignal + 1) / 2, 0, 1),
+    reciprocity: clamp(appraisal.reciprocityImpact, -1, 1),
+    pressureIntrusiveness: signals.pressureSignal,
+    novelty: clamp(relevance * 0.6, 0, 1),
+    selfRelevance: clamp(relevance, 0, 1),
+  };
+}
+
+function buildEmotionTrace(input: {
+  extraction: CoEEvidenceExtractorResult;
+  emotionBefore: PADState;
+  emotionAfter: PADState;
+  relationshipBefore: RelationshipMetrics;
+  relationshipAfter: RelationshipMetrics;
+  pairMetricDelta: PairMetricDelta;
+  guardrailOverrides: string[];
+}) {
+  const signals = buildRelationalSignals(input.extraction.relationalAppraisal);
+  const evidence = input.extraction.interactionActs.map((act, index) => ({
+    acts: [act.act],
+    target: mapInteractionTarget(act.target),
+    polarity: mapInteractionPolarity(act.polarity),
+    intensity: act.intensity,
+    evidenceSpans: act.evidenceSpans.map((span) => span.text),
+    confidence: act.confidence,
+    uncertaintyNotes: act.uncertaintyNotes,
+    source: act.evidenceSpans[0]?.source ?? 'model_inference',
+    key: `act-${index}-${act.act}`,
+    summary: `${act.act} toward ${act.target}`,
+    weight: act.intensity,
+    valence: mapInteractionPolarity(act.polarity),
+  }));
+  const relationalAppraisal = {
+    ...input.extraction.relationalAppraisal,
+    ...signals,
+    summary:
+      input.extraction.interactionActs.map((act) => act.act).join(', ') ||
+      'no_interaction_acts',
+    source: 'model',
+    confidence: input.extraction.confidence,
+    evidence,
+  };
+  const proposal = {
+    source: 'model',
+    rationale: 'CoE appraisal integrated into PAD and pair metrics.',
+    appraisal: relationalAppraisal,
+    padDelta: toPadDelta(input.emotionBefore, input.emotionAfter),
+    pairDelta: input.pairMetricDelta,
+    pairMetricDelta: input.pairMetricDelta,
+    reasonRefs: evidence.map((item) => item.key),
+    guardrailOverrides: input.guardrailOverrides,
+    confidence: input.extraction.confidence,
+    evidence,
+  };
+
+  return {
+    evidence,
+    relationalAppraisal,
+    proposal,
+    emotionBefore: input.emotionBefore,
+    emotionAfter: input.emotionAfter,
+    pairMetricsBefore: input.relationshipBefore,
+    pairMetricsAfter: input.relationshipAfter,
+    pairMetricDelta: input.pairMetricDelta,
+  };
+}
+
 export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnOutput> {
   const phaseEngine = createPhaseEngine(input.phaseGraph);
   const now = input.deps?.now?.() ?? new Date();
-  const coeEvidenceExtractorRunner =
+  const coeExtractorRunner =
     input.deps?.runCoEEvidenceExtractor ?? runCoEEvidenceExtractor;
   const plannerRunner = input.deps?.runPlanner ?? runPlanner;
   const generatorRunner = input.deps?.runGenerator ?? runGenerator;
@@ -115,7 +311,15 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     memoryStore: input.memoryStore,
   });
 
-  const coeExtractionResult = await coeEvidenceExtractorRunner({
+  const relationshipBefore: RelationshipMetrics = {
+    affinity: input.pairState.affinity,
+    trust: input.pairState.trust,
+    intimacyReadiness: input.pairState.intimacyReadiness,
+    conflict: input.pairState.conflict,
+  };
+  const emotionBeforeState = input.pairState.emotion;
+  const emotionBefore = emotionBeforeState.combined;
+  const coeExtractionResult = await coeExtractorRunner({
     userMessage: input.userMessage,
     recentDialogue: input.recentDialogue,
     currentPhase: input.currentPhase,
@@ -128,114 +332,41 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
       threads: retrievalResult.threads,
     },
     openThreads: retrievalResult.threads,
+    promptOverride: input.promptBundle.emotionAppraiserMd,
   });
-  const relationalAppraisal = buildRelationalAppraisalFromExtraction({
-    extraction: coeExtractionResult.extraction,
-    openThreads: retrievalResult.threads,
-    retrievedObservations: retrievalResult.observations,
-    workingMemory: input.workingMemory,
-    pairState: input.pairState,
-    currentPhase: input.currentPhase,
-  });
-  const appraisal = adaptRelationalAppraisalToLegacyAppraisal(relationalAppraisal);
-
-  const relationshipBefore = {
-    affinity: input.pairState.affinity,
-    trust: input.pairState.trust,
-    intimacyReadiness: input.pairState.intimacyReadiness,
-    conflict: input.pairState.conflict,
-  };
-  const emotionBeforeState = input.pairState.emotion;
-  const emotionBefore = emotionBeforeState.combined;
-  const coeIntegration = integrateCoEAppraisal({
+  const coeExtraction = coeExtractionResult.extraction;
+  const integratedEmotion = integrateCoEAppraisal({
     currentEmotion: input.pairState.emotion,
     currentMetrics: relationshipBefore,
-    appraisal: relationalAppraisal,
+    appraisal: coeExtraction.relationalAppraisal,
     emotionSpec: input.characterVersion.emotion,
     currentPhase: input.currentPhase,
     openThreads: retrievalResult.threads,
     turnsSinceLastUpdate: input.turnsSinceLastEmotionUpdate,
-    interactionActs: coeExtractionResult.extraction.interactionActs,
+    interactionActs: coeExtraction.interactionActs,
     now,
   });
-  const emotionAfterState = coeIntegration.after;
+  const emotionAfterState = integratedEmotion.after;
   const emotionAfter = emotionAfterState.combined;
-  const relationshipAfter = coeIntegration.relationshipAfter;
-  const coeContributions = coeIntegration.contributions;
-  const emotionTrace: EmotionTrace = EmotionTraceSchema.parse({
-    source: 'model',
-    evidence: relationalAppraisal.evidence,
-    relationalAppraisal,
-    proposal: {
-      source: 'model',
-      rationale: relationalAppraisal.summary,
-      appraisal: relationalAppraisal,
-      padDelta: {
-        pleasure: Number((emotionAfter.pleasure - emotionBefore.pleasure).toFixed(4)),
-        arousal: Number((emotionAfter.arousal - emotionBefore.arousal).toFixed(4)),
-        dominance: Number((emotionAfter.dominance - emotionBefore.dominance).toFixed(4)),
-      },
-      pairDelta: coeIntegration.pairDelta,
-      confidence: relationalAppraisal.confidence,
-      evidence: relationalAppraisal.evidence,
-    },
+  const relationshipAfter = integratedEmotion.relationshipAfter;
+  const appraisal = toAppraisalVector(coeExtraction.relationalAppraisal);
+  const coeContributions = integratedEmotion.contributions;
+  const emotionTrace = buildEmotionTrace({
+    extraction: coeExtraction,
     emotionBefore,
     emotionAfter,
-    pairMetricsBefore: relationshipBefore,
-    pairMetricsAfter: relationshipAfter,
-    pairMetricDelta: coeIntegration.pairDelta,
+    relationshipBefore,
+    relationshipAfter,
+    pairMetricDelta: integratedEmotion.pairDelta,
+    guardrailOverrides: integratedEmotion.appliedGuardrails,
   });
-  const legacyComparison: LegacyEmotionComparison | null = shouldCompareLegacyEmotionPath()
-    ? (() => {
-        const legacyAppraisal = computeAppraisal({
-          userMessage: input.userMessage,
-          characterVersion: input.characterVersion,
-          pairState: input.pairState,
-          workingMemory: input.workingMemory,
-          openThreads: retrievalResult.threads,
-          recentDialogue: input.recentDialogue,
-          currentPhase: input.currentPhase,
-          retrievedFacts: retrievalResult.facts,
-          retrievedEvents: retrievalResult.events,
-          retrievedObservations: retrievalResult.observations,
-        });
-        const legacyPadUpdate = updatePAD({
-          currentEmotion: input.pairState.emotion,
-          appraisal: legacyAppraisal,
-          emotionSpec: input.characterVersion.emotion,
-          hasOpenThreads: retrievalResult.threads.length > 0,
-          turnsSinceLastUpdate: input.turnsSinceLastEmotionUpdate,
-          now,
-        });
-        const legacyRelationshipAfter = updateRelationshipMetrics({
-          current: input.pairState,
-          appraisal: legacyAppraisal,
-          emotionBefore,
-          emotionAfter: legacyPadUpdate.after.combined,
-        });
-
-        return {
-          appraisal: legacyAppraisal,
-          emotionAfter: legacyPadUpdate.after.combined,
-          emotionStateAfter: legacyPadUpdate.after,
-          relationshipAfter: legacyRelationshipAfter,
-          relationshipDeltas: {
-            affinity: legacyRelationshipAfter.affinity - relationshipBefore.affinity,
-            trust: legacyRelationshipAfter.trust - relationshipBefore.trust,
-            intimacyReadiness:
-              legacyRelationshipAfter.intimacyReadiness -
-              relationshipBefore.intimacyReadiness,
-            conflict: legacyRelationshipAfter.conflict - relationshipBefore.conflict,
-          },
-          coeContributions: legacyPadUpdate.contributions,
-        };
-      })()
-    : null;
+  const legacyComparison = null;
   const agentEmotionContext = {
-    coeExtraction: coeExtractionResult.extraction,
+    coeExtraction,
     emotionTrace,
     legacyComparison,
-  };
+  } as any;
+
   const pairStateAfterUpdate: PairState = {
     ...input.pairState,
     activeCharacterVersionId: input.characterVersion.id,
@@ -402,8 +533,8 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
   const finalPairState: PairState = {
     ...pairStateForGeneration,
     openThreadCount: openThreadsAfterWrite.length,
-    lastTransitionAt: phaseIdBefore !== phaseIdAfter ? new Date() : input.pairState.lastTransitionAt,
-    updatedAt: new Date(),
+    lastTransitionAt: phaseIdBefore !== phaseIdAfter ? now : input.pairState.lastTransitionAt,
+    updatedAt: now,
   };
 
   const trace: TurnTrace = {
@@ -445,8 +576,8 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
       observations: retrievalResult.observations.map((observation) => observation.id),
       threads: retrievalResult.threads.map((thread) => thread.id),
     },
-    coeExtraction: coeExtractionResult.extraction,
-    emotionTrace,
+    coeExtraction,
+    emotionTrace: emotionTrace as any,
     legacyComparison,
     memoryThresholdDecisions: memoryWriteResult.thresholdDecisions,
     coeContributions,
@@ -456,7 +587,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     memoryWrites: memoryWriteResult.writes,
     userMessage: input.userMessage,
     assistantMessage,
-    createdAt: new Date(),
+    createdAt: now,
   };
 
   await input.persistence.persistTrace(trace);

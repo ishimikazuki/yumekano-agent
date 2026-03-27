@@ -1,8 +1,11 @@
 /**
- * Draft management utilities.
+ * Legacy draft management utilities.
  *
- * Drafts allow editing character versions before publishing.
- * A draft is a mutable working copy that becomes immutable once published.
+ * T7 defines the canonical draft flow as workspace-backed draft state stored in
+ * `workspace_draft_state` and published via `publishWorkspaceDraft`.
+ *
+ * This module is kept only as a deprecated compatibility boundary for older
+ * in-memory callers that have not been migrated yet.
  */
 
 import { v4 as uuid } from 'uuid';
@@ -38,10 +41,11 @@ export interface DraftVersion {
   updatedAt: string;
 }
 
-// In-memory draft storage (in production, this would be in the database)
+// Deprecated legacy in-memory draft storage.
 const drafts = new Map<string, DraftVersion>();
 
 /**
+ * @deprecated Use workspace-backed draft state instead.
  * Create a new draft from an existing version or from scratch.
  */
 export async function createDraft(input: {
@@ -83,6 +87,7 @@ export async function createDraft(input: {
 }
 
 /**
+ * @deprecated Use `workspaceRepo.getDraft` instead.
  * Get a draft by ID.
  */
 export function getDraft(draftId: string): DraftVersion | null {
@@ -90,6 +95,7 @@ export function getDraft(draftId: string): DraftVersion | null {
 }
 
 /**
+ * @deprecated Use workspace queries instead.
  * Get all drafts for a character.
  */
 export function getDraftsByCharacter(characterId: string): DraftVersion[] {
@@ -97,6 +103,7 @@ export function getDraftsByCharacter(characterId: string): DraftVersion[] {
 }
 
 /**
+ * @deprecated Use workspace-backed draft mutation instead.
  * Update a draft's data.
  */
 export function updateDraft(
@@ -122,6 +129,7 @@ export function updateDraft(
 }
 
 /**
+ * @deprecated Use workspace-backed draft deletion instead.
  * Delete a draft.
  */
 export function deleteDraft(draftId: string): boolean {
@@ -129,6 +137,7 @@ export function deleteDraft(draftId: string): boolean {
 }
 
 /**
+ * @deprecated Use workspace-backed draft comparison instead.
  * Check if a draft has unsaved changes compared to its base.
  */
 export async function hasChanges(draftId: string): Promise<boolean> {

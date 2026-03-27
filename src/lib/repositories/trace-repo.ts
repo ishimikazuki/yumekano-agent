@@ -2,7 +2,7 @@ import { getDb } from '../db/client';
 import { v4 as uuid } from 'uuid';
 import {
   CoEEvidenceExtractorResult,
-  EmotionTrace,
+  LegacyEmotionTrace,
   LegacyEmotionComparison,
   TurnTrace,
   TurnTraceSchema,
@@ -112,7 +112,7 @@ export const traceRepo = {
       threads: string[];
     };
     coeExtraction?: CoEEvidenceExtractorResult | null;
-    emotionTrace?: EmotionTrace | null;
+    emotionTrace?: LegacyEmotionTrace | null;
     legacyComparison?: LegacyEmotionComparison | null;
     memoryThresholdDecisions: MemoryThresholdDecision[];
     coeContributions: PADTransitionContribution[];

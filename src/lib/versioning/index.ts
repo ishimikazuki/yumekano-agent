@@ -12,10 +12,12 @@ export {
 
 // Publishing
 export {
+  publishWorkspaceDraft,
   publishDraft,
   createStagingRelease,
   getActiveVersion,
   canPublish,
+  type PublishWorkspaceOptions,
   type PublishOptions,
   type PublishResult,
 } from './publish';

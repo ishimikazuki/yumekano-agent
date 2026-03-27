@@ -150,6 +150,7 @@ export async function runDraftChatTurn(
     turnsSinceLastTransition: timing.turnsSinceLastTransition,
     daysSinceEntry: timing.daysSinceEntry,
     turnsSinceLastEmotionUpdate,
+    enableLegacyComparison: false,
     memoryStore: sandboxStore,
     persistence: {
       createTurnRecord: async ({

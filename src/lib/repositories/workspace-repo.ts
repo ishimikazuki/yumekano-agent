@@ -40,6 +40,7 @@ import {
   MemoryUsage,
   MemoryUsageSchema,
   PADState,
+  PromptBundleKey,
 } from '../schemas';
 
 const NEUTRAL_APPRAISAL = {
@@ -456,9 +457,11 @@ export const workspaceRepo = {
   async updatePrompt(
     workspaceId: string,
     promptKey:
+      | PromptBundleKey
       | 'planner'
       | 'generator'
       | 'generatorIntimacy'
+      | 'emotionAppraiser'
       | 'extractor'
       | 'reflector'
       | 'ranker',
@@ -467,9 +470,17 @@ export const workspaceRepo = {
     const db = getDb();
     const now = new Date().toISOString();
     const columnMap = {
+      plannerMd: 'planner_md',
+      generatorMd: 'generator_md',
+      generatorIntimacyMd: 'generator_intimacy_md',
+      emotionAppraiserMd: 'emotion_appraiser_md',
+      extractorMd: 'extractor_md',
+      reflectorMd: 'reflector_md',
+      rankerMd: 'ranker_md',
       planner: 'planner_md',
       generator: 'generator_md',
       generatorIntimacy: 'generator_intimacy_md',
+      emotionAppraiser: 'emotion_appraiser_md',
       extractor: 'extractor_md',
       reflector: 'reflector_md',
       ranker: 'ranker_md',

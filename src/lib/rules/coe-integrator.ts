@@ -114,17 +114,72 @@ function combineEmotion(
   };
 }
 
+function positive(value: number): number {
+  return Math.max(0, value);
+}
+
+function negative(value: number): number {
+  return Math.max(0, -value);
+}
+
 function toRelationalSignals(
   appraisal: RelationalAppraisal
 ): Record<RelationalAxis, number> {
+  const warmthSignal = clamp(
+    appraisal.warmthImpact - positive(appraisal.rejectionImpact) * 0.6 + negative(appraisal.rejectionImpact) * 0.3,
+    -1,
+    1
+  );
+  const reciprocitySignal = clamp(
+    appraisal.reciprocityImpact + appraisal.repairImpact * 0.2,
+    -1,
+    1
+  );
+  const safetySignal = clamp(
+    appraisal.respectImpact +
+      appraisal.boundarySignal * 0.4 -
+      positive(appraisal.threatImpact) * 0.8 -
+      positive(appraisal.pressureImpact) * 0.3 +
+      appraisal.repairImpact * 0.15 +
+      negative(appraisal.threatImpact) * 0.3 +
+      negative(appraisal.pressureImpact) * 0.2,
+    -1,
+    1
+  );
+  const boundaryRespect = clamp(
+    (appraisal.respectImpact + appraisal.boundarySignal) * 0.5 -
+      positive(appraisal.threatImpact) * 0.25 +
+      appraisal.repairImpact * 0.1 +
+      negative(appraisal.threatImpact) * 0.15,
+    -1,
+    1
+  );
+
   return {
-    warmthSignal: appraisal.warmthSignal,
-    reciprocitySignal: appraisal.reciprocitySignal,
-    safetySignal: appraisal.safetySignal,
-    boundaryRespect: appraisal.boundaryRespect,
-    pressureSignal: appraisal.pressureSignal,
-    repairSignal: appraisal.repairSignal,
-    intimacySignal: appraisal.intimacySignal,
+    warmthSignal,
+    reciprocitySignal,
+    safetySignal,
+    boundaryRespect,
+    pressureSignal: clamp(
+      positive(appraisal.pressureImpact) +
+        positive(appraisal.threatImpact) * 0.5 +
+        negative(appraisal.boundarySignal) * 0.35 +
+        positive(appraisal.rejectionImpact) * 0.25,
+      0,
+      1
+    ),
+    repairSignal: clamp(
+      appraisal.repairImpact - positive(appraisal.rejectionImpact) * 0.25,
+      -1,
+      1
+    ),
+    intimacySignal: clamp(
+      appraisal.intimacySignal -
+        positive(appraisal.threatImpact) * 0.15 -
+        positive(appraisal.pressureImpact) * 0.1,
+      -1,
+      1
+    ),
   };
 }
 
@@ -191,12 +246,13 @@ function getActIntensity(
 
 function getAppraisalStrength(appraisal: RelationalAppraisal): number {
   return Math.max(
-    Math.abs(appraisal.warmthSignal),
-    Math.abs(appraisal.reciprocitySignal),
-    Math.abs(appraisal.safetySignal),
-    Math.abs(appraisal.boundaryRespect),
-    appraisal.pressureSignal,
-    Math.abs(appraisal.repairSignal),
+    Math.abs(appraisal.warmthImpact),
+    Math.abs(appraisal.rejectionImpact),
+    Math.abs(appraisal.respectImpact),
+    Math.abs(appraisal.threatImpact),
+    Math.abs(appraisal.pressureImpact),
+    Math.abs(appraisal.repairImpact),
+    Math.abs(appraisal.reciprocityImpact),
     Math.abs(appraisal.intimacySignal)
   );
 }
@@ -240,24 +296,25 @@ function getGuardrails(input: {
 
   if (
     insultIntensity >= 0.3 ||
-    appraisal.warmthSignal <= -0.55 ||
-    (appraisal.safetySignal <= -0.4 && appraisal.pressureSignal >= 0.2)
+    appraisal.warmthImpact <= -0.55 ||
+    appraisal.respectImpact <= -0.55 ||
+    (appraisal.threatImpact >= 0.35 && appraisal.pressureImpact >= 0.2)
   ) {
     guardrails.add('insultShock');
   }
 
   if (
     apologyIntensity >= 0.25 ||
-    (appraisal.repairSignal >= 0.4 &&
-      appraisal.pressureSignal <= 0.25 &&
-      appraisal.warmthSignal >= -0.1)
+    (appraisal.repairImpact >= 0.4 &&
+      appraisal.pressureImpact <= 0.25 &&
+      appraisal.warmthImpact >= -0.1)
   ) {
     guardrails.add('apologyRepair');
   }
 
   if (
     pressureIntensity >= 0.35 ||
-    (appraisal.pressureSignal >= 0.45 &&
+    (appraisal.pressureImpact >= 0.45 &&
       (currentMetrics.conflict >= 12 ||
         openThreads.length > 0 ||
         currentEmotion.slowMood.arousal >= 0.15))
@@ -268,8 +325,8 @@ function getGuardrails(input: {
   if (
     (intimacyIntensity >= 0.35 || appraisal.intimacySignal >= 0.35) &&
     (currentPhase.adultIntimacyEligibility === 'never' ||
-      appraisal.boundaryRespect <= -0.3 ||
-      appraisal.pressureSignal >= 0.4 ||
+      appraisal.boundarySignal <= -0.3 ||
+      appraisal.pressureImpact >= 0.4 ||
       pressureIntensity >= 0.35)
   ) {
     guardrails.add('consentBoundary');

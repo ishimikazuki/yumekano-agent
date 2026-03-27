@@ -47,6 +47,7 @@ export const PromptBundleRefSchema = z.object({
   promptBundleVersionId: z.string().uuid(),
   plannerVariant: z.string().optional(),
   generatorVariant: z.string().optional(),
+  generatorIntimacyVariant: z.string().optional(),
   emotionAppraiserVariant: z.string().optional(),
   extractorVariant: z.string().optional(),
   reflectorVariant: z.string().optional(),

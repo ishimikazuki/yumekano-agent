@@ -13,7 +13,7 @@ import {
   type PADTransitionContribution,
 } from './emotion-state';
 import { CoEEvidenceExtractorResultSchema } from './coe-evidence-extractor';
-import { EmotionTraceSchema } from './emotion-contract';
+import { LegacyEmotionTraceSchema } from './emotion-contract';
 
 export {
   PADStateSchema,
@@ -73,6 +73,14 @@ export const CandidateSchema = z.object({
   }),
   rejected: z.boolean(),
   rejectionReason: z.string().nullable(),
+  deterministicGate: z
+    .object({
+      rejected: z.boolean(),
+      reason: z.string().nullable(),
+    })
+    .optional(),
+  scoreExplanation: z.string().optional(),
+  tieBreakNote: z.string().nullable().optional(),
 });
 export type Candidate = z.infer<typeof CandidateSchema>;
 
@@ -146,7 +154,7 @@ export const TurnTraceSchema = z.object({
     threads: z.array(z.string().uuid()),
   }),
   coeExtraction: CoEEvidenceExtractorResultSchema.nullable().optional(),
-  emotionTrace: EmotionTraceSchema.nullable().optional(),
+  emotionTrace: LegacyEmotionTraceSchema.nullable().optional(),
   legacyComparison: LegacyEmotionComparisonSchema.nullable().optional(),
   memoryThresholdDecisions: z.array(MemoryThresholdDecisionSchema),
   coeContributions: z.array(PADTransitionContributionSchema),

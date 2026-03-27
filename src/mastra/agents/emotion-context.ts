@@ -1,12 +1,12 @@
 import type {
   CoEEvidenceExtractorResult,
-  EmotionTrace,
+  LegacyEmotionTrace,
   LegacyEmotionComparison,
 } from '@/lib/schemas';
 
 export type AgentEmotionContext = {
   coeExtraction: CoEEvidenceExtractorResult;
-  emotionTrace: EmotionTrace;
+  emotionTrace: LegacyEmotionTrace;
   legacyComparison?: LegacyEmotionComparison | null;
 };
 
@@ -25,7 +25,7 @@ function formatInteractionActs(extraction: CoEEvidenceExtractorResult): string {
     .join('\n');
 }
 
-function formatEvidence(trace: EmotionTrace): string {
+function formatEvidence(trace: LegacyEmotionTrace): string {
   if (trace.evidence.length === 0) {
     return 'None';
   }

@@ -138,19 +138,31 @@ export {
 // Emotion contract schemas
 export {
   CoEEvidenceSourceSchema,
+  CoETargetSchema,
   CoEEvidenceSchema,
   PairMetricDeltaSchema,
   EmotionContractSourceSchema,
   RelationalAppraisalSchema,
+  EmotionStateDeltaSchema,
   EmotionUpdateProposalSchema,
   EmotionTraceSchema,
+  LegacyEvidenceItemSchema,
+  LegacyRelationalAppraisalSchema,
+  LegacyEmotionUpdateProposalSchema,
+  LegacyEmotionTraceSchema,
   type CoEEvidenceSource,
+  type CoETarget,
   type CoEEvidence,
   type PairMetricDelta,
   type EmotionContractSource,
   type RelationalAppraisal,
+  type EmotionStateDelta,
   type EmotionUpdateProposal,
   type EmotionTrace,
+  type LegacyEvidenceItem,
+  type LegacyRelationalAppraisal,
+  type LegacyEmotionUpdateProposal,
+  type LegacyEmotionTrace,
 } from './emotion-contract';
 
 // CoE evidence extractor schemas

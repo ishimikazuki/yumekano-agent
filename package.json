@@ -10,6 +10,9 @@
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "db:seed": "tsx src/lib/db/seed.ts",
     "test": "tsx --test tests/*.test.ts",
+    "test:unit": "npm test",
+    "test:integration": "tsx --test tests/execute-turn-coe-integration.test.ts tests/draft-chat-stateful.test.ts",
+    "test:migrations": "tsx --test tests/prompt-bundle-persistence.test.ts tests/eval-active-lock.test.ts",
     "test:chat-turn-integration": "tsx --test tests/execute-turn-coe-integration.test.ts",
     "test:draft-chat-stateful": "tsx --test tests/draft-chat-stateful.test.ts",
     "test:prompt-bundles": "tsx --test tests/draft-persistence.test.ts tests/prompt-bundle-persistence.test.ts",
@@ -17,6 +20,8 @@
     "test:coe-integrator": "tsx --test tests/coe-integrator.test.ts tests/feature-flags.test.ts tests/legacy-config-normalization.test.ts",
     "test:emotion-regression": "tsx --test tests/regression/*.test.ts",
     "evals:emotion-relationship": "tsx src/scripts/run-emotion-relationship-evals.ts",
+    "eval:emotion": "npm run evals:emotion-relationship",
+    "eval:full": "npm run evals:emotion-relationship",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

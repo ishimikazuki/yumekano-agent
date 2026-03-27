@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RelationalAppraisalSchema } from './emotion-contract';
 
 export const InteractionActTypeSchema = z.enum([
   'compliment',
@@ -79,6 +80,7 @@ export type ExtractedInteractionAct = z.infer<typeof ExtractedInteractionActSche
 
 export const CoEEvidenceExtractorResultSchema = z.object({
   interactionActs: z.array(ExtractedInteractionActSchema).min(1),
+  relationalAppraisal: RelationalAppraisalSchema,
   confidence: z.number().min(0).max(1),
   uncertaintyNotes: z.array(z.string()).default([]),
 });

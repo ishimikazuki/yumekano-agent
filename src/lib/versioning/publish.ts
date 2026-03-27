@@ -4,7 +4,13 @@
  * Publishing creates a new version from a draft and optionally activates it.
  */
 
-import { characterRepo, releaseRepo } from '../repositories';
+import {
+  characterRepo,
+  phaseGraphRepo,
+  promptBundleRepo,
+  releaseRepo,
+  workspaceRepo,
+} from '../repositories';
 import { preparePublishedPersona } from '../persona';
 import { getDraft, deleteDraft, type DraftVersion } from './drafts';
 import type { CharacterVersion, Release } from '../schemas';
@@ -19,10 +25,96 @@ export interface PublishResult {
   versionId: string;
   releaseId?: string;
   versionNumber: number;
+  createdAt?: Date;
   publishedAt?: Date;
 }
 
+export interface PublishWorkspaceOptions {
+  workspaceId: string;
+  label: string;
+  publishedBy: string;
+  activateImmediately?: boolean;
+}
+
 /**
+ * Canonical T7 publish flow: workspace draft -> version artifacts -> release.
+ */
+export async function publishWorkspaceDraft(
+  options: PublishWorkspaceOptions
+): Promise<PublishResult> {
+  const {
+    workspaceId,
+    label,
+    publishedBy,
+    activateImmediately = true,
+  } = options;
+  const workspace = await workspaceRepo.getWithDraft(workspaceId);
+
+  if (!workspace) {
+    throw new Error(`Workspace ${workspaceId} not found`);
+  }
+
+  validateWorkspaceDraftForPublish(workspace.draft);
+
+  const phaseGraphVersion = await phaseGraphRepo.create({
+    characterId: workspace.characterId,
+    graph: workspace.draft.phaseGraph,
+  });
+  const promptBundleVersion = await promptBundleRepo.create({
+    characterId: workspace.characterId,
+    prompts: workspace.draft.prompts,
+  });
+  const persona = await preparePublishedPersona(workspace.draft.persona);
+  const newVersion = await characterRepo.createVersion({
+    characterId: workspace.characterId,
+    persona,
+    style: workspace.draft.style,
+    autonomy: workspace.draft.autonomy,
+    emotion: workspace.draft.emotion,
+    memory: workspace.draft.memory,
+    phaseGraphVersionId: phaseGraphVersion.id,
+    promptBundleVersionId: promptBundleVersion.id,
+    createdBy: publishedBy,
+    status: activateImmediately ? 'published' : 'draft',
+    label,
+    parentVersionId: workspace.draft.baseVersionId,
+  });
+
+  const result: PublishResult = {
+    versionId: newVersion.id,
+    versionNumber: newVersion.versionNumber,
+    createdAt: newVersion.createdAt,
+  };
+
+  if (activateImmediately) {
+    await characterRepo.archivePublishedVersionsExcept(
+      workspace.characterId,
+      newVersion.id
+    );
+
+    const release = await releaseRepo.create({
+      characterId: workspace.characterId,
+      characterVersionId: newVersion.id,
+      channel: 'prod',
+      publishedBy,
+    });
+
+    result.releaseId = release.id;
+    result.publishedAt = release.publishedAt;
+  }
+
+  await workspaceRepo.updateDraftSection(workspaceId, 'baseVersionId', newVersion.id);
+  await characterRepo.updateDisplayName(
+    workspace.characterId,
+    workspace.draft.identity.displayName
+  );
+
+  return result;
+}
+
+/**
+ * @deprecated Legacy in-memory draft publishing path kept only for compatibility.
+ * Canonical publish now runs through `publishWorkspaceDraft`.
  * Publish a draft as a new immutable version.
  */
 export async function publishDraft(options: PublishOptions): Promise<PublishResult> {
@@ -55,6 +147,7 @@ export async function publishDraft(options: PublishOptions): Promise<PublishResu
   const result: PublishResult = {
     versionId: newVersion.id,
     versionNumber: newVersion.versionNumber,
+    createdAt: newVersion.createdAt,
   };
 
   // Create release record and activate
@@ -74,6 +167,25 @@ export async function publishDraft(options: PublishOptions): Promise<PublishResu
   deleteDraft(draftId);
 
   return result;
+}
+
+function validateWorkspaceDraftForPublish(draft: {
+  persona: { summary: string };
+  identity: { displayName: string };
+}): void {
+  const errors: string[] = [];
+
+  if (!draft.identity.displayName || draft.identity.displayName.trim() === '') {
+    errors.push('Character display name is required');
+  }
+
+  if (!draft.persona.summary || draft.persona.summary.trim() === '') {
+    errors.push('Character summary is required');
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Draft validation failed:\n${errors.join('\n')}`);
+  }
 }
 
 /**
@@ -145,6 +257,8 @@ export async function getActiveVersion(
 }
 
 /**
+ * @deprecated Legacy in-memory draft compatibility check.
+ * Canonical publish readiness should be checked from the workspace draft.
  * Check if a version can be published (all dependencies exist).
  */
 export async function canPublish(draftId: string): Promise<{

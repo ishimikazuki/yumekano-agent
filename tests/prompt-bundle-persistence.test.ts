@@ -6,7 +6,11 @@ import test from 'node:test';
 import { getDb } from '@/lib/db/client';
 import { createSeiraDraftState } from '@/lib/db/seed-seira';
 import { promptBundleRepo, workspaceRepo } from '@/lib/repositories';
-import { buildPromptBundleContent } from '@/lib/schemas';
+import {
+  buildPromptBundleContent,
+  buildPromptBundleVersion,
+  PromptBundleRefSchema,
+} from '@/lib/schemas';
 
 async function setupPromptBundleDb() {
   const tempDir = mkdtempSync(path.join(tmpdir(), 'yumekano-prompt-bundle-'));
@@ -181,4 +185,62 @@ test('prompt bundle repo round-trips canonical prompts and backfills legacy rows
   } finally {
     await cleanup();
   }
+});
+
+test('workspace prompt editing accepts canonical prompt keys and runtime loading preserves the canonical bundle shape', async () => {
+  const { cleanup } = await setupPromptBundleDb();
+
+  try {
+    const workspace = await workspaceRepo.create({
+      characterId: '22222222-2222-4222-8222-222222222222',
+      name: 'Prompt Editing',
+      createdBy: 'tester',
+    });
+
+    await workspaceRepo.initDraft(workspace.id, createSeiraDraftState());
+    await workspaceRepo.updatePrompt(
+      workspace.id,
+      'generatorIntimacyMd' as never,
+      'UPDATED INTIMACY PROMPT'
+    );
+    await workspaceRepo.updatePrompt(
+      workspace.id,
+      'emotionAppraiserMd' as never,
+      'UPDATED EMOTION APPRAISER PROMPT'
+    );
+
+    const loaded = await workspaceRepo.getDraft(workspace.id);
+    assert.ok(loaded);
+    assert.equal(loaded?.prompts.generatorIntimacyMd, 'UPDATED INTIMACY PROMPT');
+    assert.equal(
+      loaded?.prompts.emotionAppraiserMd,
+      'UPDATED EMOTION APPRAISER PROMPT'
+    );
+
+    const runtimeBundle = buildPromptBundleVersion({
+      id: workspace.id,
+      characterId: workspace.characterId,
+      versionNumber: 1,
+      createdAt: workspace.updatedAt,
+      prompts: loaded?.prompts ?? {},
+    });
+    assert.equal(runtimeBundle.generatorIntimacyMd, 'UPDATED INTIMACY PROMPT');
+    assert.equal(
+      runtimeBundle.emotionAppraiserMd,
+      'UPDATED EMOTION APPRAISER PROMPT'
+    );
+  } finally {
+    await cleanup();
+  }
+});
+
+test('prompt bundle ref schema keeps generator intimacy and CoE appraiser variants in the canonical shape', () => {
+  const ref = PromptBundleRefSchema.parse({
+    promptBundleVersionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    generatorIntimacyVariant: 'intimacy-v2',
+    emotionAppraiserVariant: 'coe-v2',
+  });
+
+  assert.equal((ref as any).generatorIntimacyVariant, 'intimacy-v2');
+  assert.equal(ref.emotionAppraiserVariant, 'coe-v2');
 });

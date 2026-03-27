@@ -140,6 +140,8 @@ export const characterRepo = {
     promptBundleVersionId: string;
     createdBy: string;
     status?: CharacterVersionStatus;
+    label?: string;
+    parentVersionId?: string | null;
   }): Promise<CharacterVersion> {
     const db = getDb();
     const id = uuid();
@@ -154,12 +156,13 @@ export const characterRepo = {
 
     await db.execute({
       sql: `INSERT INTO character_versions
-            (id, character_id, version_number, status, persona_json, style_json, autonomy_json, emotion_json, memory_policy_json, phase_graph_version_id, prompt_bundle_version_id, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (id, character_id, version_number, label, status, persona_json, style_json, autonomy_json, emotion_json, memory_policy_json, phase_graph_version_id, prompt_bundle_version_id, created_by, created_at, parent_version_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         id,
         input.characterId,
         versionNumber,
+        input.label,
         input.status ?? 'draft',
         JSON.stringify(input.persona),
         JSON.stringify(input.style),
@@ -170,6 +173,7 @@ export const characterRepo = {
         input.promptBundleVersionId,
         input.createdBy,
         now,
+        input.parentVersionId ?? null,
       ],
     });
 
@@ -177,6 +181,7 @@ export const characterRepo = {
       id,
       characterId: input.characterId,
       versionNumber,
+      label: input.label,
       status: input.status ?? 'draft',
       persona: input.persona,
       style: input.style,
@@ -187,6 +192,7 @@ export const characterRepo = {
       promptBundleVersionId: input.promptBundleVersionId,
       createdBy: input.createdBy,
       createdAt: now,
+      parentVersionId: input.parentVersionId ?? null,
     });
   },
 
@@ -241,6 +247,30 @@ export const characterRepo = {
     await db.execute({
       sql: `UPDATE character_versions SET persona_json = ? WHERE id = ?`,
       args: [JSON.stringify(persona), id],
+    });
+  },
+
+  /**
+   * Archive all other published versions for a character.
+   */
+  async archivePublishedVersionsExcept(characterId: string, keepVersionId: string): Promise<void> {
+    const db = getDb();
+    await db.execute({
+      sql: `UPDATE character_versions
+            SET status = 'archived'
+            WHERE character_id = ? AND id != ? AND status = 'published'`,
+      args: [characterId, keepVersionId],
+    });
+  },
+
+  /**
+   * Update the character display name.
+   */
+  async updateDisplayName(id: string, displayName: string): Promise<void> {
+    const db = getDb();
+    await db.execute({
+      sql: `UPDATE characters SET display_name = ? WHERE id = ?`,
+      args: [displayName, id],
     });
   },
 

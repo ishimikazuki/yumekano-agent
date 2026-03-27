@@ -13,16 +13,16 @@ import type {
   WorkingMemory,
 } from '../schemas';
 import {
-  CoEEvidenceSchema,
-  EmotionTraceSchema,
-  EmotionUpdateProposalSchema,
+  LegacyEvidenceItemSchema,
+  LegacyEmotionTraceSchema,
+  LegacyEmotionUpdateProposalSchema,
   PairMetricDeltaSchema,
-  RelationalAppraisalSchema,
-  type CoEEvidence,
-  type EmotionTrace,
-  type EmotionUpdateProposal,
+  LegacyRelationalAppraisalSchema,
+  type LegacyEvidenceItem,
+  type LegacyEmotionTrace,
+  type LegacyEmotionUpdateProposal,
   type PairMetricDelta,
-  type RelationalAppraisal,
+  type LegacyRelationalAppraisal,
 } from '../schemas';
 
 const ZERO_PAD: PADState = {
@@ -66,7 +66,7 @@ const POLARITY_MULTIPLIER: Record<ExtractedInteractionAct['polarity'], number> =
 };
 const ACT_AXIS_WEIGHTS: Record<
   ExtractedInteractionAct['act'],
-  Omit<RelationalAppraisal, 'source' | 'summary' | 'confidence' | 'evidence'>
+  Omit<LegacyRelationalAppraisal, 'source' | 'summary' | 'confidence' | 'evidence'>
 > = {
   compliment: {
     warmthSignal: 0.95,
@@ -220,12 +220,12 @@ function parseLooseObject(raw: unknown, label: string): Record<string, unknown> 
   });
 }
 
-function parseEvidenceArray(raw: unknown): CoEEvidence[] {
+function parseEvidenceArray(raw: unknown): LegacyEvidenceItem[] {
   if (raw === undefined) {
     return [];
   }
 
-  return z.array(z.unknown()).parse(raw).map(parseCoEEvidenceModelOutput);
+  return z.array(z.unknown()).parse(raw).map(parseLegacyEvidenceItemModelOutput);
 }
 
 function parsePadStateLike(raw: unknown, defaults: PADState = ZERO_PAD): PADState {
@@ -300,7 +300,7 @@ function mapEvidenceSpanSource(source: EvidenceSpanSource) {
   }
 }
 
-function summarizeModelRelationalAppraisal(appraisal: RelationalAppraisal): string {
+function summarizeModelLegacyRelationalAppraisal(appraisal: LegacyRelationalAppraisal): string {
   if (appraisal.pressureSignal >= 0.45 && appraisal.boundaryRespect <= -0.2) {
     return 'Model extraction detected pressure that conflicts with current boundaries.';
   }
@@ -321,12 +321,12 @@ function summarizeModelRelationalAppraisal(appraisal: RelationalAppraisal): stri
 
 export function adaptCoEExtractionToEvidence(
   extraction: CoEEvidenceExtractorResult
-): CoEEvidence[] {
+): LegacyEvidenceItem[] {
   return extraction.interactionActs.map((act, index) => {
     const primarySpan = act.evidenceSpans[0];
     const polaritySign = POLARITY_MULTIPLIER[act.polarity];
 
-    return CoEEvidenceSchema.parse({
+    return LegacyEvidenceItemSchema.parse({
       source: mapEvidenceSpanSource(primarySpan.source),
       key: `${act.act}_${index}`,
       summary: `${act.act} toward ${act.target}: ${primarySpan.text}`,
@@ -337,14 +337,14 @@ export function adaptCoEExtractionToEvidence(
   });
 }
 
-export function buildRelationalAppraisalFromExtraction(input: {
+export function buildLegacyRelationalAppraisalFromExtraction(input: {
   extraction: CoEEvidenceExtractorResult;
   openThreads?: Array<{ severity: number }>;
   retrievedObservations?: MemoryObservation[];
   workingMemory?: WorkingMemory | null;
   pairState?: PairState | null;
   currentPhase?: Pick<PhaseNode, 'adultIntimacyEligibility'> | null;
-}): RelationalAppraisal {
+}): LegacyRelationalAppraisal {
   const totals = {
     warmthSignal: 0,
     reciprocitySignal: 0,
@@ -395,7 +395,7 @@ export function buildRelationalAppraisalFromExtraction(input: {
     totals.safetySignal -= 0.05;
   }
 
-  const relational = RelationalAppraisalSchema.parse({
+  const relational = LegacyRelationalAppraisalSchema.parse({
     source: 'model',
     summary: 'placeholder',
     warmthSignal: clamp(round(totals.warmthSignal), -1, 1),
@@ -411,12 +411,12 @@ export function buildRelationalAppraisalFromExtraction(input: {
 
   return {
     ...relational,
-    summary: summarizeModelRelationalAppraisal(relational),
+    summary: summarizeModelLegacyRelationalAppraisal(relational),
   };
 }
 
-function buildLegacyEvidence(appraisal: AppraisalVector): CoEEvidence[] {
-  const candidates: Array<CoEEvidence | null> = [
+function buildLegacyEvidence(appraisal: AppraisalVector): LegacyEvidenceItem[] {
+  const candidates: Array<LegacyEvidenceItem | null> = [
     Math.abs(appraisal.goalCongruence) >= 0.15
       ? {
           source: 'legacy_appraisal',
@@ -482,11 +482,11 @@ function buildLegacyEvidence(appraisal: AppraisalVector): CoEEvidence[] {
   ];
 
   return candidates
-    .filter((candidate): candidate is CoEEvidence => Boolean(candidate))
-    .map((candidate) => CoEEvidenceSchema.parse(candidate));
+    .filter((candidate): candidate is LegacyEvidenceItem => Boolean(candidate))
+    .map((candidate) => LegacyEvidenceItemSchema.parse(candidate));
 }
 
-function summarizeRelationalAppraisal(appraisal: RelationalAppraisal): string {
+function summarizeLegacyRelationalAppraisal(appraisal: LegacyRelationalAppraisal): string {
   if (appraisal.pressureSignal >= 0.35) {
     return 'Adapted from the legacy heuristic path with pressure as the dominant signal.';
   }
@@ -502,9 +502,9 @@ function summarizeRelationalAppraisal(appraisal: RelationalAppraisal): string {
   return 'Adapted from the legacy heuristic path with mixed relational signals.';
 }
 
-export function adaptLegacyAppraisalToRelationalAppraisal(
+export function adaptLegacyAppraisalToLegacyRelationalAppraisal(
   appraisal: AppraisalVector
-): RelationalAppraisal {
+): LegacyRelationalAppraisal {
   const safetySignal = clamp(
     centeredSignal(appraisal.controllability) * 0.4 +
       centeredSignal(appraisal.certainty) * 0.2 +
@@ -530,7 +530,7 @@ export function adaptLegacyAppraisalToRelationalAppraisal(
     1
   );
 
-  const relational = RelationalAppraisalSchema.parse({
+  const relational = LegacyRelationalAppraisalSchema.parse({
     source: 'legacy_heuristic',
     summary: 'placeholder',
     warmthSignal: appraisal.goalCongruence,
@@ -546,12 +546,12 @@ export function adaptLegacyAppraisalToRelationalAppraisal(
 
   return {
     ...relational,
-    summary: summarizeRelationalAppraisal(relational),
+    summary: summarizeLegacyRelationalAppraisal(relational),
   };
 }
 
-export function adaptRelationalAppraisalToLegacyAppraisal(
-  appraisal: RelationalAppraisal
+export function adaptLegacyRelationalAppraisalToLegacyAppraisal(
+  appraisal: LegacyRelationalAppraisal
 ): AppraisalVector {
   return {
     goalCongruence: clamp(
@@ -610,14 +610,14 @@ export function adaptLegacyEmotionUpdateProposal(input: {
   emotionAfter: PADState;
   pairMetricsBefore: RelationshipMetrics;
   pairMetricsAfter: RelationshipMetrics;
-}): EmotionUpdateProposal {
-  const relationalAppraisal = adaptLegacyAppraisalToRelationalAppraisal(input.appraisal);
+}): LegacyEmotionUpdateProposal {
+  const relationalAppraisal = adaptLegacyAppraisalToLegacyRelationalAppraisal(input.appraisal);
   const pairDelta = adaptLegacyPairMetricDelta({
     before: input.pairMetricsBefore,
     after: input.pairMetricsAfter,
   });
 
-  return EmotionUpdateProposalSchema.parse({
+  return LegacyEmotionUpdateProposalSchema.parse({
     source: 'legacy_heuristic',
     rationale: 'Adapted from the existing heuristic appraisal and PAD update path.',
     appraisal: relationalAppraisal,
@@ -639,14 +639,14 @@ export function adaptLegacyEmotionTrace(input: {
   pairMetricsBefore: RelationshipMetrics;
   pairMetricsAfter: RelationshipMetrics;
   coeContributions?: PADTransitionContribution[];
-}): EmotionTrace {
-  const relationalAppraisal = adaptLegacyAppraisalToRelationalAppraisal(input.appraisal);
+}): LegacyEmotionTrace {
+  const relationalAppraisal = adaptLegacyAppraisalToLegacyRelationalAppraisal(input.appraisal);
   const proposal = adaptLegacyEmotionUpdateProposal(input);
   const evidence =
     relationalAppraisal.evidence.length > 0
       ? relationalAppraisal.evidence
       : input.coeContributions?.slice(0, 2).map((contribution) =>
-          CoEEvidenceSchema.parse({
+          LegacyEvidenceItemSchema.parse({
             source: 'legacy_appraisal',
             key: `${contribution.axis}_${contribution.source}`,
             summary: contribution.reason,
@@ -656,7 +656,7 @@ export function adaptLegacyEmotionTrace(input: {
           })
         ) ?? [];
 
-  return EmotionTraceSchema.parse({
+  return LegacyEmotionTraceSchema.parse({
     source: 'legacy_heuristic',
     evidence,
     relationalAppraisal: {
@@ -678,9 +678,9 @@ export function adaptLegacyEmotionTrace(input: {
   });
 }
 
-export function parseCoEEvidenceModelOutput(raw: unknown): CoEEvidence {
+export function parseLegacyEvidenceItemModelOutput(raw: unknown): LegacyEvidenceItem {
   const candidate = parseLooseObject(raw, 'coe_evidence');
-  return CoEEvidenceSchema.parse({
+  return LegacyEvidenceItemSchema.parse({
     source: candidate.source ?? 'model_inference',
     key: candidate.key ?? 'unspecified',
     summary: candidate.summary ?? 'No evidence summary provided.',
@@ -690,10 +690,10 @@ export function parseCoEEvidenceModelOutput(raw: unknown): CoEEvidence {
   });
 }
 
-export function parseRelationalAppraisalModelOutput(raw: unknown): RelationalAppraisal {
+export function parseLegacyRelationalAppraisalModelOutput(raw: unknown): LegacyRelationalAppraisal {
   const candidate = parseLooseObject(raw, 'relational_appraisal');
 
-  return RelationalAppraisalSchema.parse({
+  return LegacyRelationalAppraisalSchema.parse({
     source: candidate.source ?? 'model',
     summary: candidate.summary ?? 'No relational appraisal summary provided.',
     warmthSignal: candidate.warmthSignal ?? 0,
@@ -708,14 +708,14 @@ export function parseRelationalAppraisalModelOutput(raw: unknown): RelationalApp
   });
 }
 
-export function parseEmotionUpdateProposalModelOutput(
+export function parseLegacyEmotionUpdateProposalModelOutput(
   raw: unknown
-): EmotionUpdateProposal {
+): LegacyEmotionUpdateProposal {
   const candidate = parseLooseObject(raw, 'emotion_update_proposal');
-  const appraisal = parseRelationalAppraisalModelOutput(candidate.appraisal ?? {});
+  const appraisal = parseLegacyRelationalAppraisalModelOutput(candidate.appraisal ?? {});
   const evidence = parseEvidenceArray(candidate.evidence ?? appraisal.evidence);
 
-  return EmotionUpdateProposalSchema.parse({
+  return LegacyEmotionUpdateProposalSchema.parse({
     source: candidate.source ?? 'model',
     rationale: candidate.rationale ?? 'No emotion update rationale provided.',
     appraisal: {
@@ -729,9 +729,9 @@ export function parseEmotionUpdateProposalModelOutput(
   });
 }
 
-export function parseEmotionTraceModelOutput(raw: unknown): EmotionTrace {
+export function parseLegacyEmotionTraceModelOutput(raw: unknown): LegacyEmotionTrace {
   const candidate = parseLooseObject(raw, 'emotion_trace');
-  const relationalAppraisal = parseRelationalAppraisalModelOutput(
+  const relationalAppraisal = parseLegacyRelationalAppraisalModelOutput(
     candidate.relationalAppraisal ?? {}
   );
   const proposalCandidate =
@@ -739,13 +739,13 @@ export function parseEmotionTraceModelOutput(raw: unknown): EmotionTrace {
   const evidence = parseEvidenceArray(
     candidate.evidence ?? proposalCandidate.evidence ?? relationalAppraisal.evidence
   );
-  const proposal = parseEmotionUpdateProposalModelOutput({
+  const proposal = parseLegacyEmotionUpdateProposalModelOutput({
     ...proposalCandidate,
     appraisal: proposalCandidate.appraisal ?? relationalAppraisal,
     evidence,
   });
 
-  return EmotionTraceSchema.parse({
+  return LegacyEmotionTraceSchema.parse({
     source: candidate.source ?? proposal.source,
     evidence,
     relationalAppraisal: {

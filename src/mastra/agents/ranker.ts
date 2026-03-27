@@ -82,10 +82,16 @@ export type RankerOutput = {
   systemPromptHash: string;
 };
 
-type DeterministicGuardResult = {
+export type DeterministicGuardResult = {
   index: number;
   rejected: boolean;
   reason: string | null;
+};
+
+type RankerWinnerSelection = {
+  winnerIndex: number;
+  tieBreakReason: string | null;
+  selectedBy: 'judge' | 'score-fallback' | 'all-rejected-fallback';
 };
 
 type CandidateScorerAggregate = {
@@ -426,6 +432,100 @@ function findMemoryContradiction(
   return null;
 }
 
+export function buildModelRankingShortlist(
+  deterministicJudgments: DeterministicGuardResult[]
+): {
+  shortlistedIndices: number[];
+  removedIndices: number[];
+} {
+  return {
+    shortlistedIndices: deterministicJudgments
+      .filter((judgment) => !judgment.rejected)
+      .map((judgment) => judgment.index),
+    removedIndices: deterministicJudgments
+      .filter((judgment) => judgment.rejected)
+      .map((judgment) => judgment.index),
+  };
+}
+
+export function buildCandidateScoreExplanation(input: {
+  deterministic: DeterministicGuardResult;
+  scorerIssues: string[];
+  judgeNotes?: string | null;
+}): string {
+  if (input.deterministic.rejected) {
+    return `deterministic gate: ${input.deterministic.reason ?? 'rejected'}`;
+  }
+
+  const explanationParts: string[] = [];
+  if (input.judgeNotes && input.judgeNotes.trim().length > 0) {
+    explanationParts.push(`judge: ${input.judgeNotes.trim()}`);
+  }
+  if (input.scorerIssues.length > 0) {
+    explanationParts.push(`scorer issues: ${input.scorerIssues.join(' / ')}`);
+  }
+
+  return explanationParts.length > 0 ? explanationParts.join(' | ') : 'no major issues';
+}
+
+export function resolveRankerWinnerWithTieBreak(input: {
+  candidates: Candidate[];
+  judgeWinnerIndex: number | null;
+}): RankerWinnerSelection {
+  const viableCandidates = input.candidates
+    .filter((candidate) => !candidate.rejected)
+    .sort((a, b) => b.scores.overall - a.scores.overall || a.index - b.index);
+
+  const topScore = viableCandidates[0]?.scores.overall;
+  const tiedTopCandidates =
+    topScore === undefined
+      ? []
+      : viableCandidates.filter((candidate) => candidate.scores.overall === topScore);
+
+  const judgeWinner =
+    input.judgeWinnerIndex === null
+      ? null
+      : input.candidates.find((candidate) => candidate.index === input.judgeWinnerIndex) ?? null;
+  if (judgeWinner && !judgeWinner.rejected) {
+    const tieBreakReason =
+      tiedTopCandidates.length > 1 &&
+      tiedTopCandidates.some((candidate) => candidate.index === judgeWinner.index)
+        ? `top-score tie resolved by judge preference among indices ${tiedTopCandidates
+            .map((candidate) => candidate.index)
+            .join(', ')}`
+        : null;
+    return {
+      winnerIndex: judgeWinner.index,
+      tieBreakReason,
+      selectedBy: 'judge',
+    };
+  }
+
+  if (viableCandidates.length > 0) {
+    const tieBreakReason =
+      tiedTopCandidates.length > 1
+        ? `top-score tie resolved by lowest index among ${tiedTopCandidates
+            .map((candidate) => candidate.index)
+            .join(', ')}`
+        : null;
+    return {
+      winnerIndex: viableCandidates[0].index,
+      tieBreakReason,
+      selectedBy: 'score-fallback',
+    };
+  }
+
+  const fallback = input.candidates
+    .slice()
+    .sort((a, b) => b.scores.overall - a.scores.overall || a.index - b.index)[0];
+
+  return {
+    winnerIndex: fallback?.index ?? 0,
+    tieBreakReason: null,
+    selectedBy: 'all-rejected-fallback',
+  };
+}
+
 export async function runRanker(input: RankerInput): Promise<RankerOutput> {
   const registry = getProviderRegistry();
   const model = registry.getModel('analysisMedium');
@@ -441,16 +541,34 @@ export async function runRanker(input: RankerInput): Promise<RankerOutput> {
   );
 
   const systemPrompt = buildRankerSystemPrompt(input);
-  const userPrompt = buildRankerUserPrompt(input, scorerResults, deterministicJudgments);
+  const shortlist = buildModelRankingShortlist(deterministicJudgments);
 
-  const judgeResult = await generateObject({
-    model,
-    schema: RankerOutputSchema,
-    system: systemPrompt,
-    prompt: userPrompt,
-  });
+  let judgeWinnerIndex: number | null = null;
+  let judgeGlobalNotes = '';
+  let judgeCards = new Map<number, z.infer<typeof ScorecardSchema>>();
 
-  const judgeCards = new Map(judgeResult.object.scorecards.map((card) => [card.index, card]));
+  if (shortlist.shortlistedIndices.length > 0) {
+    const userPrompt = buildRankerUserPrompt(
+      input,
+      scorerResults,
+      deterministicJudgments,
+      shortlist.shortlistedIndices
+    );
+
+    const judgeResult = await generateObject({
+      model,
+      schema: RankerOutputSchema,
+      system: systemPrompt,
+      prompt: userPrompt,
+    });
+
+    judgeWinnerIndex = judgeResult.object.winnerIndex;
+    judgeGlobalNotes = judgeResult.object.globalNotes;
+    judgeCards = new Map(judgeResult.object.scorecards.map((card) => [card.index, card]));
+  } else {
+    judgeGlobalNotes = 'All candidates were removed before model ranking by deterministic gates.';
+  }
+
   const candidates: Candidate[] = input.candidates.map((candidate, index) => {
     const scorer = scorerResults[index];
     const judge = judgeCards.get(index);
@@ -483,27 +601,47 @@ export async function runRanker(input: RankerInput): Promise<RankerOutput> {
       },
       rejected: baseRejected,
       rejectionReason,
+      deterministicGate: {
+        rejected: deterministicJudgments[index].rejected,
+        reason: deterministicJudgments[index].reason,
+      },
+      scoreExplanation: buildCandidateScoreExplanation({
+        deterministic: deterministicJudgments[index],
+        scorerIssues: scorer.issues,
+        judgeNotes: judge?.notes ?? null,
+      }),
+      tieBreakNote: null,
     };
   });
 
-  const viableCandidates = candidates
-    .filter((candidate) => !candidate.rejected)
-    .sort((a, b) => b.scores.overall - a.scores.overall || a.index - b.index);
+  const winnerSelection = resolveRankerWinnerWithTieBreak({
+    candidates,
+    judgeWinnerIndex,
+  });
+  const winnerIndex = winnerSelection.winnerIndex;
+  const annotatedCandidates = candidates.map((candidate) =>
+    candidate.index === winnerIndex
+      ? { ...candidate, tieBreakNote: winnerSelection.tieBreakReason }
+      : candidate
+  );
 
-  const judgeWinner = candidates.find((candidate) => candidate.index === judgeResult.object.winnerIndex);
-  const winnerIndex =
-    judgeWinner && !judgeWinner.rejected
-      ? judgeWinner.index
-      : viableCandidates[0]?.index ??
-        candidates
-          .slice()
-          .sort((a, b) => b.scores.overall - a.scores.overall || a.index - b.index)[0]?.index ??
-        0;
+  const globalNotes = [
+    judgeGlobalNotes,
+    shortlist.removedIndices.length > 0
+      ? `Deterministic gates removed candidates before model ranking: ${shortlist.removedIndices.join(', ')}`
+      : 'Deterministic gates removed no candidates before model ranking.',
+    winnerSelection.tieBreakReason
+      ? `Tie-break: ${winnerSelection.tieBreakReason}`
+      : 'Tie-break: not needed.',
+    `Winner selection: ${winnerSelection.selectedBy}`,
+  ]
+    .filter((line) => line.trim().length > 0)
+    .join('\n');
 
   return {
     winnerIndex,
-    candidates,
-    globalNotes: judgeResult.object.globalNotes,
+    candidates: annotatedCandidates,
+    globalNotes,
     modelId: `${modelInfo.provider}/${modelInfo.modelId}`,
     systemPromptHash: hashPrompt(systemPrompt),
   };
@@ -743,7 +881,8 @@ Return concise Japanese notes in \`notes\` and \`globalNotes\`.`,
 function buildRankerUserPrompt(
   input: RankerInput,
   scorerResults: CandidateScorerAggregate[],
-  deterministicJudgments: DeterministicGuardResult[]
+  deterministicJudgments: DeterministicGuardResult[],
+  candidateIndices: number[]
 ): string {
   const {
     pairState,
@@ -778,7 +917,11 @@ function buildRankerUserPrompt(
       ? retrievedMemory.observations.map((observation) => `- ${observation.id}: ${observation.summary}`).join('\n')
       : 'None';
 
-  const candidateBlocks = candidates.map((candidate, index) => {
+  const candidateBlocks = candidateIndices.map((index) => {
+    const candidate = candidates[index];
+    if (!candidate) {
+      return `### Candidate ${index}\nmissing candidate`;
+    }
     const scorer = scorerResults[index];
     const deterministic = deterministicJudgments[index];
     return `### Candidate ${index}

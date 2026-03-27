@@ -642,7 +642,8 @@ export async function runMigrations() {
           const commentIndex = line.indexOf('--');
           return commentIndex >= 0 ? line.slice(0, commentIndex) : line;
         })
-        .join('\n');
+        .join('\n')
+        .replaceAll('DEFAULT now()', 'DEFAULT CURRENT_TIMESTAMP');
 
       const statements = cleanedSql
         .split(';')
@@ -651,6 +652,30 @@ export async function runMigrations() {
 
       for (const statement of statements) {
         console.log(`Executing: ${statement.slice(0, 50)}...`);
+
+        const addColumnIfMissingMatch = statement.match(
+          /^ALTER TABLE\s+(\S+)\s+ADD COLUMN IF NOT EXISTS\s+(\S+)\s+(.+)$/i
+        );
+        const addColumnMatch =
+          addColumnIfMissingMatch ??
+          statement.match(/^ALTER TABLE\s+(\S+)\s+ADD COLUMN\s+(\S+)\s+(.+)$/i);
+
+        if (addColumnMatch) {
+          const [, tableName, columnName, columnDefinition] = addColumnMatch;
+          const tableInfo = await db.execute(`PRAGMA table_info(${tableName})`);
+          const hasColumn = tableInfo.rows.some(
+            (row) => String(row.name) === columnName
+          );
+
+          if (!hasColumn) {
+            await db.execute(
+              `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`
+            );
+          }
+
+          continue;
+        }
+
         await db.execute(statement);
       }
 

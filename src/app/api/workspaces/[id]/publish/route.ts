@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb } from '@/lib/db/client';
-import { preparePublishedPersona } from '@/lib/persona';
-import { promptBundleRepo, workspaceRepo } from '@/lib/repositories';
-import { v4 as uuid } from 'uuid';
+import { publishWorkspaceDraft } from '@/lib/versioning/publish';
 import { z } from 'zod';
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -31,105 +28,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const { label, publishedBy } = parsed.data;
 
-    // Get workspace with draft
-    const workspace = await workspaceRepo.getWithDraft(workspaceId);
-    if (!workspace) {
-      return NextResponse.json(
-        { error: 'Workspace not found' },
-        { status: 404 }
-      );
-    }
-
-    const { draft, characterId } = workspace;
-    const preparedPersona = await preparePublishedPersona(draft.persona);
-    const db = getDb();
-    const now = new Date().toISOString();
-
-    // Get current max version number
-    const maxVersionResult = await db.execute({
-      sql: 'SELECT MAX(version_number) as max_version FROM character_versions WHERE character_id = ?',
-      args: [characterId],
-    });
-    const maxVersion = (maxVersionResult.rows[0]?.max_version as number) || 0;
-    const newVersionNumber = maxVersion + 1;
-
-    // Create phase graph version
-    const phaseGraphVersionId = uuid();
-    const phaseGraphVersionResult = await db.execute({
-      sql: 'SELECT MAX(version_number) as max_version FROM phase_graph_versions WHERE character_id = ?',
-      args: [characterId],
-    });
-    const maxPhaseVersion = (phaseGraphVersionResult.rows[0]?.max_version as number) || 0;
-
-    await db.execute({
-      sql: `INSERT INTO phase_graph_versions (id, character_id, version_number, graph_json, created_at)
-            VALUES (?, ?, ?, ?, ?)`,
-      args: [phaseGraphVersionId, characterId, maxPhaseVersion + 1, JSON.stringify(draft.phaseGraph), now],
-    });
-
-    // Create prompt bundle version
-    const promptBundleVersion = await promptBundleRepo.create({
-      characterId,
-      prompts: draft.prompts,
-    });
-
-    // Create new character version
-    const newVersionId = uuid();
-    await db.execute({
-      sql: `INSERT INTO character_versions
-            (id, character_id, version_number, label, status, persona_json, style_json, autonomy_json, emotion_json, memory_policy_json, phase_graph_version_id, prompt_bundle_version_id, created_by, created_at, parent_version_id)
-            VALUES (?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        newVersionId,
-        characterId,
-        newVersionNumber,
-        label,
-        JSON.stringify(preparedPersona),
-        JSON.stringify(draft.style),
-        JSON.stringify(draft.autonomy),
-        JSON.stringify(draft.emotion),
-        JSON.stringify(draft.memory),
-        phaseGraphVersionId,
-        promptBundleVersion.id,
-        publishedBy,
-        now,
-        draft.baseVersionId,
-      ],
-    });
-
-    // Archive old published versions
-    await db.execute({
-      sql: `UPDATE character_versions SET status = 'archived' WHERE character_id = ? AND id != ? AND status = 'published'`,
-      args: [characterId, newVersionId],
-    });
-
-    // Create release record
-    const releaseId = uuid();
-    await db.execute({
-      sql: `INSERT INTO releases (id, character_id, character_version_id, channel, published_by, published_at)
-            VALUES (?, ?, ?, 'prod', ?, ?)`,
-      args: [releaseId, characterId, newVersionId, publishedBy, now],
-    });
-
-    // Update workspace base version
-    await workspaceRepo.updateDraftSection(workspaceId, 'baseVersionId', newVersionId);
-
-    // Update character display name if changed
-    await db.execute({
-      sql: 'UPDATE characters SET display_name = ? WHERE id = ?',
-      args: [draft.identity.displayName, characterId],
+    const result = await publishWorkspaceDraft({
+      workspaceId,
+      label,
+      publishedBy,
+      activateImmediately: true,
     });
 
     return NextResponse.json({
       success: true,
       version: {
-        id: newVersionId,
-        versionNumber: newVersionNumber,
+        id: result.versionId,
+        versionNumber: result.versionNumber,
         label,
         status: 'published',
-        createdAt: now,
+        createdAt: result.createdAt?.toISOString(),
       },
-      releaseId,
+      releaseId: result.releaseId,
     });
   } catch (error) {
     console.error('Publish error:', error);

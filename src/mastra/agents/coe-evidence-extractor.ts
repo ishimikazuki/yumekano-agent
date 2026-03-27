@@ -13,16 +13,19 @@ import type {
   CoEEvidenceExtractorResult,
   ExtractedInteractionAct,
   EvidenceSpan,
+  RelationalAppraisal,
 } from '@/lib/schemas';
 import {
   CoEEvidenceExtractorResultSchema,
   ExtractedInteractionActSchema,
   EvidenceSpanSchema,
+  RelationalAppraisalSchema,
 } from '@/lib/schemas';
 
 const LooseObjectSchema = z.object({}).passthrough();
 const RawExtractorOutputSchema = z.object({
   interactionActs: z.array(z.unknown()),
+  relationalAppraisal: z.unknown().optional(),
   confidence: z.number().optional(),
   uncertaintyNotes: z.array(z.string()).optional(),
 });
@@ -92,6 +95,56 @@ function averageConfidence(acts: ExtractedInteractionAct[]): number {
   );
 }
 
+function buildSafeFallbackRelationalAppraisal(): RelationalAppraisal {
+  return {
+    warmthImpact: 0,
+    rejectionImpact: 0,
+    respectImpact: 0,
+    threatImpact: 0,
+    pressureImpact: 0,
+    repairImpact: 0,
+    reciprocityImpact: 0,
+    intimacySignal: 0,
+    boundarySignal: 0,
+    certainty: 0,
+  };
+}
+
+function buildSafeFallbackExtraction(
+  input: CoEEvidenceExtractorInput,
+  lastError: unknown
+): CoEEvidenceExtractorResult {
+  const fallbackText = input.userMessage.trim() || 'No user message provided.';
+  const note = `Safe fallback used after malformed extractor output: ${
+    lastError instanceof Error ? lastError.message : String(lastError)
+  }`;
+
+  return CoEEvidenceExtractorResultSchema.parse({
+    interactionActs: [
+      {
+        act: 'other',
+        target: 'unknown',
+        polarity: 'neutral',
+        intensity: 0,
+        evidenceSpans: [
+          {
+            source: 'user_message',
+            sourceId: null,
+            text: fallbackText,
+            start: 0,
+            end: Math.max(0, fallbackText.length - 1),
+          },
+        ],
+        confidence: 0.1,
+        uncertaintyNotes: [note],
+      },
+    ],
+    relationalAppraisal: buildSafeFallbackRelationalAppraisal(),
+    confidence: 0.1,
+    uncertaintyNotes: [note],
+  });
+}
+
 export function parseEvidenceSpanModelOutput(raw: unknown): EvidenceSpan {
   const candidate = parseLooseObject(raw, 'evidence_span');
 
@@ -135,6 +188,7 @@ export function parseCoEEvidenceExtractorOutput(
 
   return CoEEvidenceExtractorResultSchema.parse({
     interactionActs,
+    relationalAppraisal: RelationalAppraisalSchema.parse(candidate.relationalAppraisal),
     confidence: candidate.confidence ?? averageConfidence(interactionActs),
     uncertaintyNotes: candidate.uncertaintyNotes ?? [],
   });
@@ -348,9 +402,10 @@ export async function runCoEEvidenceExtractor(
     }
   }
 
-  throw new Error(
-    `CoE evidence extractor failed after ${maxAttempts} attempts: ${
-      lastError instanceof Error ? lastError.message : String(lastError)
-    }`
-  );
+  return {
+    extraction: buildSafeFallbackExtraction(input, lastError),
+    modelId: `${modelInfo.provider}/${modelInfo.modelId}`,
+    systemPromptHash: hashPrompt(systemPrompt),
+    attempts: maxAttempts,
+  };
 }

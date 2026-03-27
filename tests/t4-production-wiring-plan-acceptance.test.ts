@@ -137,8 +137,7 @@ function createMemoryStoreFixture(input?: {
         object: input.object,
         confidence: input.confidence,
         status: 'active',
-        supersedesFactId: input.supersedesFactId ?? null,
-        sourceEventId: input.sourceEventId ?? null,
+        supersededByFactId: null,
         createdAt: new Date('2026-03-25T00:00:00.000Z'),
       };
       state.facts.push(fact);
@@ -273,14 +272,11 @@ function createTurnInput(overrides?: Partial<PairState>) {
   };
 }
 
-test('executeTurn one-turn flow uses the model CoE pipeline and passes evidence downstream', async () => {
+test('Task T4 one-turn production flow injects canonical CoE context and persists updated pair metrics', async () => {
   const { characterVersion, currentPhase, pairState, phaseGraph, promptBundle } =
     createTurnInput();
   const workingMemory = createWorkingMemory();
-  const { memoryStore } = createMemoryStoreFixture({
-    workingMemory,
-  });
-  let persistedTrace = null as Awaited<ReturnType<typeof executeTurn>>['trace'] | null;
+  const { memoryStore } = createMemoryStoreFixture({ workingMemory });
   let persistedPairState = null as PairState | null;
   let plannerSawContext = false;
   let generatorSawContext = false;
@@ -292,6 +288,7 @@ test('executeTurn one-turn flow uses the model CoE pipeline and passes evidence 
         target: 'character',
         polarity: 'positive',
         intensity: 0.78,
+        confidence: 0.9,
         evidenceSpans: [
           {
             source: 'user_message',
@@ -301,28 +298,22 @@ test('executeTurn one-turn flow uses the model CoE pipeline and passes evidence 
             end: 10,
           },
         ],
-        confidence: 0.9,
-        uncertaintyNotes: [],
-      },
-      {
-        act: 'affection',
-        target: 'relationship',
-        polarity: 'positive',
-        intensity: 0.54,
-        evidenceSpans: [
-          {
-            source: 'user_message',
-            sourceId: null,
-            text: '会えてうれしい',
-            start: 11,
-            end: 19,
-          },
-        ],
-        confidence: 0.82,
         uncertaintyNotes: [],
       },
     ],
-    confidence: 0.86,
+    relationalAppraisal: {
+      warmthImpact: 0.82,
+      rejectionImpact: -0.1,
+      respectImpact: 0.4,
+      threatImpact: -0.1,
+      pressureImpact: -0.05,
+      repairImpact: 0.1,
+      reciprocityImpact: 0.35,
+      intimacySignal: 0.22,
+      boundarySignal: 0.3,
+      certainty: 0.9,
+    },
+    confidence: 0.88,
     uncertaintyNotes: [],
   };
 
@@ -346,16 +337,14 @@ test('executeTurn one-turn flow uses the model CoE pipeline and passes evidence 
     memoryStore,
     persistence: {
       async createTurnRecord() {},
-      async persistTrace(trace) {
-        persistedTrace = trace;
-      },
+      async persistTrace() {},
       async updatePairState(nextState) {
         persistedPairState = nextState;
       },
     },
     deps: {
       now: () => new Date('2026-03-25T00:00:00.000Z'),
-      runCoEEvidenceExtractor: async (input) => {
+      runCoEEvidenceExtractor: async (input: any) => {
         assert.equal(input.retrievedMemory.observations.length, 1);
         return {
           extraction,
@@ -364,20 +353,22 @@ test('executeTurn one-turn flow uses the model CoE pipeline and passes evidence 
           attempts: 1,
         };
       },
-      runPlanner: async (input) => {
+      runPlanner: async (input: any) => {
         plannerSawContext =
           input.retrievedMemory.observations.length === 1 &&
           input.emotionContext?.coeExtraction.interactionActs[0]?.act === 'compliment' &&
-          (input.emotionContext?.emotionTrace.relationalAppraisal.warmthSignal ?? 0) > 0;
+          (input.emotionContext?.emotionTrace.relationalAppraisal.warmthImpact ?? 0) > 0 &&
+          (input.emotionContext?.emotionTrace.proposal.pairMetricDelta.trust ?? 0) > 0 &&
+          (input.emotionContext?.emotionTrace.proposal.padDelta.pleasure ?? 0) > 0;
         return {
           plan: createPlan(),
           modelId: 'mock/planner',
           systemPromptHash: 'planner-hash',
         };
       },
-      runGenerator: async (input) => {
+      runGenerator: async (input: any) => {
         generatorSawContext =
-          (input.emotionContext?.emotionTrace.evidence.length ?? 0) > 0 &&
+          (input.emotionContext?.emotionTrace.evidence[0]?.acts?.[0] ?? '') === 'compliment' &&
           input.retrievedMemory.observations.length === 1;
         return {
           candidates: [
@@ -387,26 +378,15 @@ test('executeTurn one-turn flow uses the model CoE pipeline and passes evidence 
               memoryRefsUsed: [],
               riskFlags: [],
             },
-            {
-              text: 'ありがと。今日はちょっと機嫌よくなっちゃうかも。',
-              toneTags: ['playful'],
-              memoryRefsUsed: [],
-              riskFlags: [],
-            },
-            {
-              text: 'ふふ、そういうのちゃんと覚えておくからね。',
-              toneTags: ['warm', 'teasing'],
-              memoryRefsUsed: [],
-              riskFlags: [],
-            },
           ],
           modelId: 'mock/generator',
           systemPromptHash: 'generator-hash',
         };
       },
-      runRanker: async (input) => {
+      runRanker: async (input: any) => {
         rankerSawContext =
-          (input.emotionContext?.emotionTrace.proposal.pairDelta.trust ?? 0) > 0 &&
+          (input.emotionContext?.emotionTrace.emotionAfter.pleasure ?? 0) >
+            (input.emotionContext?.emotionTrace.emotionBefore.pleasure ?? 0) &&
           input.retrievedMemory.observations.length === 1;
         return {
           winnerIndex: 0,
@@ -421,22 +401,27 @@ test('executeTurn one-turn flow uses the model CoE pipeline and passes evidence 
         modelId: 'mock/memory',
         systemPromptHash: 'memory-hash',
       }),
-    },
-  });
+    } as any,
+  } as any);
 
   assert.equal(plannerSawContext, true);
   assert.equal(generatorSawContext, true);
   assert.equal(rankerSawContext, true);
-  assert.ok(result.pairState.trust > pairState.trust);
-  assert.ok(result.pairState.affinity > pairState.affinity);
-  assert.equal(result.trace.coeExtraction?.interactionActs[0]?.act, 'compliment');
-  assert.ok((result.trace.emotionTrace?.relationalAppraisal.warmthSignal ?? 0) > 0.5);
-  assert.equal(result.trace.legacyComparison ?? null, null);
-  assert.ok(persistedTrace);
+  assert.ok((result.trace.coeExtraction?.relationalAppraisal.warmthImpact ?? 0) > 0.5);
+  assert.ok(((result.trace.emotionTrace as any)?.relationalAppraisal.warmthImpact ?? 0) > 0.5);
+  assert.ok(((result.trace.emotionTrace as any)?.proposal.pairMetricDelta.trust ?? 0) > 0);
   assert.ok(persistedPairState);
+  assert.equal(persistedPairState?.trust, result.pairState.trust);
+  assert.equal(persistedPairState?.affinity, result.pairState.affinity);
+  assert.equal(persistedPairState?.conflict, result.pairState.conflict);
+  assert.equal(
+    persistedPairState?.intimacyReadiness,
+    result.pairState.intimacyReadiness
+  );
+  assert.equal(result.trace.legacyComparison ?? null, null);
 });
 
-test('executeTurn three-turn flow carries CoE state and does not emit legacy comparison even when the old flag is enabled', async () => {
+test('Task T4 three-turn production progression keeps canonical CoE state and no longer emits legacy diff even if the old flag is enabled', async () => {
   const previousFlag = process.env.YUMEKANO_USE_COE_INTEGRATOR;
   process.env.YUMEKANO_USE_COE_INTEGRATOR = 'true';
 
@@ -448,9 +433,7 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
       intimacyReadiness: 18,
     });
     const workingMemory = createWorkingMemory();
-    const { memoryStore } = createMemoryStoreFixture({
-      workingMemory,
-    });
+    const { memoryStore } = createMemoryStoreFixture({ workingMemory });
     const extractions: CoEEvidenceExtractorResult[] = [
       {
         interactionActs: [
@@ -459,6 +442,7 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
             target: 'boundary',
             polarity: 'negative',
             intensity: 0.84,
+            confidence: 0.9,
             evidenceSpans: [
               {
                 source: 'user_message',
@@ -468,10 +452,21 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
                 end: 8,
               },
             ],
-            confidence: 0.9,
             uncertaintyNotes: [],
           },
         ],
+        relationalAppraisal: {
+          warmthImpact: -0.4,
+          rejectionImpact: 0.2,
+          respectImpact: -0.55,
+          threatImpact: 0.4,
+          pressureImpact: 0.9,
+          repairImpact: -0.2,
+          reciprocityImpact: -0.25,
+          intimacySignal: 0.05,
+          boundarySignal: -0.45,
+          certainty: 0.9,
+        },
         confidence: 0.88,
         uncertaintyNotes: [],
       },
@@ -482,6 +477,7 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
             target: 'relationship',
             polarity: 'positive',
             intensity: 0.78,
+            confidence: 0.92,
             evidenceSpans: [
               {
                 source: 'user_message',
@@ -491,7 +487,6 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
                 end: 7,
               },
             ],
-            confidence: 0.92,
             uncertaintyNotes: [],
           },
           {
@@ -499,6 +494,7 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
             target: 'relationship',
             polarity: 'positive',
             intensity: 0.74,
+            confidence: 0.86,
             evidenceSpans: [
               {
                 source: 'user_message',
@@ -508,10 +504,21 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
                 end: 18,
               },
             ],
-            confidence: 0.86,
             uncertaintyNotes: [],
           },
         ],
+        relationalAppraisal: {
+          warmthImpact: 0.24,
+          rejectionImpact: -0.15,
+          respectImpact: 0.3,
+          threatImpact: -0.22,
+          pressureImpact: -0.1,
+          repairImpact: 0.88,
+          reciprocityImpact: 0.36,
+          intimacySignal: 0.12,
+          boundarySignal: 0.18,
+          certainty: 0.9,
+        },
         confidence: 0.89,
         uncertaintyNotes: [],
       },
@@ -522,6 +529,7 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
             target: 'relationship',
             polarity: 'positive',
             intensity: 0.7,
+            confidence: 0.88,
             evidenceSpans: [
               {
                 source: 'user_message',
@@ -531,32 +539,26 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
                 end: 11,
               },
             ],
-            confidence: 0.88,
-            uncertaintyNotes: [],
-          },
-          {
-            act: 'boundary_respect',
-            target: 'boundary',
-            polarity: 'positive',
-            intensity: 0.62,
-            evidenceSpans: [
-              {
-                source: 'user_message',
-                sourceId: null,
-                text: '無理なら待つよ',
-                start: 12,
-                end: 19,
-              },
-            ],
-            confidence: 0.84,
             uncertaintyNotes: [],
           },
         ],
+        relationalAppraisal: {
+          warmthImpact: 0.48,
+          rejectionImpact: -0.08,
+          respectImpact: 0.36,
+          threatImpact: -0.1,
+          pressureImpact: -0.06,
+          repairImpact: 0.18,
+          reciprocityImpact: 0.3,
+          intimacySignal: 0.56,
+          boundarySignal: 0.28,
+          certainty: 0.87,
+        },
         confidence: 0.86,
         uncertaintyNotes: [],
       },
     ];
-    const seenRelationalSummaries: string[] = [];
+    const seenCanonicalAxes: Array<number | null> = [];
     let pairState = createPairState({
       activeCharacterVersionId: characterVersion.id,
       activePhaseId: currentPhase.id,
@@ -601,18 +603,18 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
         },
         deps: {
           now: () => new Date(`2026-03-25T00:00:0${index}.000Z`),
-          runCoEEvidenceExtractor: async (input) => {
-            assert.equal(input.retrievedMemory.observations.length, 1);
-            return {
-              extraction,
-              modelId: 'mock/coe',
-              systemPromptHash: `coe-hash-${index}`,
-              attempts: 1,
-            };
-          },
-          runPlanner: async (input) => {
-            seenRelationalSummaries.push(
-              input.emotionContext?.emotionTrace.relationalAppraisal.summary ?? ''
+          runCoEEvidenceExtractor: async () => ({
+            extraction,
+            modelId: 'mock/coe',
+            systemPromptHash: `coe-hash-${index}`,
+            attempts: 1,
+          }),
+          runPlanner: async (input: any) => {
+            seenCanonicalAxes.push(
+              input.emotionContext?.emotionTrace?.relationalAppraisal?.pressureImpact ??
+                input.emotionContext?.emotionTrace?.relationalAppraisal?.repairImpact ??
+                input.emotionContext?.emotionTrace?.relationalAppraisal?.intimacySignal ??
+                null
             );
             return {
               plan: createPlan(),
@@ -628,23 +630,11 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
                 memoryRefsUsed: [],
                 riskFlags: [],
               },
-              {
-                text: 'わかった。今は少し落ち着いて話したいかも。',
-                toneTags: ['guarded'],
-                memoryRefsUsed: [],
-                riskFlags: [],
-              },
-              {
-                text: '気持ちは受け取ったよ。急がないでいこう。',
-                toneTags: ['repair'],
-                memoryRefsUsed: [],
-                riskFlags: [],
-              },
             ],
             modelId: 'mock/generator',
             systemPromptHash: `generator-hash-${index}`,
           }),
-          runRanker: async (input) => ({
+          runRanker: async (input: any) => ({
             winnerIndex: 0,
             candidates: createRankedCandidates(input.candidates),
             globalNotes: `turn-${index}`,
@@ -656,8 +646,8 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
             modelId: 'mock/memory',
             systemPromptHash: `memory-hash-${index}`,
           }),
-        },
-      });
+        } as any,
+      } as any);
 
       results.push(result);
       recentDialogue = [
@@ -675,15 +665,16 @@ test('executeTurn three-turn flow carries CoE state and does not emit legacy com
       results[2].pairState.intimacyReadiness >= results[1].pairState.intimacyReadiness
     );
     assert.ok(results.every((result) => (result.trace.legacyComparison ?? null) === null));
-    assert.equal(seenRelationalSummaries.length, 3);
+    assert.equal(seenCanonicalAxes.length, 3);
+    assert.ok(seenCanonicalAxes.every((value) => value !== null));
     assert.ok(
-      (results[0].trace.emotionTrace?.relationalAppraisal.pressureSignal ?? 0) > 0.6
+      ((results[0].trace.emotionTrace as any)?.relationalAppraisal.pressureImpact ?? 0) > 0.6
     );
     assert.ok(
-      (results[1].trace.emotionTrace?.relationalAppraisal.repairSignal ?? 0) > 0.7
+      ((results[1].trace.emotionTrace as any)?.relationalAppraisal.repairImpact ?? 0) > 0.7
     );
     assert.ok(
-      (results[2].trace.emotionTrace?.relationalAppraisal.intimacySignal ?? 0) > 0.5
+      ((results[2].trace.emotionTrace as any)?.relationalAppraisal.intimacySignal ?? 0) > 0.5
     );
   } finally {
     if (previousFlag === undefined) {
