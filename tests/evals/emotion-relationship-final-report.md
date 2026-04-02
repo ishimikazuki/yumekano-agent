@@ -11,14 +11,23 @@ Fallback reason: none
 - passed: 10
 - failed: 0
 
+## Local Validation
+- command: `npm run test`
+- status: FAIL
+- failing tests: 2
+
 ## Biggest Remaining Weak Cases
 - none
 
 ## Rollout Recommendation
-Safe for an internal or designer-only rollout, but still watch the remaining weak cases before broader exposure.
+Do not widen rollout yet. Local validation still has unresolved failing tests that must be addressed first.
 
 ## Feature-Flag Default Recommendation
-`YUMEKANO_USE_COE_INTEGRATOR=false` by default. Legacy comparison is removed in T9; rollback uses deployment rollback steps in `docs/COE_ROLLBACK_PLAN.md`, not runtime flag switching.
+`YUMEKANO_USE_COE_INTEGRATOR=false` by default until local validation failures are resolved. Do not widen runtime exposure yet.
+
+## Named Blockers
+- tests/t1-contract-plan-acceptance.test.ts:2:2358 — Task T1 keeps the production turn path free of the new CoE pipeline wiring (1.17625ms): AssertionError [ERR_ASSERTION]: Task T1 must not wire runCoEEvidenceExtractor into the production turn path yet
+- tests/trace-repo.test.ts:2:1133 — createTrace persists the expanded runtime trace payload (8.983667ms): Error [ZodError]: [
 
 ## compliment — PASS
 

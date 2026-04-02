@@ -449,8 +449,8 @@ CREATE INDEX IF NOT EXISTS idx_character_versions_parent ON character_versions(p
  * Migration 004: Intimacy-specific generator prompt variant
  */
 const MIGRATION_004_GENERATOR_INTIMACY_PROMPT = `
-ALTER TABLE prompt_bundle_versions ADD COLUMN generator_intimacy_md TEXT NOT NULL DEFAULT '';
-ALTER TABLE workspace_draft_state ADD COLUMN generator_intimacy_md TEXT NOT NULL DEFAULT '';
+ALTER TABLE prompt_bundle_versions ADD COLUMN IF NOT EXISTS generator_intimacy_md TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspace_draft_state ADD COLUMN IF NOT EXISTS generator_intimacy_md TEXT NOT NULL DEFAULT '';
 `;
 
 /**

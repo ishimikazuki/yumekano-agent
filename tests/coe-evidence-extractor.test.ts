@@ -229,30 +229,41 @@ test('runCoEEvidenceExtractor retries malformed outputs and succeeds with a vali
   assert.equal(result.modelId, 'mock/mock-analysis');
   assert.equal(result.extraction.interactionActs.length, 2);
   assert.equal(result.extraction.interactionActs[0].act, 'intimacy_bid');
+  assert.ok(result.extraction.relationalAppraisal);
+  assert.ok(
+    result.extraction.uncertaintyNotes.some((note) =>
+      /relationalAppraisal was missing/i.test(note)
+    )
+  );
   assert.match(calls[1], /previous output was invalid/i);
 });
 
-test('runCoEEvidenceExtractor fails after exhausting retries', async () => {
+test('runCoEEvidenceExtractor returns a safe fallback after exhausting retries', async () => {
   const input = createInput();
 
-  await assert.rejects(
-    () =>
-      runCoEEvidenceExtractor(input, {
-        generateObjectImpl: async () => ({
-          object: {
-            interactionActs: [
-              {
-                act: 'compliment',
-                target: 'character',
-                polarity: 'positive',
-                intensity: 0.5,
-              },
-            ],
+  const result = await runCoEEvidenceExtractor(input, {
+    generateObjectImpl: async () => ({
+      object: {
+        interactionActs: [
+          {
+            act: 'compliment',
+            target: 'character',
+            polarity: 'positive',
+            intensity: 0.5,
           },
-        }),
-        registry: createMockRegistry(),
-        maxAttempts: 2,
-      }),
-    /failed after 2 attempts/i
+        ],
+      },
+    }),
+    registry: createMockRegistry(),
+    maxAttempts: 2,
+  });
+
+  assert.equal(result.attempts, 2);
+  assert.equal(result.extraction.interactionActs.length, 1);
+  assert.equal(result.extraction.interactionActs[0].act, 'other');
+  assert.ok(
+    result.extraction.uncertaintyNotes.some((note) =>
+      /safe fallback used after malformed extractor output/i.test(note)
+    )
   );
 });

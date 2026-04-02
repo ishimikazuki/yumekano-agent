@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import type {
   AppraisalVector,
+  CoEEvidence,
+  CoEEvidenceSource,
   CoEEvidenceExtractorResult,
+  EmotionTrace,
+  EmotionUpdateProposal,
   EvidenceSpanSource,
   ExtractedInteractionAct,
   MemoryObservation,
@@ -9,13 +13,18 @@ import type {
   PADTransitionContribution,
   PairState,
   PhaseNode,
+  RelationalAppraisal,
   RelationshipMetrics,
   WorkingMemory,
 } from '../schemas';
 import {
+  CoEEvidenceSchema,
+  EmotionTraceSchema,
+  EmotionUpdateProposalSchema,
   LegacyEvidenceItemSchema,
   LegacyEmotionTraceSchema,
   LegacyEmotionUpdateProposalSchema,
+  RelationalAppraisalSchema,
   PairMetricDeltaSchema,
   LegacyRelationalAppraisalSchema,
   type LegacyEvidenceItem,
@@ -298,6 +307,107 @@ function mapEvidenceSpanSource(source: EvidenceSpanSource) {
     default:
       return source;
   }
+}
+
+function mapLegacyEvidenceSource(source: CoEEvidenceSource): CoEEvidenceSource {
+  switch (source) {
+    case 'legacy_appraisal':
+      return 'model_inference';
+    default:
+      return source;
+  }
+}
+
+function toCoETarget(raw: unknown): CoEEvidence['target'] {
+  const target = typeof raw === 'string' ? raw : '';
+  switch (target) {
+    case 'assistant':
+    case 'user':
+    case 'relationship':
+    case 'topic':
+    case 'third_party':
+      return target;
+    case 'character':
+      return 'assistant';
+    default:
+      return 'relationship';
+  }
+}
+
+function toStringArray(raw: unknown): string[] {
+  if (raw === undefined) {
+    return [];
+  }
+
+  return z.array(z.string()).parse(raw);
+}
+
+function toEvidenceActs(candidate: Record<string, unknown>): string[] {
+  if (candidate.acts !== undefined) {
+    return z.array(z.string().min(1)).parse(candidate.acts);
+  }
+
+  const key = typeof candidate.key === 'string' && candidate.key.trim().length > 0
+    ? candidate.key.trim()
+    : 'unspecified';
+  return [key];
+}
+
+function toEvidenceSpans(candidate: Record<string, unknown>): string[] {
+  if (candidate.evidenceSpans !== undefined) {
+    return z.array(z.string()).parse(candidate.evidenceSpans);
+  }
+
+  if (typeof candidate.summary === 'string' && candidate.summary.length > 0) {
+    return [candidate.summary];
+  }
+
+  return [];
+}
+
+function derivePairMetricDelta(
+  before: RelationshipMetrics,
+  after: RelationshipMetrics
+): PairMetricDelta {
+  return PairMetricDeltaSchema.parse({
+    affinity: round(after.affinity - before.affinity),
+    trust: round(after.trust - before.trust),
+    intimacyReadiness: round(after.intimacyReadiness - before.intimacyReadiness),
+    conflict: round(after.conflict - before.conflict),
+  });
+}
+
+function mapLegacyToCanonicalRelational(
+  appraisal: LegacyRelationalAppraisal
+): RelationalAppraisal {
+  return RelationalAppraisalSchema.parse({
+    warmthImpact: appraisal.warmthSignal,
+    rejectionImpact: clamp(
+      round((-appraisal.warmthSignal * 0.55 + appraisal.pressureSignal * 0.45)),
+      -1,
+      1
+    ),
+    respectImpact: appraisal.boundaryRespect,
+    threatImpact: clamp(round(appraisal.pressureSignal - appraisal.safetySignal), -1, 1),
+    pressureImpact: appraisal.pressureSignal,
+    repairImpact: appraisal.repairSignal,
+    reciprocityImpact: appraisal.reciprocitySignal,
+    intimacySignal: appraisal.intimacySignal,
+    boundarySignal: appraisal.boundaryRespect,
+    certainty: clamp01(appraisal.confidence),
+  });
+}
+
+function mapLegacyEvidenceToCanonical(item: LegacyEvidenceItem): CoEEvidence {
+  return CoEEvidenceSchema.parse({
+    acts: [item.key],
+    target: 'relationship',
+    polarity: clamp(item.valence, -1, 1),
+    intensity: clamp01(item.weight),
+    evidenceSpans: [item.summary],
+    confidence: clamp01(item.confidence),
+    uncertaintyNotes: [],
+  });
 }
 
 function summarizeModelLegacyRelationalAppraisal(appraisal: LegacyRelationalAppraisal): string {
@@ -678,10 +788,154 @@ export function adaptLegacyEmotionTrace(input: {
   });
 }
 
+/**
+ * Canonical model-output parser helpers for CoE emotion contracts.
+ * These normalize partial model outputs into strict runtime schemas.
+ */
+export function parseCoEEvidenceModelOutput(raw: unknown): CoEEvidence {
+  const candidate = parseLooseObject(raw, 'coe_evidence');
+
+  return CoEEvidenceSchema.parse({
+    acts: toEvidenceActs(candidate),
+    target: toCoETarget(candidate.target),
+    polarity: candidate.polarity ?? candidate.valence ?? 0,
+    intensity: candidate.intensity ?? candidate.weight ?? 0.5,
+    evidenceSpans: toEvidenceSpans(candidate),
+    confidence: candidate.confidence ?? 0.5,
+    uncertaintyNotes: toStringArray(candidate.uncertaintyNotes),
+  });
+}
+
+export function parseRelationalAppraisalModelOutput(
+  raw: unknown
+): RelationalAppraisal {
+  const candidate = parseLooseObject(raw, 'relational_appraisal');
+
+  return RelationalAppraisalSchema.parse({
+    warmthImpact: candidate.warmthImpact ?? candidate.warmthSignal ?? 0,
+    rejectionImpact:
+      candidate.rejectionImpact ??
+      clamp(-(Number(candidate.warmthSignal ?? 0) * 0.55), -1, 1),
+    respectImpact: candidate.respectImpact ?? candidate.boundaryRespect ?? 0,
+    threatImpact:
+      candidate.threatImpact ??
+      clamp(
+        Number(candidate.pressureSignal ?? 0) - Number(candidate.safetySignal ?? 0),
+        -1,
+        1
+      ),
+    pressureImpact: candidate.pressureImpact ?? candidate.pressureSignal ?? 0,
+    repairImpact: candidate.repairImpact ?? candidate.repairSignal ?? 0,
+    reciprocityImpact: candidate.reciprocityImpact ?? candidate.reciprocitySignal ?? 0,
+    intimacySignal: candidate.intimacySignal ?? 0,
+    boundarySignal: candidate.boundarySignal ?? candidate.boundaryRespect ?? 0,
+    certainty: candidate.certainty ?? candidate.confidence ?? 0.5,
+  });
+}
+
+export function parseEmotionUpdateProposalModelOutput(
+  raw: unknown
+): EmotionUpdateProposal {
+  const candidate = parseLooseObject(raw, 'emotion_update_proposal');
+
+  return EmotionUpdateProposalSchema.parse({
+    padDelta: parsePadStateLike(candidate.padDelta),
+    pairMetricDelta: parsePairMetricDeltaLike(
+      candidate.pairMetricDelta ?? candidate.pairDelta
+    ),
+    reasonRefs: toStringArray(candidate.reasonRefs),
+    guardrailOverrides: toStringArray(candidate.guardrailOverrides),
+  });
+}
+
+export function parseEmotionTraceModelOutput(raw: unknown): EmotionTrace {
+  const candidate = parseLooseObject(raw, 'emotion_trace');
+  const evidence = z
+    .array(z.unknown())
+    .parse(candidate.evidence ?? [])
+    .map(parseCoEEvidenceModelOutput);
+  const relationalAppraisal = parseRelationalAppraisalModelOutput(
+    candidate.relationalAppraisal ?? {}
+  );
+  const proposal = parseEmotionUpdateProposalModelOutput(candidate.proposal ?? {});
+  const pairMetricsBefore = parseRelationshipMetricsLike(candidate.pairMetricsBefore);
+  const pairMetricsAfter = parseRelationshipMetricsLike(candidate.pairMetricsAfter);
+  const pairMetricDelta =
+    candidate.pairMetricDelta === undefined
+      ? derivePairMetricDelta(pairMetricsBefore, pairMetricsAfter)
+      : parsePairMetricDeltaLike(candidate.pairMetricDelta);
+
+  return EmotionTraceSchema.parse({
+    evidence,
+    relationalAppraisal,
+    proposal,
+    emotionBefore: parsePadStateLike(candidate.emotionBefore),
+    emotionAfter: parsePadStateLike(candidate.emotionAfter),
+    pairMetricsBefore,
+    pairMetricsAfter,
+    pairMetricDelta,
+  });
+}
+
+/**
+ * Legacy appraisal adapters for the canonical T3 emotion contract.
+ * These keep pre-T4 heuristic runtime behavior untouched while giving tests
+ * and fixtures a strict typed bridge.
+ */
+export function adaptLegacyAppraisalToRelationalAppraisal(
+  appraisal: AppraisalVector
+): RelationalAppraisal {
+  return mapLegacyToCanonicalRelational(
+    adaptLegacyAppraisalToLegacyRelationalAppraisal(appraisal)
+  );
+}
+
+export function adaptLegacyEmotionUpdateProposalToEmotionContract(input: {
+  appraisal: AppraisalVector;
+  emotionBefore: PADState;
+  emotionAfter: PADState;
+  pairMetricsBefore: RelationshipMetrics;
+  pairMetricsAfter: RelationshipMetrics;
+}): EmotionUpdateProposal {
+  const legacyProposal = adaptLegacyEmotionUpdateProposal(input);
+  return EmotionUpdateProposalSchema.parse({
+    padDelta: legacyProposal.padDelta,
+    pairMetricDelta: legacyProposal.pairDelta,
+    reasonRefs: legacyProposal.evidence.map((item) => item.key),
+    guardrailOverrides: [],
+  });
+}
+
+export function adaptLegacyEmotionTraceToEmotionContract(input: {
+  appraisal: AppraisalVector;
+  emotionBefore: PADState;
+  emotionAfter: PADState;
+  pairMetricsBefore: RelationshipMetrics;
+  pairMetricsAfter: RelationshipMetrics;
+  coeContributions?: PADTransitionContribution[];
+}): EmotionTrace {
+  const legacyTrace = adaptLegacyEmotionTrace(input);
+  return EmotionTraceSchema.parse({
+    evidence: legacyTrace.evidence.map(mapLegacyEvidenceToCanonical),
+    relationalAppraisal: mapLegacyToCanonicalRelational(legacyTrace.relationalAppraisal),
+    proposal: EmotionUpdateProposalSchema.parse({
+      padDelta: legacyTrace.proposal.padDelta,
+      pairMetricDelta: legacyTrace.proposal.pairDelta,
+      reasonRefs: legacyTrace.proposal.evidence.map((item) => item.key),
+      guardrailOverrides: [],
+    }),
+    emotionBefore: legacyTrace.emotionBefore,
+    emotionAfter: legacyTrace.emotionAfter,
+    pairMetricsBefore: legacyTrace.pairMetricsBefore,
+    pairMetricsAfter: legacyTrace.pairMetricsAfter,
+    pairMetricDelta: legacyTrace.pairMetricDelta,
+  });
+}
+
 export function parseLegacyEvidenceItemModelOutput(raw: unknown): LegacyEvidenceItem {
   const candidate = parseLooseObject(raw, 'coe_evidence');
   return LegacyEvidenceItemSchema.parse({
-    source: candidate.source ?? 'model_inference',
+    source: mapLegacyEvidenceSource((candidate.source as CoEEvidenceSource) ?? 'model_inference'),
     key: candidate.key ?? 'unspecified',
     summary: candidate.summary ?? 'No evidence summary provided.',
     weight: candidate.weight ?? 0.5,

@@ -5,19 +5,32 @@ import path from 'node:path';
 import test from 'node:test';
 import type { CandidateResponse } from '@/mastra/agents/generator';
 import type { MemoryExtractionResult } from '@/mastra/agents/memory-extractor';
+import { runChatTurn, type ChatTurnDeps } from '@/mastra/workflows/chat-turn';
 import {
   resetDraftChatSession,
   runDraftChatTurn,
   type DraftChatTurnDeps,
 } from '@/mastra/workflows/draft-chat-turn';
+import { createSandboxMemoryStore, type MemoryStore } from '@/mastra/memory/store';
 import { getDb } from '@/lib/db/client';
 import { createSeiraDraftState } from '@/lib/db/seed-seira';
 import { workspaceRepo } from '@/lib/repositories';
+import { createRuntimeEmotionState } from '@/lib/rules/pad';
+import { buildPromptBundleVersion } from '@/lib/schemas';
 import type {
   Candidate,
+  CharacterVersion,
   CoEEvidenceExtractorResult,
+  MemoryEvent,
+  MemoryFact,
+  MemoryObservation,
+  OpenThread,
+  PairState,
+  PromptBundleVersion,
+  WorkingMemory,
+  WorkspaceWithDraft,
 } from '@/lib/schemas';
-import { createPlan } from './persona-test-helpers';
+import { createPlan, createWorkingMemory } from './persona-test-helpers';
 
 type ExtractorSnapshot = {
   phaseId: string;
@@ -116,6 +129,18 @@ function createExtractionForMessage(message: string): CoEEvidenceExtractorResult
           uncertaintyNotes: [],
         },
       ],
+      relationalAppraisal: {
+        warmthImpact: 0.72,
+        rejectionImpact: -0.14,
+        respectImpact: 0.44,
+        threatImpact: -0.2,
+        pressureImpact: 0.02,
+        repairImpact: 0.18,
+        reciprocityImpact: 0.52,
+        intimacySignal: 0.36,
+        boundarySignal: 0.41,
+        certainty: 0.86,
+      },
       confidence: 0.84,
       uncertaintyNotes: [],
     };
@@ -124,24 +149,36 @@ function createExtractionForMessage(message: string): CoEEvidenceExtractorResult
   if (message.includes('急がせない')) {
     return {
       interactionActs: [
-      {
-        act: 'boundary_respect',
-        target: 'boundary',
-        polarity: 'positive',
-        intensity: 0.52,
-        evidenceSpans: [
-          {
-            source: 'user_message',
-            sourceId: null,
-            text: '急がせない',
-            start: message.indexOf('急がせない'),
-            end: message.indexOf('急がせない') + '急がせない'.length,
-          },
-        ],
-        confidence: 0.81,
-        uncertaintyNotes: [],
-      },
+        {
+          act: 'boundary_respect',
+          target: 'boundary',
+          polarity: 'positive',
+          intensity: 0.52,
+          evidenceSpans: [
+            {
+              source: 'user_message',
+              sourceId: null,
+              text: '急がせない',
+              start: message.indexOf('急がせない'),
+              end: message.indexOf('急がせない') + '急がせない'.length,
+            },
+          ],
+          confidence: 0.81,
+          uncertaintyNotes: [],
+        },
       ],
+      relationalAppraisal: {
+        warmthImpact: 0.24,
+        rejectionImpact: -0.08,
+        respectImpact: 0.52,
+        threatImpact: -0.22,
+        pressureImpact: -0.18,
+        repairImpact: 0.28,
+        reciprocityImpact: 0.22,
+        intimacySignal: 0.18,
+        boundarySignal: 0.58,
+        certainty: 0.83,
+      },
       confidence: 0.81,
       uncertaintyNotes: [],
     };
@@ -167,6 +204,18 @@ function createExtractionForMessage(message: string): CoEEvidenceExtractorResult
         uncertaintyNotes: [],
       },
     ],
+    relationalAppraisal: {
+      warmthImpact: 0.08,
+      rejectionImpact: 0,
+      respectImpact: 0.1,
+      threatImpact: 0,
+      pressureImpact: 0.04,
+      repairImpact: 0,
+      reciprocityImpact: 0.06,
+      intimacySignal: 0.04,
+      boundarySignal: 0.12,
+      certainty: 0.74,
+    },
     confidence: 0.76,
     uncertaintyNotes: [],
   };
@@ -255,6 +304,285 @@ function createMemoryExtraction(turnIndex: number): MemoryExtractionResult {
     ],
     extractionNotes: 'Resolved the outstanding live-plan thread.',
   };
+}
+
+type ProgressSnapshot = {
+  phaseId: string;
+  affinity: number;
+  trust: number;
+  intimacyReadiness: number;
+  conflict: number;
+  pad: {
+    pleasure: number;
+    arousal: number;
+    dominance: number;
+  };
+  openThreadCount: number;
+};
+
+function applyPairUpdates(pairState: PairState, updates: Record<string, unknown>): PairState {
+  return {
+    ...pairState,
+    activeCharacterVersionId:
+      (updates.activeCharacterVersionId as string | undefined) ?? pairState.activeCharacterVersionId,
+    activePhaseId: (updates.activePhaseId as string | undefined) ?? pairState.activePhaseId,
+    affinity: (updates.affinity as number | undefined) ?? pairState.affinity,
+    trust: (updates.trust as number | undefined) ?? pairState.trust,
+    intimacyReadiness: (updates.intimacyReadiness as number | undefined) ?? pairState.intimacyReadiness,
+    conflict: (updates.conflict as number | undefined) ?? pairState.conflict,
+    emotion: (updates.emotion as PairState['emotion'] | undefined) ?? pairState.emotion,
+    pad:
+      (updates.pad as PairState['pad'] | undefined) ??
+      ((updates.emotion as PairState['emotion'] | undefined)?.combined ?? pairState.pad),
+    appraisal: (updates.appraisal as PairState['appraisal'] | undefined) ?? pairState.appraisal,
+    openThreadCount: (updates.openThreadCount as number | undefined) ?? pairState.openThreadCount,
+    lastTransitionAt:
+      updates.lastTransitionAt === undefined
+        ? pairState.lastTransitionAt
+        : ((updates.lastTransitionAt as Date | null) ?? null),
+    updatedAt: new Date('2026-03-26T00:00:00.000Z'),
+  };
+}
+
+function roundSnapshot(snapshot: ProgressSnapshot): ProgressSnapshot {
+  return {
+    ...snapshot,
+    affinity: Number(snapshot.affinity.toFixed(2)),
+    trust: Number(snapshot.trust.toFixed(2)),
+    intimacyReadiness: Number(snapshot.intimacyReadiness.toFixed(2)),
+    conflict: Number(snapshot.conflict.toFixed(2)),
+    pad: {
+      pleasure: Number(snapshot.pad.pleasure.toFixed(4)),
+      arousal: Number(snapshot.pad.arousal.toFixed(4)),
+      dominance: Number(snapshot.pad.dominance.toFixed(4)),
+    },
+  };
+}
+
+function toProgressSnapshot(input: {
+  phaseId: string;
+  state: {
+    affinity: number;
+    trust: number;
+    intimacyReadiness: number;
+    conflict: number;
+    pad: {
+      pleasure: number;
+      arousal: number;
+      dominance: number;
+    };
+    openThreadCount: number;
+  };
+}): ProgressSnapshot {
+  return roundSnapshot({
+    phaseId: input.phaseId,
+    affinity: input.state.affinity,
+    trust: input.state.trust,
+    intimacyReadiness: input.state.intimacyReadiness,
+    conflict: input.state.conflict,
+    pad: input.state.pad,
+    openThreadCount: input.state.openThreadCount,
+  });
+}
+
+function createDraftRuntimeArtifacts(workspace: WorkspaceWithDraft): {
+  characterVersion: CharacterVersion;
+  promptBundle: PromptBundleVersion;
+} {
+  const characterVersion: CharacterVersion = {
+    id: workspace.draft.baseVersionId ?? workspace.characterId,
+    characterId: workspace.characterId,
+    versionNumber: 1,
+    status: 'draft',
+    persona: {
+      ...workspace.draft.persona,
+      compiledPersona: undefined,
+    },
+    style: workspace.draft.style,
+    autonomy: workspace.draft.autonomy,
+    emotion: workspace.draft.emotion,
+    memory: workspace.draft.memory,
+    phaseGraphVersionId: workspace.id,
+    promptBundleVersionId: workspace.id,
+    createdBy: workspace.createdBy,
+    createdAt: workspace.updatedAt,
+    label: workspace.name,
+    parentVersionId: workspace.draft.baseVersionId,
+  };
+
+  const promptBundle = buildPromptBundleVersion({
+    id: workspace.id,
+    characterId: workspace.characterId,
+    versionNumber: 1,
+    createdAt: workspace.updatedAt,
+    prompts: workspace.draft.prompts,
+  });
+
+  return {
+    characterVersion,
+    promptBundle,
+  };
+}
+
+function createMemoryStoreFixture(input?: {
+  workingMemory?: WorkingMemory;
+  facts?: MemoryFact[];
+  events?: MemoryEvent[];
+  observations?: MemoryObservation[];
+  threads?: OpenThread[];
+}) {
+  const state = {
+    workingMemory: input?.workingMemory ?? createWorkingMemory(),
+    facts: input?.facts ?? [],
+    events: input?.events ?? [],
+    observations: input?.observations ?? [],
+    threads: input?.threads ?? [],
+    memoryUsage: [] as Array<{ turnId: string; memoryItemId: string }>,
+  };
+  let idCounter = 0;
+  const nextId = (prefix: string) =>
+    `${prefix}${String(++idCounter).padStart(11, '0')}`.replace(
+      /^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/,
+      '$1-$2-4$3-8$4-$5'
+    );
+
+  const memoryStore: MemoryStore = {
+    async getWorkingMemory() {
+      return state.workingMemory;
+    },
+    async setWorkingMemory(_scopeId, data) {
+      state.workingMemory = data;
+    },
+    getDefaultWorkingMemory() {
+      return createWorkingMemory();
+    },
+    async getOpenThreads() {
+      return state.threads.filter((thread) => thread.status === 'open');
+    },
+    async getFacts() {
+      return state.facts.filter((fact) => fact.status === 'active');
+    },
+    async getFactsBySubject(_scopeId, subject) {
+      return state.facts.filter((fact) => fact.subject === subject);
+    },
+    async getEvents(_scopeId, limit = 100) {
+      return state.events.slice(-limit);
+    },
+    async getObservations(_scopeId, limit = 50) {
+      return state.observations.slice(-limit);
+    },
+    async createEvent(input) {
+      const event: MemoryEvent = {
+        id: nextId('event'),
+        pairId: input.scopeId,
+        sourceTurnId: input.sourceTurnId,
+        eventType: input.eventType,
+        summary: input.summary,
+        salience: input.salience,
+        retrievalKeys: input.retrievalKeys,
+        emotionSignature: input.emotionSignature,
+        participants: input.participants,
+        qualityScore: null,
+        supersedesEventId: input.supersedesEventId ?? null,
+        createdAt: new Date('2026-03-25T00:00:00.000Z'),
+      };
+      state.events.push(event);
+      return event;
+    },
+    async createFact(input) {
+      const fact: MemoryFact = {
+        id: nextId('fact'),
+        pairId: input.scopeId,
+        subject: input.subject,
+        predicate: input.predicate,
+        object: input.object,
+        confidence: input.confidence,
+        status: 'active',
+        supersedesFactId: input.supersedesFactId ?? null,
+        sourceEventId: input.sourceEventId ?? null,
+        createdAt: new Date('2026-03-25T00:00:00.000Z'),
+      };
+      state.facts.push(fact);
+      return fact;
+    },
+    async createObservation(input) {
+      const observation: MemoryObservation = {
+        id: nextId('observation'),
+        pairId: input.scopeId,
+        summary: input.summary,
+        retrievalKeys: input.retrievalKeys,
+        salience: input.salience,
+        qualityScore: null,
+        windowStartAt: input.windowStartAt,
+        windowEndAt: input.windowEndAt,
+        createdAt: new Date('2026-03-25T00:00:00.000Z'),
+      };
+      state.observations.push(observation);
+      return observation;
+    },
+    async createOrUpdateThread(input) {
+      const existing = state.threads.find((thread) => thread.key === input.key);
+      if (existing) {
+        existing.summary = input.summary;
+        existing.severity = input.severity;
+        existing.status = 'open';
+        existing.updatedAt = new Date('2026-03-25T00:00:00.000Z');
+        return existing;
+      }
+
+      const thread: OpenThread = {
+        id: nextId('thread'),
+        pairId: input.scopeId,
+        key: input.key,
+        summary: input.summary,
+        severity: input.severity,
+        status: 'open',
+        openedByEventId: input.openedByEventId ?? null,
+        resolvedByEventId: null,
+        updatedAt: new Date('2026-03-25T00:00:00.000Z'),
+      };
+      state.threads.push(thread);
+      return thread;
+    },
+    async resolveThread(_scopeId, key, resolvedByEventId) {
+      const thread = state.threads.find((item) => item.key === key);
+      if (thread) {
+        thread.status = 'resolved';
+        thread.resolvedByEventId = resolvedByEventId ?? null;
+      }
+    },
+    async updateEventQuality() {},
+    async updateFactStatus(factId, status) {
+      const fact = state.facts.find((item) => item.id === factId);
+      if (fact) {
+        fact.status = status;
+      }
+    },
+    async updateObservationQuality(observationId, qualityScore) {
+      const observation = state.observations.find((item) => item.id === observationId);
+      if (observation) {
+        observation.qualityScore = qualityScore;
+      }
+    },
+    async createMemoryUsage(input) {
+      state.memoryUsage.push({
+        turnId: input.turnId,
+        memoryItemId: input.memoryItemId,
+      });
+      return {
+        id: nextId('usage'),
+        memoryItemType: input.memoryItemType,
+        memoryItemId: input.memoryItemId,
+        turnId: input.turnId,
+        wasSelected: input.wasSelected,
+        wasHelpful: input.wasHelpful,
+        scoreDelta: input.scoreDelta,
+        createdAt: new Date('2026-03-25T00:00:00.000Z'),
+      };
+    },
+  };
+
+  return { memoryStore, state };
 }
 
 function createDraftChatDeps(snapshots: ExtractorSnapshot[]): DraftChatTurnDeps {
@@ -640,6 +968,209 @@ test('resetDraftChatSession explicitly clears sandbox carry-over so the next tur
     assert.equal(snapshots[1]?.activeTensionSummary, null);
     assert.deepStrictEqual(snapshots[1]?.knownCorrections, []);
     assert.deepStrictEqual(snapshots[1]?.intimacyContextHints, []);
+  } finally {
+    await cleanup();
+  }
+});
+
+test('sandbox and production show equivalent state progression for the same fixture sequence with isolated stores', async () => {
+  const { workspace, cleanup } = await setupDraftWorkspace();
+  const userId = 'parity-user';
+  const messages = [
+    '落とし物届けてくれてありがとう。今度ライブの相談もしたい',
+    'この前のライブ相談、続きをしてもいい？',
+    'ライブ相談の件、急がせないからまた今度で大丈夫だよ',
+  ];
+  const sandboxSnapshots: ProgressSnapshot[] = [];
+  const productionSnapshots: ProgressSnapshot[] = [];
+
+  try {
+    const workspaceWithDraft = await workspaceRepo.getWithDraft(workspace.id);
+    if (!workspaceWithDraft) {
+      throw new Error('workspace draft should exist for parity test');
+    }
+    const { characterVersion, promptBundle } = createDraftRuntimeArtifacts(workspaceWithDraft);
+
+    // Keep sandbox and production memory scopes isolated while sharing the same draft fixture.
+    const sandboxSession = await workspaceRepo.createSession({
+      workspaceId: workspace.id,
+      userId,
+    });
+    const productionMemorySession = await workspaceRepo.createSession({
+      workspaceId: workspace.id,
+      userId: `${userId}-production`,
+    });
+
+    const sandboxDeps = createDraftChatDeps([]);
+    const productionExecuteTurnDeps = createDraftChatDeps([]).executeTurnDeps;
+    const defaultSandboxWorkingMemory = workspaceRepo.getDefaultSandboxWorkingMemory();
+    const { memoryStore: productionMemoryStore, state: productionMemoryState } = createMemoryStoreFixture({
+      workingMemory: defaultSandboxWorkingMemory,
+    });
+    let productionTurnCounter = 0;
+    const productionNowBase = Date.parse('2026-03-26T00:00:00.000Z');
+    let currentProductionNow = new Date(productionNowBase);
+    const productionTurns: Array<{
+      userMessageText: string;
+      assistantMessageText: string;
+      createdAt: Date;
+    }> = [];
+    let productionPairState: PairState = {
+      pairId: productionMemorySession.id,
+      activeCharacterVersionId: characterVersion.id,
+      activePhaseId: workspaceWithDraft.draft.phaseGraph.entryPhaseId,
+      affinity: 50,
+      trust: 50,
+      intimacyReadiness: 0,
+      conflict: 0,
+      emotion: createRuntimeEmotionState(
+        workspaceWithDraft.draft.emotion.baselinePAD,
+        sandboxSession.createdAt
+      ),
+      pad: workspaceWithDraft.draft.emotion.baselinePAD,
+      appraisal: {
+        goalCongruence: 0,
+        controllability: 0.5,
+        certainty: 0.5,
+        normAlignment: 0,
+        attachmentSecurity: 0.5,
+        reciprocity: 0,
+        pressureIntrusiveness: 0,
+        novelty: 0.5,
+        selfRelevance: 0.5,
+      },
+      openThreadCount: 0,
+      lastTransitionAt: null,
+      updatedAt: sandboxSession.createdAt,
+    };
+    const productionPair = {
+      id: productionPairState.pairId,
+      userId,
+      characterId: workspaceWithDraft.characterId,
+      canonicalThreadId: 'production-thread',
+      createdAt: sandboxSession.createdAt,
+    };
+
+    const productionDeps: ChatTurnDeps = {
+      now: () => {
+        currentProductionNow = new Date(productionNowBase + productionTurnCounter * 60_000);
+        productionTurnCounter += 1;
+        return currentProductionNow;
+      },
+      repos: {
+        pairRepo: {
+          async getOrCreate() {
+            return productionPair;
+          },
+          async getState() {
+            return productionPairState;
+          },
+          async initState() {
+            throw new Error('production parity test should not call initState');
+          },
+          async updateState(_pairId, updates) {
+            productionPairState = applyPairUpdates(productionPairState, updates as Record<string, unknown>);
+          },
+        },
+        traceRepo: {
+          async getRecentTurns(_pairId, limit = 10) {
+            return productionTurns.slice(-limit);
+          },
+          async countTurnsSince(_pairId, since) {
+            if (!since) {
+              return productionTurns.length;
+            }
+            return productionTurns.filter((turn) => turn.createdAt > since).length;
+          },
+          async createChatTurn(input) {
+            productionTurns.push({
+              userMessageText: input.userMessageText,
+              assistantMessageText: input.assistantMessageText,
+              createdAt: new Date(),
+            });
+          },
+          async createTrace() {},
+        },
+        characterRepo: {
+          async getVersionById() {
+            throw new Error('production parity test uses characterVersion override');
+          },
+        },
+        releaseRepo: {
+          async getCurrent() {
+            throw new Error('production parity test uses characterVersion override');
+          },
+        },
+        phaseGraphRepo: {
+          async getById() {
+            throw new Error('production parity test uses phaseGraph override');
+          },
+        },
+        promptBundleRepo: {
+          async getById() {
+            throw new Error('production parity test uses promptBundle override');
+          },
+        },
+      },
+      createMemoryStore: () => productionMemoryStore,
+      executeTurnDeps: productionExecuteTurnDeps,
+    };
+
+    for (const message of messages) {
+      const sandboxResult = await runDraftChatTurn(
+        {
+          workspaceId: workspace.id,
+          sessionId: sandboxSession.id,
+          userId,
+          message,
+        },
+        sandboxDeps
+      );
+      const sandboxState = await workspaceRepo.getSandboxPairState(sandboxSession.id);
+      if (!sandboxState) {
+        throw new Error('sandbox pair state should exist after draft turn');
+      }
+      sandboxSnapshots.push(
+        toProgressSnapshot({
+          phaseId: sandboxResult.phaseId,
+          state: sandboxState,
+        })
+      );
+
+      const productionResult = await runChatTurn(
+        {
+          userId,
+          characterId: workspaceWithDraft.characterId,
+          message,
+          characterVersionOverride: characterVersion,
+          phaseGraphOverride: workspaceWithDraft.draft.phaseGraph,
+          promptBundleOverride: promptBundle,
+        },
+        productionDeps
+      );
+      productionSnapshots.push(
+        toProgressSnapshot({
+          phaseId: productionResult.phaseId,
+          state: productionPairState,
+        })
+      );
+    }
+
+    assert.deepStrictEqual(
+      sandboxSnapshots,
+      productionSnapshots,
+      'sandbox and production should share equivalent phase/PAD/pair progression for the same sequence'
+    );
+
+    // Explicitly verify isolation: sandbox and production memory scopes are distinct.
+    const sandboxMemory = await workspaceRepo.getSandboxWorkingMemory(sandboxSession.id);
+    const leakedProductionSandboxMemory = await workspaceRepo.getSandboxWorkingMemory(
+      productionMemorySession.id
+    );
+    assert.ok(sandboxMemory);
+    assert.equal(leakedProductionSandboxMemory, null);
+    assert.ok(productionMemoryState.workingMemory.knownLikes.includes('ライブの感想を共有すること'));
+    assert.notEqual(sandboxSession.id, productionMemorySession.id);
   } finally {
     await cleanup();
   }

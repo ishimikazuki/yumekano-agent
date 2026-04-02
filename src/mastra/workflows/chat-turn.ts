@@ -9,7 +9,7 @@ import {
 import { createPhaseEngine } from '@/lib/rules/phase-engine';
 import { getOrCreateWorkingMemory } from '../memory/retrieval';
 import { createProductionMemoryStore } from '../memory/store';
-import { executeTurn } from './execute-turn';
+import { executeTurn, type ExecuteTurnDeps } from './execute-turn';
 import { runConsolidateMemory, shouldTriggerConsolidation } from './consolidate-memory';
 import type {
   CharacterVersion,
@@ -18,6 +18,27 @@ import type {
   PromptBundleVersion,
   PADState,
 } from '@/lib/schemas';
+
+type ChatTurnRepos = {
+  characterRepo: Pick<typeof characterRepo, 'getVersionById'>;
+  pairRepo: Pick<typeof pairRepo, 'getOrCreate' | 'getState' | 'initState' | 'updateState'>;
+  traceRepo: Pick<
+    typeof traceRepo,
+    'getRecentTurns' | 'countTurnsSince' | 'createChatTurn' | 'createTrace'
+  >;
+  releaseRepo: Pick<typeof releaseRepo, 'getCurrent'>;
+  phaseGraphRepo: Pick<typeof phaseGraphRepo, 'getById'>;
+  promptBundleRepo: Pick<typeof promptBundleRepo, 'getById'>;
+};
+
+const DEFAULT_CHAT_TURN_REPOS: ChatTurnRepos = {
+  characterRepo,
+  pairRepo,
+  traceRepo,
+  releaseRepo,
+  phaseGraphRepo,
+  promptBundleRepo,
+};
 
 export type ChatTurnInput = {
   userId: string;
@@ -38,28 +59,54 @@ export type ChatTurnOutput = {
   coe: Awaited<ReturnType<typeof executeTurn>>['coe'];
 };
 
-export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput> {
-  const context = await loadContext(input);
-  const memoryStore = createProductionMemoryStore();
-  const workingMemory = await getOrCreateWorkingMemory(context.pair.id, memoryStore);
+export type ChatTurnDeps = {
+  now?: () => Date;
+  repos?: ChatTurnRepos;
+  createMemoryStore?: typeof createProductionMemoryStore;
+  getOrCreateWorkingMemory?: typeof getOrCreateWorkingMemory;
+  executeTurn?: typeof executeTurn;
+  executeTurnDeps?: ExecuteTurnDeps;
+};
+
+export async function runChatTurn(
+  input: ChatTurnInput,
+  deps: ChatTurnDeps = {}
+): Promise<ChatTurnOutput> {
+  const repos = deps.repos ?? DEFAULT_CHAT_TURN_REPOS;
+  const context = await loadContext(input, repos);
+  const memoryStore = deps.createMemoryStore?.() ?? createProductionMemoryStore();
+  const getWorkingMemory = deps.getOrCreateWorkingMemory ?? getOrCreateWorkingMemory;
+  const workingMemory = await getWorkingMemory(context.pair.id, memoryStore);
   const recentDialogue = context.recentTurns.flatMap((turn) => [
     { role: 'user' as const, content: turn.userMessageText },
     { role: 'assistant' as const, content: turn.assistantMessageText },
   ]);
 
+  const now = deps.now?.() ?? new Date();
   const phaseEntryReference = context.pairState.lastTransitionAt ?? context.pair.createdAt;
   const daysSinceEntry = Math.max(
     0,
-    Math.floor((Date.now() - phaseEntryReference.getTime()) / (24 * 60 * 60 * 1000))
+    Math.floor((now.getTime() - phaseEntryReference.getTime()) / (24 * 60 * 60 * 1000))
   );
-  const turnsSinceLastTransition = await traceRepo.countTurnsSince(
+  const turnsSinceLastTransition = await repos.traceRepo.countTurnsSince(
     context.pair.id,
     context.pairState.lastTransitionAt
   );
   const turnsSinceLastEmotionUpdate =
-    Math.max(0, await traceRepo.countTurnsSince(context.pair.id, context.pairState.emotion.lastUpdatedAt)) + 1;
+    Math.max(
+      0,
+      await repos.traceRepo.countTurnsSince(
+        context.pair.id,
+        context.pairState.emotion.lastUpdatedAt
+      )
+    ) + 1;
+  const executeTurnRunner = deps.executeTurn ?? executeTurn;
+  const executeTurnDeps: ExecuteTurnDeps = {
+    ...deps.executeTurnDeps,
+    now: deps.executeTurnDeps?.now ?? (() => now),
+  };
 
-  const result = await executeTurn({
+  const result = await executeTurnRunner({
     scopeId: context.pair.id,
     tracePairId: context.pair.id,
     traceCharacterVersionId: context.characterVersion.id,
@@ -76,6 +123,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
     turnsSinceLastTransition,
     daysSinceEntry,
     turnsSinceLastEmotionUpdate,
+    deps: executeTurnDeps,
     memoryStore,
     persistence: {
       createTurnRecord: async ({
@@ -87,7 +135,7 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
         plan,
         rankerSummary,
       }) => {
-        await traceRepo.createChatTurn({
+        await repos.traceRepo.createChatTurn({
           id: turnId,
           pairId: context.pair.id,
           threadId,
@@ -99,10 +147,10 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
         });
       },
       persistTrace: async (trace) => {
-        await traceRepo.createTrace(trace);
+        await repos.traceRepo.createTrace(trace);
       },
       updatePairState: async (nextState) => {
-        await pairRepo.updateState(context.pair.id, {
+        await repos.pairRepo.updateState(context.pair.id, {
           activeCharacterVersionId: nextState.activeCharacterVersionId,
           activePhaseId: nextState.activePhaseId,
           affinity: nextState.affinity,
@@ -144,18 +192,18 @@ export async function runChatTurn(input: ChatTurnInput): Promise<ChatTurnOutput>
   };
 }
 
-async function loadContext(input: ChatTurnInput) {
+async function loadContext(input: ChatTurnInput, repos: ChatTurnRepos) {
   const { userId, characterId, releaseChannel = 'prod' } = input;
-  const pair = await pairRepo.getOrCreate({ userId, characterId });
+  const pair = await repos.pairRepo.getOrCreate({ userId, characterId });
 
   const characterVersion =
     input.characterVersionOverride ??
     (await (async () => {
-      const release = await releaseRepo.getCurrent(characterId, releaseChannel);
+      const release = await repos.releaseRepo.getCurrent(characterId, releaseChannel);
       if (!release) {
         throw new Error(`No published release for character ${characterId}`);
       }
-      const version = await characterRepo.getVersionById(release.characterVersionId);
+      const version = await repos.characterRepo.getVersionById(release.characterVersionId);
       if (!version) {
         throw new Error(`Character version ${release.characterVersionId} not found`);
       }
@@ -170,21 +218,21 @@ async function loadContext(input: ChatTurnInput) {
         graph: input.phaseGraphOverride,
         createdAt: characterVersion.createdAt,
       }
-    : await phaseGraphRepo.getById(characterVersion.phaseGraphVersionId);
+    : await repos.phaseGraphRepo.getById(characterVersion.phaseGraphVersionId);
   if (!phaseGraph) {
     throw new Error(`Phase graph ${characterVersion.phaseGraphVersionId} not found`);
   }
 
   const promptBundle =
     input.promptBundleOverride ??
-    (await promptBundleRepo.getById(characterVersion.promptBundleVersionId));
+    (await repos.promptBundleRepo.getById(characterVersion.promptBundleVersionId));
   if (!promptBundle) {
     throw new Error(`Prompt bundle ${characterVersion.promptBundleVersionId} not found`);
   }
 
-  let pairState = await pairRepo.getState(pair.id);
+  let pairState = await repos.pairRepo.getState(pair.id);
   if (!pairState) {
-    pairState = await pairRepo.initState({
+    pairState = await repos.pairRepo.initState({
       pairId: pair.id,
       activeCharacterVersionId: characterVersion.id,
       activePhaseId: phaseGraph.graph.entryPhaseId,
@@ -192,7 +240,7 @@ async function loadContext(input: ChatTurnInput) {
     });
   }
 
-  const recentTurns = await traceRepo.getRecentTurns(pair.id, 10);
+  const recentTurns = await repos.traceRepo.getRecentTurns(pair.id, 10);
   const phaseEngine = createPhaseEngine(phaseGraph.graph);
   const currentPhase = phaseEngine.getPhase(pairState.activePhaseId) ?? phaseEngine.getEntryPhase();
 

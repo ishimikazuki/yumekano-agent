@@ -5,8 +5,8 @@ import { updatePAD } from '@/lib/rules/pad';
 import { updateRelationshipMetrics } from '@/lib/rules/phase-runtime';
 import {
   adaptLegacyAppraisalToRelationalAppraisal,
-  adaptLegacyEmotionTrace,
-  adaptLegacyEmotionUpdateProposal,
+  adaptLegacyEmotionTraceToEmotionContract,
+  adaptLegacyEmotionUpdateProposalToEmotionContract,
   adaptLegacyPairMetricDelta,
 } from '@/lib/adapters/coe-emotion-contract';
 import {
@@ -16,7 +16,7 @@ import {
   createWorkingMemory,
 } from './persona-test-helpers';
 
-test('legacy appraisal path can be adapted into the new relational appraisal contract', () => {
+test('legacy appraisal path can be adapted into canonical relational appraisal contract', () => {
   const characterVersion = createCharacterVersion();
   const pairState = createPairState({
     trust: 44,
@@ -45,14 +45,13 @@ test('legacy appraisal path can be adapted into the new relational appraisal con
 
   const relational = adaptLegacyAppraisalToRelationalAppraisal(appraisal);
 
-  assert.equal(relational.source, 'legacy_heuristic');
-  assert.equal(relational.warmthSignal, appraisal.goalCongruence);
-  assert.equal(relational.boundaryRespect, appraisal.normAlignment);
-  assert.ok(relational.pressureSignal > 0);
-  assert.ok(relational.evidence.length > 0);
+  assert.equal(relational.warmthImpact, appraisal.goalCongruence);
+  assert.equal(relational.boundarySignal, appraisal.normAlignment);
+  assert.ok(relational.pressureImpact > 0);
+  assert.ok(relational.certainty >= 0 && relational.certainty <= 1);
 });
 
-test('legacy PAD and pair updates adapt into the new proposal and trace contracts', () => {
+test('legacy PAD and pair updates adapt into canonical proposal and trace contracts', () => {
   const characterVersion = createCharacterVersion();
   const pairState = createPairState({
     trust: 68,
@@ -104,14 +103,14 @@ test('legacy PAD and pair updates adapt into the new proposal and trace contract
     before: pairMetricsBefore,
     after: pairMetricsAfter,
   });
-  const proposal = adaptLegacyEmotionUpdateProposal({
+  const proposal = adaptLegacyEmotionUpdateProposalToEmotionContract({
     appraisal,
     emotionBefore: pairState.emotion.combined,
     emotionAfter: padUpdate.after.combined,
     pairMetricsBefore,
     pairMetricsAfter,
   });
-  const trace = adaptLegacyEmotionTrace({
+  const trace = adaptLegacyEmotionTraceToEmotionContract({
     appraisal,
     emotionBefore: pairState.emotion.combined,
     emotionAfter: padUpdate.after.combined,
@@ -120,14 +119,12 @@ test('legacy PAD and pair updates adapt into the new proposal and trace contract
     coeContributions: padUpdate.contributions,
   });
 
-  assert.equal(proposal.source, 'legacy_heuristic');
   assert.equal(
     proposal.padDelta.pleasure,
     Number((padUpdate.after.combined.pleasure - pairState.emotion.combined.pleasure).toFixed(4))
   );
-  assert.equal(proposal.pairDelta.trust, pairDelta.trust);
-  assert.equal(trace.source, 'legacy_heuristic');
+  assert.equal(proposal.pairMetricDelta.trust, pairDelta.trust);
   assert.deepEqual(trace.pairMetricDelta, pairDelta);
-  assert.equal(trace.proposal.rationale.includes('heuristic appraisal'), true);
   assert.ok(trace.evidence.length > 0);
+  assert.ok(trace.proposal.reasonRefs.length > 0);
 });

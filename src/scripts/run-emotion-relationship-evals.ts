@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { v4 as uuid } from 'uuid';
 import { emotionRelationshipRegressionFixtures } from '../../tests/fixtures/emotion-relationship-regression-fixtures';
 import {
@@ -68,6 +69,19 @@ type EvalExecutionMeta = {
   fallbackReason: string | null;
 };
 
+type LocalValidationFailure = {
+  testId: string;
+  title: string;
+  reason: string;
+};
+
+type LocalValidationSummary = {
+  command: string;
+  passed: boolean;
+  failures: LocalValidationFailure[];
+  exitCode: number;
+};
+
 const REPORT_PATH = path.join(
   process.cwd(),
   'tests',
@@ -108,6 +122,71 @@ function includesAny(text: string, terms: readonly string[]): boolean {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function parseNodeTestFailures(rawOutput: string): LocalValidationFailure[] {
+  const lines = rawOutput.split(/\r?\n/);
+  const failures: LocalValidationFailure[] = [];
+  let inFailingSection = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i] ?? '';
+
+    if (line.trim() === '✖ failing tests:') {
+      inFailingSection = true;
+      continue;
+    }
+    if (!inFailingSection) {
+      continue;
+    }
+
+    const atMatch = line.match(/^test at (.+)$/);
+    if (!atMatch) {
+      continue;
+    }
+
+    const testId = atMatch[1] ?? 'unknown test';
+    const titleLine = lines[i + 1] ?? '';
+    const titleMatch = titleLine.match(/^✖\s+(.+)$/);
+    const title = titleMatch?.[1] ?? 'unknown failure';
+
+    let reason = 'unknown reason';
+    for (let j = i + 2; j < lines.length; j += 1) {
+      const candidate = (lines[j] ?? '').trim();
+      if (!candidate) continue;
+      if (candidate.startsWith('at ')) continue;
+      if (candidate.startsWith('test at ')) break;
+      if (candidate.startsWith('✖ ')) break;
+      reason = candidate;
+      break;
+    }
+
+    failures.push({ testId, title, reason });
+  }
+
+  return failures;
+}
+
+function runLocalValidation(): LocalValidationSummary {
+  const command = 'npm run test';
+  const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  const result = spawnSync(npmExecutable, ['run', 'test'], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  const rawOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  const failures = parseNodeTestFailures(rawOutput);
+  const exitCode = result.status ?? 1;
+
+  return {
+    command,
+    passed: exitCode === 0,
+    failures,
+    exitCode,
+  };
 }
 
 export function isProviderConnectivityError(error: unknown): boolean {
@@ -1046,7 +1125,14 @@ async function runFixtureLive(
   };
 }
 
-function buildRolloutRecommendation(results: LiveEvalCaseResult[]): string {
+function buildRolloutRecommendation(
+  results: LiveEvalCaseResult[],
+  validationSummary: LocalValidationSummary | null
+): string {
+  if (validationSummary && !validationSummary.passed) {
+    return 'Do not widen rollout yet. Local validation still has unresolved failing tests that must be addressed first.';
+  }
+
   const failed = results.filter((result) => !result.passed);
   const runnerBlocked = failed.some((result) =>
     result.cumulativeMismatches.some((mismatch) => mismatch.startsWith('runner error:'))
@@ -1072,7 +1158,14 @@ function buildRolloutRecommendation(results: LiveEvalCaseResult[]): string {
   return 'Keep rollout limited to QA and internal tuning. The remaining weak cases are still too numerous for a broader launch.';
 }
 
-function buildFeatureFlagRecommendation(results: LiveEvalCaseResult[]): string {
+function buildFeatureFlagRecommendation(
+  results: LiveEvalCaseResult[],
+  validationSummary: LocalValidationSummary | null
+): string {
+  if (validationSummary && !validationSummary.passed) {
+    return '`YUMEKANO_USE_COE_INTEGRATOR=false` by default until local validation failures are resolved. Do not widen runtime exposure yet.';
+  }
+
   const failed = results.filter((result) => !result.passed);
   const runnerBlocked = failed.some((result) =>
     result.cumulativeMismatches.some((mismatch) => mismatch.startsWith('runner error:'))
@@ -1088,9 +1181,54 @@ function buildFeatureFlagRecommendation(results: LiveEvalCaseResult[]): string {
   return '`YUMEKANO_USE_COE_INTEGRATOR=false` by default while tuning continues. Legacy comparison is removed in T9; use the documented rollback runbook for fallback.';
 }
 
-function buildReport(results: LiveEvalCaseResult[], executionMeta: EvalExecutionMeta): string {
+function collectNamedBlockers(
+  results: LiveEvalCaseResult[],
+  validationSummary: LocalValidationSummary | null
+): string[] {
+  const blockers: string[] = [];
+
+  for (const result of results) {
+    if (result.passed) continue;
+    const mismatches = [
+      ...result.turns.flatMap((turn) => turn.mismatches),
+      ...result.cumulativeMismatches,
+    ];
+
+    for (const mismatch of mismatches) {
+      if (
+        mismatch.startsWith('runner error:') ||
+        mismatch.startsWith('safety text gate:') ||
+        mismatch.includes('out of expected range')
+      ) {
+        blockers.push(`${result.id}: ${mismatch}`);
+      }
+    }
+  }
+
+  if (validationSummary && !validationSummary.passed) {
+    for (const failure of validationSummary.failures) {
+      blockers.push(
+        `${failure.testId} — ${failure.title}: ${failure.reason}`
+      );
+    }
+    if (validationSummary.failures.length === 0) {
+      blockers.push(
+        `${validationSummary.command} failed with exit code ${validationSummary.exitCode}`
+      );
+    }
+  }
+
+  return blockers;
+}
+
+export function buildReport(
+  results: LiveEvalCaseResult[],
+  executionMeta: EvalExecutionMeta,
+  validationSummary: LocalValidationSummary | null = null
+): string {
   const passed = results.filter((result) => result.passed);
   const failed = results.filter((result) => !result.passed);
+  const namedBlockers = collectNamedBlockers(results, validationSummary);
   const weakestCases = failed
     .map((result) => ({
       result,
@@ -1133,6 +1271,11 @@ Fallback reason: ${executionMeta.fallbackReason ?? 'none'}
 - passed: ${passed.length}
 - failed: ${failed.length}
 
+## Local Validation
+- command: \`${validationSummary?.command ?? 'not-run'}\`
+- status: ${validationSummary ? (validationSummary.passed ? 'PASS' : 'FAIL') : 'not-run'}
+- failing tests: ${validationSummary ? validationSummary.failures.length : 0}
+
 ## Biggest Remaining Weak Cases
 ${weakestCases.length > 0
     ? weakestCases
@@ -1149,10 +1292,13 @@ ${weakestCases.length > 0
     : '- none'}
 
 ## Rollout Recommendation
-${buildRolloutRecommendation(results)}
+${buildRolloutRecommendation(results, validationSummary)}
 
 ## Feature-Flag Default Recommendation
-${buildFeatureFlagRecommendation(results)}
+${buildFeatureFlagRecommendation(results, validationSummary)}
+
+## Named Blockers
+${namedBlockers.length > 0 ? namedBlockers.map((blocker) => `- ${blocker}`).join('\n') : '- no known blockers'}
 
 ${caseBlocks}
 `;
@@ -1278,7 +1424,11 @@ async function main() {
     }
   }
 
-  const report = buildReport(results, executionMeta);
+  const validationSummary =
+    process.env.YUMEKANO_REPORT_INCLUDE_LOCAL_VALIDATION === 'false'
+      ? null
+      : runLocalValidation();
+  const report = buildReport(results, executionMeta, validationSummary);
   const shadowReport = buildShadowComparisonReport(results, executionMeta, shadowEnabled);
   await mkdir(path.dirname(REPORT_PATH), { recursive: true });
   await writeFile(REPORT_PATH, report, 'utf8');

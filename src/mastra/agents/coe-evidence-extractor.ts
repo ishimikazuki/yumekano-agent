@@ -110,6 +110,32 @@ function buildSafeFallbackRelationalAppraisal(): RelationalAppraisal {
   };
 }
 
+function parseRelationalAppraisalWithRepair(
+  raw: unknown
+): { value: RelationalAppraisal; repairNote: string | null } {
+  if (raw === undefined) {
+    return {
+      value: buildSafeFallbackRelationalAppraisal(),
+      repairNote:
+        'relationalAppraisal was missing; neutral fallback appraisal was applied.',
+    };
+  }
+
+  try {
+    return {
+      value: RelationalAppraisalSchema.parse(raw),
+      repairNote: null,
+    };
+  } catch (error) {
+    return {
+      value: buildSafeFallbackRelationalAppraisal(),
+      repairNote: `relationalAppraisal was invalid; neutral fallback appraisal was applied: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+}
+
 function buildSafeFallbackExtraction(
   input: CoEEvidenceExtractorInput,
   lastError: unknown
@@ -185,12 +211,19 @@ export function parseCoEEvidenceExtractorOutput(
   const interactionActs = candidate.interactionActs.map(
     parseExtractedInteractionActModelOutput
   );
+  const relational = parseRelationalAppraisalWithRepair(
+    candidate.relationalAppraisal
+  );
+  const uncertaintyNotes = candidate.uncertaintyNotes ?? [];
+  if (relational.repairNote) {
+    uncertaintyNotes.push(relational.repairNote);
+  }
 
   return CoEEvidenceExtractorResultSchema.parse({
     interactionActs,
-    relationalAppraisal: RelationalAppraisalSchema.parse(candidate.relationalAppraisal),
+    relationalAppraisal: relational.value,
     confidence: candidate.confidence ?? averageConfidence(interactionActs),
-    uncertaintyNotes: candidate.uncertaintyNotes ?? [],
+    uncertaintyNotes,
   });
 }
 

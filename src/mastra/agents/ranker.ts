@@ -338,7 +338,7 @@ function findPhaseViolation(
   }
 
   if (
-    signals.hasIntimacyAdvance &&
+    signals.hasAffectionateAdvance &&
     (input.currentPhase.adultIntimacyEligibility === 'never' ||
       input.plan.intimacyDecision === 'decline_gracefully' ||
       input.plan.intimacyDecision === 'decline_firmly' ||

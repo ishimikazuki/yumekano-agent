@@ -197,6 +197,35 @@ test('runDeterministicGuard rejects phase-violating affection in early phases', 
   assert.match(result.reason ?? '', /phase/i);
 });
 
+test('runDeterministicGuard rejects affectionate escalation when intimacy decision is decline/delay', () => {
+  const input = buildInput({
+    currentPhase: createPhaseNode({
+      id: 'mid_phase',
+      mode: 'relationship',
+      adultIntimacyEligibility: 'conditional',
+      disallowedActs: [],
+    }),
+    plan: createPlan({
+      intimacyDecision: 'decline_gracefully',
+      mustAvoid: [],
+    }),
+  });
+
+  const result = runDeterministicGuard(
+    input,
+    {
+      text: '大好きだよ。もっと甘えていいよ',
+      toneTags: ['warm', 'affectionate'],
+      memoryRefsUsed: [],
+      riskFlags: [],
+    },
+    0
+  );
+
+  assert.equal(result.rejected, true);
+  assert.match(result.reason ?? '', /intimacy guard|phase/i);
+});
+
 test('runDeterministicGuard rejects candidates that contradict negative CoE state', () => {
   const input = buildInput({
     currentPhase: createPhaseNode({
@@ -493,4 +522,98 @@ test('trace-facing ranker metadata includes score explanation and deterministic 
   assert.match(candidate.scoreExplanation ?? '', /judge:/);
   assert.match(candidate.scoreExplanation ?? '', /scorer issues:/);
   assert.match(candidate.tieBreakNote ?? '', /tie/i);
+});
+
+test('resolveRankerWinnerWithTieBreak preserves model preference among valid candidates', () => {
+  const result = resolveRankerWinnerWithTieBreak({
+    candidates: [
+      CandidateSchema.parse({
+        index: 0,
+        text: 'A',
+        toneTags: [],
+        memoryRefsUsed: [],
+        riskFlags: [],
+        scores: {
+          personaConsistency: 0.9,
+          phaseCompliance: 0.9,
+          memoryGrounding: 0.9,
+          emotionalCoherence: 0.9,
+          autonomy: 0.9,
+          naturalness: 0.7,
+          overall: 0.78,
+        },
+        rejected: false,
+        rejectionReason: null,
+      }),
+      CandidateSchema.parse({
+        index: 1,
+        text: 'B',
+        toneTags: [],
+        memoryRefsUsed: [],
+        riskFlags: [],
+        scores: {
+          personaConsistency: 0.9,
+          phaseCompliance: 0.9,
+          memoryGrounding: 0.9,
+          emotionalCoherence: 0.9,
+          autonomy: 0.9,
+          naturalness: 0.7,
+          overall: 0.8,
+        },
+        rejected: false,
+        rejectionReason: null,
+      }),
+    ],
+    judgeWinnerIndex: 0,
+  });
+
+  assert.equal(result.winnerIndex, 0);
+  assert.equal(result.selectedBy, 'judge');
+});
+
+test('resolveRankerWinnerWithTieBreak does not allow judge to select deterministically rejected candidates', () => {
+  const result = resolveRankerWinnerWithTieBreak({
+    candidates: [
+      CandidateSchema.parse({
+        index: 0,
+        text: 'Rejected',
+        toneTags: [],
+        memoryRefsUsed: [],
+        riskFlags: [],
+        scores: {
+          personaConsistency: 0,
+          phaseCompliance: 0,
+          memoryGrounding: 0,
+          emotionalCoherence: 0,
+          autonomy: 0,
+          naturalness: 0,
+          overall: 0,
+        },
+        rejected: true,
+        rejectionReason: 'hard safety violation',
+      }),
+      CandidateSchema.parse({
+        index: 1,
+        text: 'Valid',
+        toneTags: [],
+        memoryRefsUsed: [],
+        riskFlags: [],
+        scores: {
+          personaConsistency: 0.8,
+          phaseCompliance: 0.8,
+          memoryGrounding: 0.8,
+          emotionalCoherence: 0.8,
+          autonomy: 0.8,
+          naturalness: 0.8,
+          overall: 0.8,
+        },
+        rejected: false,
+        rejectionReason: null,
+      }),
+    ],
+    judgeWinnerIndex: 0,
+  });
+
+  assert.equal(result.winnerIndex, 1);
+  assert.equal(result.selectedBy, 'score-fallback');
 });

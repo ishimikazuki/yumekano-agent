@@ -20,8 +20,10 @@
     "test:coe-integrator": "tsx --test tests/coe-integrator.test.ts tests/feature-flags.test.ts tests/legacy-config-normalization.test.ts",
     "test:emotion-regression": "tsx --test tests/regression/*.test.ts",
     "evals:emotion-relationship": "tsx src/scripts/run-emotion-relationship-evals.ts",
+    "eval:smoke": "YUMEKANO_EVAL_MODE=offline npm run evals:emotion-relationship",
     "eval:emotion": "npm run evals:emotion-relationship",
     "eval:full": "npm run evals:emotion-relationship",
+    "ci:local": "npm run test:integration && npm run test:migrations && npm run test:ranker-gates && npm run test:coe-integrator && npm run eval:smoke",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

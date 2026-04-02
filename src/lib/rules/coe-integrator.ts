@@ -48,6 +48,7 @@ export type CoEIntegratorResult = {
   after: RuntimeEmotionState;
   relationshipBefore: RelationshipMetrics;
   relationshipAfter: RelationshipMetrics;
+  padDelta: PADState;
   pairDelta: PairMetricDelta;
   contributions: PADTransitionContribution[];
   quietTurn: boolean;
@@ -371,8 +372,9 @@ export function integrateCoEAppraisal(input: CoEIntegratorInput): CoEIntegratorR
     currentPhase,
     openThreads,
     interactionActs = [],
-    now = new Date(),
+    now,
   } = input;
+  const resolvedNow = now ?? currentEmotion.lastUpdatedAt;
 
   const elapsedTurns = Math.max(1, input.turnsSinceLastUpdate);
   const config = emotionSpec.coeIntegrator;
@@ -620,10 +622,15 @@ export function integrateCoEAppraisal(input: CoEIntegratorInput): CoEIntegratorR
       fastAffect: fastAfterImpulse,
       slowMood: slowAfterBlend,
       combined: combinedAfterBlend,
-      lastUpdatedAt: now,
+      lastUpdatedAt: resolvedNow,
     },
     relationshipBefore: currentMetrics,
     relationshipAfter,
+    padDelta: {
+      pleasure: round(combinedAfterBlend.pleasure - currentEmotion.combined.pleasure),
+      arousal: round(combinedAfterBlend.arousal - currentEmotion.combined.arousal),
+      dominance: round(combinedAfterBlend.dominance - currentEmotion.combined.dominance),
+    },
     pairDelta: {
       trust: round(relationshipAfter.trust - currentMetrics.trust, 2),
       affinity: round(relationshipAfter.affinity - currentMetrics.affinity, 2),

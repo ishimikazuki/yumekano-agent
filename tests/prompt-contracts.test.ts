@@ -5,99 +5,93 @@ import path from 'node:path';
 import { TurnPlanSchema } from '@/lib/schemas';
 import { GeneratorOutputSchema } from '@/mastra/agents/generator';
 import { RankerOutputSchema } from '@/mastra/agents/ranker';
+import { seiraPrompts } from '@/lib/db/seed-seira';
 
-test('prompt markdown examples stay aligned with canonical schema keys', () => {
-  const plannerPrompt = readFileSync(path.join(process.cwd(), 'prompts/planner.system.md'), 'utf8');
-  const generatorPrompt = readFileSync(
-    path.join(process.cwd(), 'prompts/conversation.system.md'),
-    'utf8'
-  );
-  const rankerPrompt = readFileSync(path.join(process.cwd(), 'prompts/ranker.system.md'), 'utf8');
+type PromptFamily = 'planner' | 'generator' | 'ranker';
 
-  assert.match(plannerPrompt, /"primaryActs"/);
-  assert.doesNotMatch(plannerPrompt, /"dialogueActs"/);
-  assert.match(generatorPrompt, /"candidates"/);
-  assert.doesNotMatch(generatorPrompt, /"shouldSplit"/);
-  assert.match(rankerPrompt, /"globalNotes": "/);
-  assert.doesNotMatch(rankerPrompt, /"globalNotes": \[/);
-});
-
-test('planner example object satisfies TurnPlanSchema', () => {
-  const plan = TurnPlanSchema.parse({
-    stance: 'playful',
-    primaryActs: ['acknowledge', 'ask_question'],
-    secondaryActs: ['tease'],
-    memoryFocus: {
-      emphasize: [],
-      suppress: [],
-      reason: '相手の前向きな流れを会話に残すため',
-    },
-    phaseTransitionProposal: {
-      shouldTransition: false,
-      targetPhaseId: null,
-      reason: 'まだ同じフェーズで十分だから',
-    },
-    intimacyDecision: 'not_applicable',
-    emotionDeltaIntent: {
-      pleasureDelta: 0.05,
-      arousalDelta: 0.02,
-      dominanceDelta: 0,
-      reason: '空気を少し柔らかくするため',
-    },
-    mustAvoid: ['急に甘くなりすぎる'],
-    plannerReasoning: '彼女は軽く受け止めつつ、質問で会話を前に進める。',
-  });
-
-  assert.equal(plan.primaryActs[0], 'acknowledge');
-});
-
-test('generator example object satisfies GeneratorOutputSchema', () => {
-  const output = GeneratorOutputSchema.parse({
-    candidates: [
-      {
-        text: 'ちゃんと気にしてくれたの、嬉しいよ。ありがと。で、今日はどうしたの？',
-        toneTags: ['warm', 'playful'],
-        memoryRefsUsed: ['fact:preferred_address'],
-        riskFlags: [],
-      },
-      {
-        text: 'そういうの、ちょっと安心する。ありがとね。じゃあ、続き聞かせて？',
-        toneTags: ['warm', 'curious'],
-        memoryRefsUsed: [],
-        riskFlags: [],
-      },
-      {
-        text: 'ふふ、そこまで見てくれるんだ。じゃあ少しだけ甘えてもいい？ 今日は何があったの？',
-        toneTags: ['playful', 'soft'],
-        memoryRefsUsed: ['event:last_kind_turn'],
-        riskFlags: [],
-      },
+const CANONICAL_PROMPT_CONTRACT = {
+  planner: {
+    schema: TurnPlanSchema,
+    checkedInPath: 'prompts/planner.system.md',
+    seedVariable: 'plannerPrompt',
+    seiraPrompt: () => seiraPrompts.plannerMd,
+    requiredSeiraFields: [
+      'primaryActs',
+      'secondaryActs',
+      'intimacyDecision',
+      'mustAvoid',
+      'plannerReasoning',
     ],
-  });
-
-  assert.equal(output.candidates.length, 3);
-});
-
-test('ranker example object satisfies RankerOutputSchema', () => {
-  const output = RankerOutputSchema.parse({
-    winnerIndex: 0,
-    scorecards: [
-      {
-        index: 0,
-        personaConsistency: 0.9,
-        phaseCompliance: 0.95,
-        memoryGrounding: 0.8,
-        emotionalCoherence: 0.88,
-        autonomy: 0.82,
-        naturalness: 0.9,
-        overall: 0.89,
-        rejected: false,
-        rejectionReason: null,
-        notes: '一番自然で、今の距離感を崩さない。',
-      },
+    forbiddenLegacyPatterns: [
+      /\bdialogueActs\b/,
+      /\bmustAvoidList\b/,
+      /\b`allowed`\b/,
+      /\b`not_now`\b/,
+      /\b`no`\b/,
     ],
-    globalNotes: '候補0が最も自然で、フェーズ逸脱もない。',
+  },
+  generator: {
+    schema: GeneratorOutputSchema,
+    checkedInPath: 'prompts/conversation.system.md',
+    seedVariable: 'generatorPrompt',
+    seiraPrompt: () => seiraPrompts.generatorMd,
+    requiredSeiraFields: ['candidates', 'text', 'toneTags', 'memoryRefsUsed', 'riskFlags'],
+    forbiddenLegacyPatterns: [/\b`not_now`\b/, /\b`no`\b/, /\bshouldSplit\b/],
+  },
+  ranker: {
+    schema: RankerOutputSchema,
+    checkedInPath: 'prompts/ranker.system.md',
+    seedVariable: 'rankerPrompt',
+    seiraPrompt: () => seiraPrompts.rankerMd,
+    requiredSeiraFields: ['winnerIndex', 'scorecards', 'globalNotes'],
+    forbiddenLegacyPatterns: [/"globalNotes": \[/, /\b`not_now`\b/, /\b`no`\b/],
+  },
+} as const;
+
+function readProjectFile(relativePath: string): string {
+  return readFileSync(path.join(process.cwd(), relativePath), 'utf8');
+}
+
+function extractSeedPromptBlock(source: string, variableName: string): string {
+  const pattern = new RegExp(`const\\s+${variableName}\\s*=\\s*\\\`([\\s\\S]*?)\\\`;`);
+  const match = source.match(pattern);
+  assert.ok(match, `Could not find ${variableName} in src/lib/db/seed.ts`);
+  return match[1]!.replace(/\\`/g, '`');
+}
+
+function extractJsonCodeBlock(prompt: string): unknown {
+  const match = prompt.match(/```json\s*([\s\S]*?)```/);
+  assert.ok(match, 'Prompt must include a ```json block for contract validation');
+  return JSON.parse(match[1]!);
+}
+
+function assertNoLegacyPatterns(text: string, patterns: readonly RegExp[]) {
+  for (const pattern of patterns) {
+    assert.doesNotMatch(text, pattern);
+  }
+}
+
+for (const family of Object.keys(CANONICAL_PROMPT_CONTRACT) as PromptFamily[]) {
+  const contract = CANONICAL_PROMPT_CONTRACT[family];
+
+  test(`${family}: checked-in prompt JSON example satisfies canonical schema`, () => {
+    const prompt = readProjectFile(contract.checkedInPath);
+    assertNoLegacyPatterns(prompt, contract.forbiddenLegacyPatterns);
+    contract.schema.parse(extractJsonCodeBlock(prompt));
   });
 
-  assert.equal(output.globalNotes.includes('候補0'), true);
-});
+  test(`${family}: seed prompt JSON example satisfies canonical schema`, () => {
+    const seedSource = readProjectFile('src/lib/db/seed.ts');
+    const prompt = extractSeedPromptBlock(seedSource, contract.seedVariable);
+    assertNoLegacyPatterns(prompt, contract.forbiddenLegacyPatterns);
+    contract.schema.parse(extractJsonCodeBlock(prompt));
+  });
+
+  test(`${family}: Seira override avoids legacy fields and references active contract keys`, () => {
+    const seiraPrompt = contract.seiraPrompt();
+    assertNoLegacyPatterns(seiraPrompt, contract.forbiddenLegacyPatterns);
+    for (const field of contract.requiredSeiraFields) {
+      assert.match(seiraPrompt, new RegExp(`\\b${field}\\b`));
+    }
+  });
+}
