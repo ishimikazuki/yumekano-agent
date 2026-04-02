@@ -162,7 +162,7 @@ export const characterRepo = {
         id,
         input.characterId,
         versionNumber,
-        input.label,
+        input.label ?? null,
         input.status ?? 'draft',
         JSON.stringify(input.persona),
         JSON.stringify(input.style),

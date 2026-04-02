@@ -1,0 +1,44 @@
+{
+  "ticket_id": "T9",
+  "status": "ready_to_stop",
+  "ready_to_stop": true,
+  "tests": {
+    "required": [
+      "ci:local passes",
+      "eval:smoke passes",
+      "rollout switch exists",
+      "final report generation"
+    ],
+    "passed": [
+      "ci:local: 36/36 tests pass (integration + migrations + ranker-gates + coe-integrator)",
+      "eval:smoke: 10/10 eval cases pass",
+      "feature-flags.ts: isCoEIntegratorEnabled + YUMEKANO_USE_COE_INTEGRATOR",
+      "emotion-relationship-final-report.md generated with all required sections"
+    ],
+    "failed": [],
+    "all_passed": true
+  },
+  "acceptance": {
+    "required": [
+      "ci:local passes",
+      "eval:smoke passes",
+      "rollout switch exists",
+      "final report is generated",
+      "no hidden blockers"
+    ],
+    "passed": [
+      "ci:local passes",
+      "eval:smoke passes",
+      "rollout switch exists",
+      "final report is generated",
+      "no hidden blockers"
+    ],
+    "failed": [],
+    "all_passed": true
+  },
+  "review": {
+    "pass": true,
+    "blocking_issues": []
+  },
+  "notes": "Fixed trace-repo.test.ts missing relationalAppraisal field (test fixture fix). ci:local 36/36 green, eval:smoke 10/10 green. Final report: no blockers, safe for internal rollout, flag default false. All 10 tickets (T0-T9) complete."
+}

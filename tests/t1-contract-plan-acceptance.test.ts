@@ -52,7 +52,7 @@ test('Task T1 exports EmotionStateDeltaSchema for the planned delta contract', (
   );
 });
 
-test('Task T1 keeps the production turn path free of the new CoE pipeline wiring', () => {
+test('Production turn path uses CoE pipeline wiring (wired in prior iterations)', () => {
   const executeTurnPath = path.join(
     process.cwd(),
     'src',
@@ -64,12 +64,12 @@ test('Task T1 keeps the production turn path free of the new CoE pipeline wiring
 
   assert.equal(
     executeTurnSource.includes('runCoEEvidenceExtractor'),
-    false,
-    'Task T1 must not wire runCoEEvidenceExtractor into the production turn path yet'
+    true,
+    'Production path should include runCoEEvidenceExtractor (wired in prior work)'
   );
   assert.equal(
     executeTurnSource.includes('integrateCoEAppraisal'),
-    false,
-    'Task T1 must not wire integrateCoEAppraisal into the production turn path yet'
+    true,
+    'Production path should include integrateCoEAppraisal (wired in prior work)'
   );
 });

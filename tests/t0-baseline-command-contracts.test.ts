@@ -20,26 +20,31 @@ function assertRequiredScript(name: string) {
   const scripts = readPackageScripts();
   assert.ok(
     scripts[name],
-    `Task T0 requires \`npm run ${name}\` to be defined in package.json`
+    `T0 requires \`npm run ${name}\` to be defined in package.json`
   );
 }
 
-test('Task T0 defines npm run test:unit', () => {
+// T0 acceptance criteria from PLAN.md
+test('T0: test script exists', () => {
+  assertRequiredScript('test');
+});
+
+test('T0: test:unit script exists', () => {
   assertRequiredScript('test:unit');
 });
 
-test('Task T0 defines npm run test:integration', () => {
-  assertRequiredScript('test:integration');
+test('T0: test:db script exists', () => {
+  assertRequiredScript('test:db');
 });
 
-test('Task T0 defines npm run test:migrations', () => {
-  assertRequiredScript('test:migrations');
+test('T0: test:workflow script exists', () => {
+  assertRequiredScript('test:workflow');
 });
 
-test('Task T0 defines npm run eval:emotion', () => {
-  assertRequiredScript('eval:emotion');
+test('T0: eval:smoke script exists', () => {
+  assertRequiredScript('eval:smoke');
 });
 
-test('Task T0 defines npm run eval:full', () => {
-  assertRequiredScript('eval:full');
+test('T0: ci:local script exists', () => {
+  assertRequiredScript('ci:local');
 });
