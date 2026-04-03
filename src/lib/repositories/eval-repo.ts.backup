@@ -17,18 +17,6 @@ import {
 /**
  * Repository for evaluation operations.
  */
-/**
- * Safely parse JSON string with error context
- */
-function parseJsonSafely<T = unknown>(jsonString: string, context: string): T {
-  try {
-    return JSON.parse(jsonString) as T;
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON in ${context}: ${errorMsg}`);
-  }
-}
-
 export const evalRepo = {
   // ==========================================
   // Scenario Sets
@@ -151,9 +139,9 @@ export const evalRepo = {
         id: row.id,
         scenarioSetId: row.scenario_set_id,
         title: row.title,
-        input: parseJsonSafely<unknown>(row.input_json as string, "eval-repo"),
-        expected: parseJsonSafely<unknown>(row.expected_json as string, "eval-repo"),
-        tags: parseJsonSafely<unknown>(row.tags_json as string, "eval-repo"),
+        input: JSON.parse(row.input_json as string),
+        expected: JSON.parse(row.expected_json as string),
+        tags: JSON.parse(row.tags_json as string),
         createdAt: row.created_at,
       })
     );
@@ -220,9 +208,9 @@ export const evalRepo = {
       id: row.id,
       scenarioSetId: row.scenario_set_id,
       characterVersionId: row.character_version_id,
-      modelRegistrySnapshot: parseJsonSafely<unknown>(row.model_registry_snapshot_json as string, "eval-repo"),
+      modelRegistrySnapshot: JSON.parse(row.model_registry_snapshot_json as string),
       status: row.status,
-      summary: row.summary_json ? parseJsonSafely<unknown>(row.summary_json as string, "eval-repo") : null,
+      summary: row.summary_json ? JSON.parse(row.summary_json as string) : null,
       createdAt: row.created_at,
     });
   },
@@ -239,9 +227,9 @@ export const evalRepo = {
         id: row.id,
         scenarioSetId: row.scenario_set_id,
         characterVersionId: row.character_version_id,
-        modelRegistrySnapshot: parseJsonSafely<unknown>(row.model_registry_snapshot_json as string, "eval-repo"),
+        modelRegistrySnapshot: JSON.parse(row.model_registry_snapshot_json as string),
         status: row.status,
-        summary: row.summary_json ? parseJsonSafely<unknown>(row.summary_json as string, "eval-repo") : null,
+        summary: row.summary_json ? JSON.parse(row.summary_json as string) : null,
         createdAt: row.created_at,
       })
     );
@@ -264,9 +252,9 @@ export const evalRepo = {
       id: row.id,
       scenarioSetId: row.scenario_set_id,
       characterVersionId: row.character_version_id,
-      modelRegistrySnapshot: parseJsonSafely<unknown>(row.model_registry_snapshot_json as string, "eval-repo"),
+      modelRegistrySnapshot: JSON.parse(row.model_registry_snapshot_json as string),
       status: row.status,
-      summary: row.summary_json ? parseJsonSafely<unknown>(row.summary_json as string, "eval-repo") : null,
+      summary: row.summary_json ? JSON.parse(row.summary_json as string) : null,
       createdAt: row.created_at,
     });
   },
@@ -326,9 +314,9 @@ export const evalRepo = {
         id: row.id,
         evalRunId: row.eval_run_id,
         scenarioCaseId: row.scenario_case_id,
-        scores: parseJsonSafely<unknown>(row.scores_json as string, "eval-repo"),
+        scores: JSON.parse(row.scores_json as string),
         passed: row.passed === 1,
-        failureReasons: parseJsonSafely<unknown>(row.failure_reasons_json as string, "eval-repo"),
+        failureReasons: JSON.parse(row.failure_reasons_json as string),
         traceId: row.trace_id,
         createdAt: row.created_at,
       })

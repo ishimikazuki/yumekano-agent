@@ -95,7 +95,13 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const missingWorkspaceResponse = await ensureWorkspaceExists(id);
     if (missingWorkspaceResponse) return missingWorkspaceResponse;
 
-    const body = await request.json().catch(() => ({}));
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('Failed to parse playground session request body:', parseError);
+      body = {};
+    }
     const parsedBody = PlaygroundSessionResetSchema.safeParse(body);
 
     if (!parsedBody.success) {

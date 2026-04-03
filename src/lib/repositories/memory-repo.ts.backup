@@ -21,18 +21,6 @@ import {
 /**
  * Repository for memory operations.
  */
-/**
- * Safely parse JSON string with error context
- */
-function parseJsonSafely<T = unknown>(jsonString: string, context: string): T {
-  try {
-    return JSON.parse(jsonString) as T;
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON in ${context}: ${errorMsg}`);
-  }
-}
-
 export const memoryRepo = {
   // ==========================================
   // Events
@@ -103,11 +91,11 @@ export const memoryRepo = {
         eventType: row.event_type,
         summary: row.summary,
         salience: row.salience,
-        retrievalKeys: parseJsonSafely<unknown>(row.retrieval_keys_json as string, "memory-repo"),
+        retrievalKeys: JSON.parse(row.retrieval_keys_json as string),
         emotionSignature: row.emotion_signature_json
-          ? parseJsonSafely<unknown>(row.emotion_signature_json as string, "memory-repo")
+          ? JSON.parse(row.emotion_signature_json as string)
           : null,
-        participants: parseJsonSafely<unknown>(row.participants_json as string, "memory-repo"),
+        participants: JSON.parse(row.participants_json as string),
         qualityScore: row.quality_score,
         supersedesEventId: row.supersedes_event_id,
         createdAt: row.created_at,
@@ -195,7 +183,7 @@ export const memoryRepo = {
         pairId: row.pair_id,
         subject: row.subject,
         predicate: row.predicate,
-        object: parseJsonSafely<unknown>(row.object_json as string, "memory-repo"),
+        object: JSON.parse(row.object_json as string),
         confidence: row.confidence,
         status: row.status,
         supersedesFactId: row.supersedes_fact_id,
@@ -218,7 +206,7 @@ export const memoryRepo = {
         pairId: row.pair_id,
         subject: row.subject,
         predicate: row.predicate,
-        object: parseJsonSafely<unknown>(row.object_json as string, "memory-repo"),
+        object: JSON.parse(row.object_json as string),
         confidence: row.confidence,
         status: row.status,
         supersedesFactId: row.supersedes_fact_id,
@@ -285,7 +273,7 @@ export const memoryRepo = {
         id: row.id,
         pairId: row.pair_id,
         summary: row.summary,
-        retrievalKeys: parseJsonSafely<unknown>(row.retrieval_keys_json as string, "memory-repo"),
+        retrievalKeys: JSON.parse(row.retrieval_keys_json as string),
         salience: row.salience,
         qualityScore: row.quality_score,
         windowStartAt: row.window_start_at,

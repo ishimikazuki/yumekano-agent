@@ -17,7 +17,13 @@ const RollbackRequestSchema = z.object({
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const { id: characterId, versionId: targetVersionId } = await params;
-    const body = await request.json().catch(() => ({}));
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      body = {};
+    }
     const parsed = RollbackRequestSchema.safeParse(body);
 
     if (!parsed.success) {

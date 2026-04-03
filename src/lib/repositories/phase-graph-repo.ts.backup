@@ -5,18 +5,6 @@ import { PhaseGraph, PhaseGraphVersion, PhaseGraphVersionSchema } from '../schem
 /**
  * Repository for phase graph operations.
  */
-/**
- * Safely parse JSON string with error context
- */
-function parseJsonSafely<T = unknown>(jsonString: string, context: string): T {
-  try {
-    return JSON.parse(jsonString) as T;
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON in ${context}: ${errorMsg}`);
-  }
-}
-
 export const phaseGraphRepo = {
   /**
    * Create a new phase graph version.
@@ -68,7 +56,7 @@ export const phaseGraphRepo = {
       id: row.id,
       characterId: row.character_id,
       versionNumber: row.version_number,
-      graph: parseJsonSafely<unknown>(row.graph_json as string, "phase-graph-repo"),
+      graph: JSON.parse(row.graph_json as string),
       createdAt: row.created_at,
     });
   },
@@ -90,7 +78,7 @@ export const phaseGraphRepo = {
       id: row.id,
       characterId: row.character_id,
       versionNumber: row.version_number,
-      graph: parseJsonSafely<unknown>(row.graph_json as string, "phase-graph-repo"),
+      graph: JSON.parse(row.graph_json as string),
       createdAt: row.created_at,
     });
   },
@@ -110,7 +98,7 @@ export const phaseGraphRepo = {
         id: row.id,
         characterId: row.character_id,
         versionNumber: row.version_number,
-        graph: parseJsonSafely<unknown>(row.graph_json as string, "phase-graph-repo"),
+        graph: JSON.parse(row.graph_json as string),
         createdAt: row.created_at,
       })
     );

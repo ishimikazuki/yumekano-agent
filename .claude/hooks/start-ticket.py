@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Initialize current-ticket.json for a new ticket.
+
+Usage:
+  python3 .claude/hooks/start-ticket.py <ticket_id>
+
+Example:
+  python3 .claude/hooks/start-ticket.py B1
+"""
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+STATE_DIR = ROOT / ".claude" / "state"
+STATE_PATH = STATE_DIR / "current-ticket.json"
+PLANS_PATH = ROOT / "PLANS.md"
+
+
+def parse_ticket_from_plans(ticket_id: str) -> dict:
+    """Parse acceptance criteria and required tests from PLANS.md."""
+    if not PLANS_PATH.exists():
+        return {"acceptance_criteria": [], "required_tests": []}
+
+    content = PLANS_PATH.read_text(encoding="utf-8")
+    lines = content.split("\n")
+
+    acceptance_criteria = []
+    required_tests = []
+    in_ticket = False
+    in_acceptance = False
+    in_tests = False
+
+    for line in lines:
+        # Find ticket section header (e.g., "## B1: ...")
+        if line.startswith(f"## {ticket_id}:") or line.startswith(f"## {ticket_id} "):
+            in_ticket = True
+            continue
+
+        # Exit ticket section at next ## header
+        if in_ticket and line.startswith("## ") and not line.startswith(f"## {ticket_id}"):
+            break
+
+        if not in_ticket:
+            continue
+
+        # Detect sub-sections
+        if line.strip() == "### 受入基準":
+            in_acceptance = True
+            in_tests = False
+            continue
+        elif line.strip() == "### 必要テスト":
+            in_tests = True
+            in_acceptance = False
+            continue
+        elif line.startswith("### "):
+            in_acceptance = False
+            in_tests = False
+            continue
+
+        # Collect items
+        stripped = line.strip()
+        if in_acceptance and stripped.startswith("- [ ] "):
+            acceptance_criteria.append(stripped[6:])
+        elif in_tests and stripped.startswith("- "):
+            required_tests.append(stripped[2:])
+
+    return {
+        "acceptance_criteria": acceptance_criteria,
+        "required_tests": required_tests,
+    }
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print("Usage: python3 .claude/hooks/start-ticket.py <ticket_id>")
+        sys.exit(1)
+
+    ticket_id = sys.argv[1]
+    parsed = parse_ticket_from_plans(ticket_id)
+
+    state = {
+        "ticket_id": ticket_id,
+        "status": "in_progress",
+        "ready_to_stop": False,
+        "tests": {
+            "required": parsed["required_tests"],
+            "passed": [],
+            "failed": [],
+            "all_passed": False,
+        },
+        "acceptance": {
+            "required": parsed["acceptance_criteria"],
+            "passed": [],
+            "failed": [],
+            "all_passed": False,
+        },
+        "review": {
+            "pass": False,
+            "blocking_issues": [],
+        },
+        "notes": "",
+    }
+
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    STATE_PATH.write_text(json.dumps(state, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"Initialized ticket {ticket_id}")
+    print(f"  Acceptance criteria: {len(parsed['acceptance_criteria'])}")
+    print(f"  Required tests: {len(parsed['required_tests'])}")
+    print(f"  State file: {STATE_PATH}")
+
+
+if __name__ == "__main__":
+    main()

@@ -74,11 +74,11 @@ function parseSandboxEventRow(row: Record<string, unknown>): MemoryEvent {
     eventType: row.event_type,
     summary: row.summary,
     salience: row.salience,
-    retrievalKeys: parseJsonSafely<unknown>(String(row.retrieval_keys_json), "workspace-repo"),
+    retrievalKeys: JSON.parse(String(row.retrieval_keys_json)),
     emotionSignature: row.emotion_signature_json
-      ? parseJsonSafely<unknown>(String(row.emotion_signature_json), "workspace-repo")
+      ? JSON.parse(String(row.emotion_signature_json))
       : null,
-    participants: parseJsonSafely<unknown>(String(row.participants_json), "workspace-repo"),
+    participants: JSON.parse(String(row.participants_json)),
     qualityScore: row.quality_score,
     supersedesEventId: row.supersedes_event_id,
     createdAt: row.created_at,
@@ -91,7 +91,7 @@ function parseSandboxFactRow(row: Record<string, unknown>): MemoryFact {
     pairId: row.session_id,
     subject: row.subject,
     predicate: row.predicate,
-    object: parseJsonSafely<unknown>(String(row.object_json), "workspace-repo"),
+    object: JSON.parse(String(row.object_json)),
     confidence: row.confidence,
     status: row.status,
     supersedesFactId: row.supersedes_fact_id,
@@ -105,7 +105,7 @@ function parseSandboxObservationRow(row: Record<string, unknown>): MemoryObserva
     id: row.id,
     pairId: row.session_id,
     summary: row.summary,
-    retrievalKeys: parseJsonSafely<unknown>(String(row.retrieval_keys_json), "workspace-repo"),
+    retrievalKeys: JSON.parse(String(row.retrieval_keys_json)),
     salience: row.salience,
     qualityScore: row.quality_score,
     windowStartAt: row.window_start_at,
@@ -160,18 +160,6 @@ async function deleteSessionData(sessionId: string): Promise<void> {
 /**
  * Repository for workspace and draft operations.
  */
-/**
- * Safely parse JSON string with error context
- */
-function parseJsonSafely<T = unknown>(jsonString: string, context: string): T {
-  try {
-    return JSON.parse(jsonString) as T;
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON in ${context}: ${errorMsg}`);
-  }
-}
-
 export const workspaceRepo = {
   // ==========================================
   // Workspace CRUD
@@ -365,13 +353,13 @@ export const workspaceRepo = {
 
     const row = result.rows[0];
     return DraftStateSchema.parse({
-      identity: parseJsonSafely<unknown>(row.identity_json as string, "workspace-repo"),
-      persona: normalizePersonaAuthoring(parseJsonSafely<unknown>(row.persona_json as string, "workspace-repo")),
-      style: normalizeLegacyStyle(parseJsonSafely<unknown>(row.style_json as string, "workspace-repo")),
-      autonomy: normalizeLegacyAutonomy(parseJsonSafely<unknown>(row.autonomy_json as string, "workspace-repo")),
-      emotion: normalizeLegacyEmotion(parseJsonSafely<unknown>(row.emotion_json as string, "workspace-repo")),
-      memory: parseJsonSafely<unknown>(row.memory_policy_json as string, "workspace-repo"),
-      phaseGraph: parseJsonSafely<unknown>(row.phase_graph_json as string, "workspace-repo"),
+      identity: JSON.parse(row.identity_json as string),
+      persona: normalizePersonaAuthoring(JSON.parse(row.persona_json as string)),
+      style: normalizeLegacyStyle(JSON.parse(row.style_json as string)),
+      autonomy: normalizeLegacyAutonomy(JSON.parse(row.autonomy_json as string)),
+      emotion: normalizeLegacyEmotion(JSON.parse(row.emotion_json as string)),
+      memory: JSON.parse(row.memory_policy_json as string),
+      phaseGraph: JSON.parse(row.phase_graph_json as string),
       prompts: buildPromptBundleContent({
         plannerMd: row.planner_md as string,
         generatorMd: row.generator_md as string,
@@ -560,7 +548,7 @@ export const workspaceRepo = {
       id: row.id,
       workspaceId: row.workspace_id,
       section: row.section,
-      data: parseJsonSafely<unknown>(row.data_json as string, "workspace-repo"),
+      data: JSON.parse(row.data_json as string),
       createdAt: row.created_at,
     });
   },
@@ -1295,7 +1283,7 @@ export const workspaceRepo = {
         sessionId: row.session_id,
         userMessageText: row.user_message_text,
         assistantMessageText: row.assistant_message_text,
-        traceJson: parseJsonSafely<unknown>(row.trace_json as string, "workspace-repo"),
+        traceJson: JSON.parse(row.trace_json as string),
         createdAt: row.created_at,
       })
     );

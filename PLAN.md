@@ -1,859 +1,797 @@
-# PLAN.md
+# yumekano-agent 改善実装プラン
 
-# yumekano-agent 修正・移行計画
+## 目的
 
-## 0. この文書の役割
+このプランは、修正を **チケット単位** に分割し、**各チケットで必須テストを追加・実行し、すべて green になったら次へ進む**ための実行計画です。
 
-この文書は、`yumekano-agent` を安全に改善するための **唯一の実行計画** である。  
-この文書は、実装者 AI に細かい実装手順を与えるものではない。  
-この文書は、**何を直すか、何を壊してはいけないか、何が通れば次に進んでよいか** を固定するためのものとする。
+いまのレビューで優先度が高い論点は次のとおりです。
 
-この計画の目的は次の 5 つ。
-
-1. 実装方針は AI に考えさせる
-2. ただし成功条件は人間が固定する
-3. fresh DB / prod / draft / prompt persistence / eval を同時に守る
-4. ticket ごとに完了判定できるようにする
-5. Claude Code による **ゲート付き自律遷移** を成立させる
-
----
-
-## 1. 現状認識
-
-現時点の repo には、少なくとも次の系統の問題がある。
-
-- prompt / schema / seed / DB persistence の source-of-truth が分裂している
-- `appraisal` が heuristic ベースで、CoE が main decision path ではなく explainer 寄り
-- `chat_turn` と `draft-chat-turn` の state progression が乖離している
-- prompt persistence の read/write と migration に不整合がある
-- prod と draft で使う prompt / state / memory / phase の経路が一致していない
-- test / eval の資産は一部あっても、標準の実行導線が弱い
-
-この計画は、上記を **実行可能テストで縛りながら** 解消する。
+- `package.json` に標準の `test` / `test:db` / `test:workflow` / `eval:smoke` がなく、品質ゲートが固定化されていない。
+- `workspace_draft_state` と `prompt_bundle_versions` の `generatorIntimacyMd` 永続化が schema / migration / repository で揃っていない。
+- emotion の本線がまだ `computeAppraisal -> updatePAD` の heuristic path で、CoE は説明レイヤー寄り。
+- production `chat_turn` は elapsed / phase context / pair metrics の更新が不十分。
+- draft/playground は continuing session でも baseline ベースの振る舞いが残り、prod/draft parity が弱い。
+- checked-in prompts / seed prompts / runtime schema に drift が残っている。
+- ranker は deterministic gate より前に model 判定へ寄っている。
+- publish/versioning の canonical path が二重化している。
 
 ---
 
-## 2. この計画の設計原則
+## 実行原則
 
-### 2.1 実装方法は AI に委ねる
-この計画では「どう直すか」は Codex / Claude Code に考えさせる。  
-人間は **問題定義・不変条件・required tests・acceptance criteria** を固定する。
+### 進行ルール
 
-### 2.2 1 ticket = 1 subsystem
-1 回の変更で複数の大分類を同時に解かない。  
-scope widening は原則禁止。
+1. **T(n) が green になるまで T(n+1) に進まない。**
+2. 各チケットは **failing tests first** で始める。
+3. 各チケットの最後に、**Required tests** と **Acceptance criteria** を pass/fail で確認する。
+4. 各チケットの最後に、最低でも次を記録する。
+   - files changed
+   - tests added
+   - commands run
+   - pass/fail per acceptance criterion
+   - remaining risks
+5. `fresh DB` を使うべきチケットでは、既存ローカル DB ではなく **まっさらな DB で migrate/seed から検証**する。
+6. runtime schema を canonical contract とし、prompt / seed / repo mapping / migration はそこへ合わせる。
+7. prod と draft が同じ中核ロジックを使うべき箇所では、**片方だけ直して進まない**。
+8. live model が不要なテストは、必ず mocked / deterministic にする。
 
-### 2.3 failing tests first
-実装前に必ず failing test を置く。  
-「直った気がする」は禁止。
+### 進行ゲート
 
-### 2.4 fresh DB は必須 gate
-migration と repo のズレは静的レビューだけでは見落としやすい。  
-DB を触る ticket では **fresh DB migrate + seed + init** を必須とする。
+各チケットで次に進んでよい条件は、次の 4 つがすべて満たされたときだけです。
 
-### 2.5 prod と draft は最終的に同じ core を呼ぶ
-sandbox だから別ロジック、を許さない。  
-差分が許されるのは storage target と isolation のみ。
+- [ ] Required tests をすべて追加した
+- [ ] Required tests をすべて実行し green になった
+- [ ] Acceptance criteria をすべて pass した
+- [ ] Stop conditions / Blockers に該当しない
 
-### 2.6 checked-in prompt は canonical ではない
-canonical contract は **runtime schema** と **永続化される prompt bundle** とする。  
-checked-in prompt assets は template / seed として扱い、drift は contract test で検知する。
+### 失敗時の原則
 
-### 2.7 merge 条件は diff の見た目ではなく gate
-実装完了の判断は、説明の上手さではなく、**acceptance tests の green** のみ。
+以下のどれかが起きたら、そのチケットは **Blocked** とし、次へ進まないこと。
 
-### 2.8 自律遷移は許可するが、条件は固定する
-Claude Code は次の ticket を自律的に選んでよい。  
-ただし、**現在の ticket が gate を満たしたときだけ** 次へ進んでよい。
-
----
-
-## 3. 以前うまくいかなかった理由
-
-前回までの修正が取りこぼした理由は次の通り。
-
-1. 問題が大きすぎる単位で定義されていた
-2. 実装手順を細かく固定しすぎて、AI が全体最適を探す余地が少なかった
-3. 逆に、壊してはいけない不変条件は十分に固定されていなかった
-4. fresh DB / prompt persistence / prod-draft parity のような見えにくい失敗が gate 化されていなかった
-5. 実装と監査を分離していなかった
-6. 「次の ticket に進んでよい条件」が機械可読ではなかった
-
-この計画では、**解法は自由、成功条件は厳密** にする。
+- fresh DB で失敗
+- schema / repository / migration drift
+- required tests 未実装
+- prod / draft parity を壊した
+- runtime schema canonical を壊した
+- live model がないと CI が回らない
+- scope が広がって当該チケットの Non-goals に侵入した
 
 ---
 
-## 4. この計画が前提とするファイル
+# T0. ローカル品質ゲートの新設
 
-この計画は、repo ルートに次のファイルが存在することを前提とする。
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
 
-- `PLAN.md`
-- `CLAUDE.md`
-- `AGENTS.md`（必要なら）
-- `.claude/settings.json`
-- `.claude/hooks/check-stop.py`
-- `.claude/state/current-ticket.json`
+## Goal
+repo に標準のテスト / eval エントリポイントを追加し、以後の修正をすべて **同じ品質ゲート** で回せる状態にする。
 
----
+## Non-goals
+- emotion / CoE / PAD ロジックの修正
+- prompt 内容の改善
+- DB schema の意味変更
+- prod/draft の runtime 挙動変更
 
-## 5. Ticket state file
+## Invariants
+- fresh DB を壊さない
+- live model 必須の unit / workflow test を作らない
+- 本 ticket では本番挙動を変更しない
+- 後続 ticket が「最小 relevant subset」と「full local gate」の両方を使える構成にする
 
-Claude Code による自律遷移と hook 判定のため、  
-**現在の ticket 状態は `.claude/state/current-ticket.json` に保存する。**
+## Required tests
+### 追加するテスト
+- `tests/db/fresh-db.migrate-smoke.test.ts`
+- `tests/db/fresh-db.seed-smoke.test.ts`
+- `tests/workflow/chat-turn.smoke.test.ts`（mocked）
+- `tests/contracts/.keep` または空雛形
 
-この state file は、ticket 実行中ずっと更新される。  
-ticket 完了を claim する前に、必ずこのファイルを更新すること。
+### 追加する scripts
+- `test`
+- `test:unit`
+- `test:db`
+- `test:workflow`
+- `eval:smoke`
+- `ci:local`
 
-### 5.1 必須フィールド
+### 実行するコマンド
+- `npm run test:db`
+- `npm run test:workflow`
+- `npm run test`
+- `npm run ci:local`
 
-```json
-{
-  "ticket_id": "T0",
-  "status": "planned | in_progress | ready_to_stop",
-  "ready_to_stop": false,
-  "tests": {
-    "required": [],
-    "passed": [],
-    "failed": [],
-    "all_passed": false
-  },
-  "acceptance": {
-    "required": [],
-    "passed": [],
-    "failed": [],
-    "all_passed": false
-  },
-  "review": {
-    "pass": false,
-    "blocking_issues": []
-  },
-  "notes": ""
-}
-```
+## Acceptance criteria
+- `package.json` に上記 scripts が存在する
+- テストランナーと設定ファイルがコミットされている
+- `npm run test:db` で fresh DB migrate/seed smoke が実行される
+- `npm run test:workflow` で mocked workflow smoke が最低 1 本通る
+- 本 ticket の diff が emotion / planner / generator / ranker / workflow の本番ロジックを変更していない
 
-### 5.2 運用ルール
+## Deliverables
+- テストランナー導入
+- テスト設定ファイル
+- `package.json` scripts
+- DB smoke tests
+- mocked workflow smoke tests
+- `ci:local` コマンド
 
-- `ticket_id` は現在の ticket を表す
-- `status` は `planned` / `in_progress` / `ready_to_stop` のいずれか
-- `ready_to_stop` は、**required tests / acceptance / review がすべて pass したときのみ** `true`
-- `tests.required` はその ticket で必須の test コマンドまたは test 種別を記録する
-- `acceptance.required` はその ticket の acceptance criteria を機械可読に列挙する
-- `review.pass` は、監査 AI が blocking issue なしと判定したときのみ `true`
+## Dependencies / Next-ticket prerequisites
+- なし
+- **T1 は T0 が green になるまで開始しない**
 
----
-
-## 6. Ticket 遷移ルール
-
-Claude Code は次の ticket を自律的に選んでよい。  
-ただし、**次の条件をすべて満たしたときだけ** 遷移を許可する。
-
-### 遷移条件
-
-1. 現在の ticket の required tests がすべて pass
-2. 現在の ticket の acceptance criteria がすべて pass
-3. review が pass
-4. `.claude/state/current-ticket.json` の `ready_to_stop` が `true`
-5. 次 ticket の prerequisite が満たされている
-6. 不確実な点が残る場合は遷移しない
-
-### 遷移禁止条件
-
-次のいずれかがある場合、次の ticket に進んではならない。
-
-- fresh DB test が落ちる
-- schema / repository / migration drift が残っている
-- prod/draft parity が ticket 要件なのに未確認
-- checked-in prompt / seed / runtime contract drift が残っている
-- required tests が未実装
-- review に blocking issue がある
-- `ready_to_stop` が false
+## Stop conditions / Blockers
+- テストランナーが live model 前提になる
+- fresh DB smoke が作れない
+- 本番 runtime まで広く変更し始めた
+- `test` / `test:db` / `ci:local` が未完成のまま次へ進もうとしている
 
 ---
 
-## 7. hook 前提の停止ルール
+# T1. `generatorIntimacyMd` の persistence contract を完全修正する
 
-Claude Code は、作業停止または ticket 完了を claim する前に、  
-`.claude/state/current-ticket.json` を更新しなければならない。
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
 
-`Stop` / `SubagentStop` hook は、次の条件で停止を block する。
+## Goal
+`workspace_draft_state` と `prompt_bundle_versions` を、schema / migration / repository / seed の全層で `generatorIntimacyMd` に一致させる。
 
-- state file が存在しない
-- state file が invalid JSON
-- 必須フィールドが不足
-- `ready_to_stop` が false
-- `tests.all_passed` が false
-- `acceptance.all_passed` が false
-- `review.pass` が false
+## Non-goals
+- prompt の文章改善
+- generator の応答品質改善
+- CoE / PAD ロジック変更
+- phase / pair-state の進行改善
 
-したがって、**ticket 完了 = state file が完了状態であること** を意味する。
+## Invariants
+- fresh DB を壊さない
+- runtime schema を canonical にする
+- 既存の non-intimacy prompt 挙動を変えない
+- prod/draft の prompt selection semantics を壊さない
+
+## Required tests
+### 追加するテスト
+- `tests/contracts/prompt-bundle.generator-intimacy.contract.test.ts`
+- `tests/contracts/workspace-draft.generator-intimacy.contract.test.ts`
+- `tests/db/fresh-db.workspace-prompt-contract.test.ts`
+
+### 検証内容
+- `promptBundleRepo.create/getById/getLatest/list` が `generatorIntimacyMd` を round-trip する
+- `workspaceRepo.initDraft/getDraft/updateDraftSection/updatePrompt` が `generatorIntimacyMd` を round-trip する
+- fresh DB で migrate -> seed -> workspace init -> prompt update が通る
+- prod / draft の `selectGeneratorPrompt` が authored `generatorIntimacyMd` を取得できる
+
+### 実行するコマンド
+- `npm run test:unit -- tests/contracts/prompt-bundle.generator-intimacy.contract.test.ts tests/contracts/workspace-draft.generator-intimacy.contract.test.ts`
+- `npm run test:db -- tests/db/fresh-db.workspace-prompt-contract.test.ts`
+- `npm run ci:local`
+
+## Acceptance criteria
+- `workspace_draft_state` に `generator_intimacy_md` 列が存在する
+- `prompt_bundle_versions` に `generator_intimacy_md` 列が存在する
+- schema / migration / repository / seed がその列名と意味で一致している
+- fresh DB smoke が green
+- `generatorIntimacyMd` が prod / draft の両方で authored value として取得できる
+
+## Deliverables
+- migration 修正
+- repo mapping 修正
+- seed 修正
+- contract tests
+- fresh DB smoke test
+
+## Dependencies / Next-ticket prerequisites
+- **T0 green**
+- **T2 は T1 が green になるまで開始しない**
+
+## Stop conditions / Blockers
+- schema / repo / migration の drift が 1 箇所でも残る
+- fresh DB で SQL column error が出る
+- seed が `generatorIntimacyMd` を保存しない
+- prod / draft のどちらかだけが authored intimacy prompt を見える状態になる
 
 ---
 
-## 8. 実行方式
+# T2. prompt contract の canonical source を一本化する
 
-各 ticket は次の流れで進める。
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
 
-1. `PLAN.md` の ticket 本文をそのまま実装 AI に渡す
-2. 実装 AI は failing tests first で作業する
-3. 実装 AI は `.claude/state/current-ticket.json` を作成または更新する
-4. 実装 AI は最小の関連テストを回す
-5. 監査 AI に diff と実装要約を渡す
-6. 監査 AI が acceptance criteria を満たしているかだけを判定する
-7. green でなければ同じ ticket をやり直す
-8. green になったら `ready_to_stop: true` に更新する
-9. その後に限って次の ticket を選んでよい
+## Goal
+runtime schema を唯一の canonical contract にし、checked-in prompts / seed prompts / override semantics をそれに揃える。
+
+## Non-goals
+- persona の大改稿
+- model/provider の変更
+- CoE / PAD 実装変更
+- ranking ロジックの大変更
+
+## Invariants
+- runtime schema を canonical にする
+- `generatorIntimacyMd` 分岐を維持する
+- prod / draft の prompt selection behavior を壊さない
+- compatibility helper を入れるなら test 付きで明示する
+
+## Required tests
+### 追加するテスト
+- `tests/contracts/planner-prompt.contract.test.ts`
+- `tests/contracts/generator-prompt.contract.test.ts`
+- `tests/contracts/ranker-prompt.contract.test.ts`
+- `tests/contracts/seed-prompt.contract.test.ts`
+- `tests/contracts/prompt-override.behavior.test.ts`
+
+### 検証内容
+- planner checked-in prompt が `TurnPlanSchema` と一致する
+- generator checked-in prompt が `candidates[3..5]` を前提にする
+- ranker checked-in prompt が `globalNotes: string` 等の現行 schema と一致する
+- seed prompts が checked-in prompt と同じ contract を守る
+- `promptOverride` が mandatory rules を消さない
+
+### 実行するコマンド
+- `npm run test:unit -- tests/contracts/planner-prompt.contract.test.ts tests/contracts/generator-prompt.contract.test.ts tests/contracts/ranker-prompt.contract.test.ts tests/contracts/seed-prompt.contract.test.ts tests/contracts/prompt-override.behavior.test.ts`
+- `npm run ci:local`
+
+## Acceptance criteria
+- checked-in prompt examples に旧 field 名が active example として残っていない
+- seed prompt 群が runtime schema と一致する
+- planner / generator / ranker の prompt family ごとに drift 防止 contract test がある
+- `promptOverride` の意味論がコードとテストで固定されている
+- canonical contract が runtime schema であることが docs / tests / code で一致している
+
+## Deliverables
+- prompts/ 修正
+- seed prompt 修正
+- promptOverride semantics 修正
+- contract tests
+- 必要なら compatibility helper
+
+## Dependencies / Next-ticket prerequisites
+- **T1 green**
+- **T3 は T2 が green になるまで開始しない**
+
+## Stop conditions / Blockers
+- checked-in prompt と seed prompt の片方だけ直る
+- schema と prompt example が再びずれる
+- override semantics が曖昧なまま残る
+- prod/draft で別 contract を使い始める
 
 ---
 
-## 9. 共通ルール（全 ticket 共通）
+# T3. CoE 契約と回帰フィクスチャを先に定義する
 
-このブロックは、各 ticket に共通で実装 AI へ渡す。
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
+
+## Goal
+CoE 主導 emotion system の型契約と fixture corpus を先に作る。  
+本番配線の前に、**何を正解とみなすか** を test で固定する。
+
+## Non-goals
+- production workflow への配線
+- 旧 heuristic appraisal path の削除
+- sandbox の挙動変更
+- model/provider 比較
+
+## Invariants
+- live model なしで deterministic に回る
+- 旧 runtime をまだ壊さない
+- fixture は impression ではなく band assertion を持つ
+- pass/fail ができる shape で定義する
+
+## Required tests
+### 追加するテスト
+- `tests/evals/emotion/compliment.fixture.test.ts`
+- `tests/evals/emotion/mild-rejection.fixture.test.ts`
+- `tests/evals/emotion/explicit-insult.fixture.test.ts`
+- `tests/evals/emotion/apology.fixture.test.ts`
+- `tests/evals/emotion/repair.fixture.test.ts`
+- `tests/evals/emotion/repeated-pressure.fixture.test.ts`
+- `tests/evals/emotion/intimacy-positive-context.fixture.test.ts`
+- `tests/evals/emotion/intimacy-boundary-crossing.fixture.test.ts`
+- `tests/evals/emotion/topic-shift-after-tension.fixture.test.ts`
+- `tests/evals/emotion/two-turn-carry-over.fixture.test.ts`
+- `tests/evals/emotion/five-turn-progression.fixture.test.ts`
+- `tests/contracts/coe-schemas.contract.test.ts`
+
+### 検証内容
+各 fixture で少なくとも以下を assert する。
+- CoE evidence shape
+- relational appraisal axes
+- PAD delta band
+- pair metric delta band
+
+### 実行するコマンド
+- `npm run test:unit -- tests/contracts/coe-schemas.contract.test.ts`
+- `npm run eval:smoke -- tests/evals/emotion`
+- `npm run ci:local`
+
+## Acceptance criteria
+- `CoEEvidence`, `RelationalAppraisal`, `EmotionUpdateProposal`, `PairMetricDelta`, `EmotionTrace` の schema/type が存在する
+- required fixture がすべてコミットされている
+- 各 fixture が evidence / axes / PAD delta / pair metric delta を検証している
+- 本番 workflow はまだ旧 path のまま
+- テストが deterministic で live model を要求しない
+
+## Deliverables
+- 新 schema/type 群
+- fixture corpus
+- regression harness
+- eval 実行用の最低限の runner 補強
+
+## Dependencies / Next-ticket prerequisites
+- **T2 green**
+- **T4 は T3 が green になるまで開始しない**
+
+## Stop conditions / Blockers
+- fixture が文章の印象評価だけになっている
+- live model 必須のテストになる
+- evidence / appraisal / delta のいずれかが未定義
+- 本番配線を先に触り始めた
+
+---
+
+# T4. CoE extractor と pure integrator を作る
+
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
+
+## Goal
+`user text -> CoE evidence -> relational appraisal -> PAD / pair delta` の pure core を実装する。
+
+## Non-goals
+- prod / draft への本番配線
+- phase progression の修正
+- publish/versioning の整理
+- prompt 文面の再設計
+
+## Invariants
+- 新 path の main logic に regex pattern matching を戻さない
+- hard safety / consent / abuse の narrow override だけ deterministic に残す
+- weights は config / emotion spec から読む
+- pure core は workflow glue に埋め込まない
+
+## Required tests
+### 追加するテスト
+- `tests/unit/coe-extractor.mocked.test.ts`
+- `tests/unit/coe-extractor.parse-repair.test.ts`
+- `tests/unit/relational-integrator.insult-shock.test.ts`
+- `tests/unit/relational-integrator.apology-repair.test.ts`
+- `tests/unit/relational-integrator.sustained-pressure.test.ts`
+- `tests/unit/relational-integrator.affectionate-carry-over.test.ts`
+- `tests/unit/relational-integrator.quiet-turn-decay.test.ts`
+- `tests/unit/relational-integrator.open-thread-bias.test.ts`
+
+### 検証内容
+- extractor input に必要 context が入る
+- malformed model output を strict parse / repair / fail-fast で扱える
+- integrator が CoE appraisal を入力に PAD delta と pair metric delta を返す
+- legacy path を adapter / flag の内側に隔離できる
+
+### 実行するコマンド
+- `npm run test:unit -- tests/unit/coe-extractor.mocked.test.ts tests/unit/coe-extractor.parse-repair.test.ts`
+- `npm run test:unit -- tests/unit/relational-integrator.*.test.ts`
+- `npm run ci:local`
+
+## Acceptance criteria
+- dedicated CoE extractor module がある
+- dedicated relational integrator module がある
+- new path は regex message matching を main path に使わない
+- malformed model output handling が code と test で定義されている
+- required unit tests が green
+
+## Deliverables
+- CoE extractor module
+- relational integrator module
+- adapter / feature flag
+- mocked tests
+- config/spec ベースの weighting
+
+## Dependencies / Next-ticket prerequisites
+- **T3 green**
+- **T5 は T4 が green になるまで開始しない**
+
+## Stop conditions / Blockers
+- integrator が workflow に埋まる
+- regex main path が残る
+- malformed output の扱いが未定義
+- weights が workflow 側の magic number に残る
+
+---
+
+# T5. production `chat_turn` を新 core に配線し、state progression を直す
+
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
+
+## Goal
+production `runChatTurn` を new CoE path に切り替え、pair metrics / phase inputs / trace を設計どおりに近づける。
+
+## Non-goals
+- sandbox 修正
+- publish/versioning 修正
+- model/provider 比較
+- prompt 文体調整
+
+## Invariants
+- fresh DB を壊さない
+- runtime schema canonical を守る
+- extractor / trace persistence を壊さない
+- new core を workflow に正しく接続するが、不要な周辺設計変更はしない
+
+## Required tests
+### 追加するテスト
+- `tests/workflow/prod-chat-turn.one-turn.integration.test.ts`
+- `tests/workflow/prod-chat-turn.three-turn.integration.test.ts`
+- `tests/workflow/prod-chat-turn.phase-transition.integration.test.ts`
+- `tests/workflow/prod-chat-turn.pair-state-persistence.integration.test.ts`
+- `tests/workflow/prod-chat-turn.trace.integration.test.ts`
+
+### 検証内容
+- production main path が `computeAppraisal` 直呼びではない
+- elapsed / counters / phase context が固定 placeholder ではなく、導出可能な実値を使う
+- `pairRepo.updateState` が trust / affinity / intimacyReadiness / conflict / PAD を保存する
+- trace に CoE evidence / appraisal / state deltas が残る
+
+### 実行するコマンド
+- `npm run test:workflow -- tests/workflow/prod-chat-turn.one-turn.integration.test.ts tests/workflow/prod-chat-turn.three-turn.integration.test.ts`
+- `npm run test:workflow -- tests/workflow/prod-chat-turn.phase-transition.integration.test.ts tests/workflow/prod-chat-turn.pair-state-persistence.integration.test.ts tests/workflow/prod-chat-turn.trace.integration.test.ts`
+- `npm run ci:local`
+
+## Acceptance criteria
+- production `chat_turn` の本線が new CoE path を使う
+- `turnsSinceLastUpdate: 1` の固定がなくなる
+- `events: new Map()`, `topics: new Map()`, zero counter placeholder が、導出可能な範囲で実値に置き換わる
+- pair metrics が DB に保存される
+- trace に新しい state reasoning が残る
+- required workflow integration tests が green
+
+## Deliverables
+- `chat-turn.ts` 修正
+- trace 拡張
+- pair-state persistence 修正
+- integration tests
+
+## Dependencies / Next-ticket prerequisites
+- **T4 green**
+- **T6 は T5 が green になるまで開始しない**
+
+## Stop conditions / Blockers
+- placeholder logic が残る
+- pair metrics が一部しか保存されない
+- trace に evidence / appraisal / delta が残らない
+- new core が production path に未接続
+
+---
+
+# T6. draft/playground を stateful にし、prod/draft parity を作る
+
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
+
+## Goal
+sandbox tables を本当に使い、draft/playground を continuing-session ベースの stateful workflow にする。  
+prod と同じ core を使い、**prod/draft parity** をテストで固定する。
+
+## Non-goals
+- publish/versioning の整理
+- editor UI の大改修
+- model tuning
+- persona の修正
+
+## Invariants
+- sandbox は prod data から隔離する
+- sandbox 自身の session state は毎ターン消さない
+- prod と同じ CoE / integrator core を使う
+- explicit reset を残すが implicit reset は消す
+
+## Required tests
+### 追加するテスト
+- `tests/workflow/draft-chat-turn.sandbox-pair-state.integration.test.ts`
+- `tests/workflow/draft-chat-turn.sandbox-working-memory.integration.test.ts`
+- `tests/workflow/draft-chat-turn.multi-turn.integration.test.ts`
+- `tests/workflow/draft-chat-turn.explicit-reset.integration.test.ts`
+- `tests/workflow/prod-draft.parity.integration.test.ts`
+
+### 検証内容
+- continuing session で baseline PAD / default pair state に自動リセットしない
+- `sandbox_pair_state` と `sandbox_working_memory` の read/write CRUD がある
+- draft planner / generator / ranker が empty memory/openThreads に固定依存しない
+- `phaseIdAfter` が固定値ではない
+- 同じ fixture sequence に対して prod/draft の state progression が整合する
+
+### 実行するコマンド
+- `npm run test:workflow -- tests/workflow/draft-chat-turn.sandbox-pair-state.integration.test.ts tests/workflow/draft-chat-turn.sandbox-working-memory.integration.test.ts`
+- `npm run test:workflow -- tests/workflow/draft-chat-turn.multi-turn.integration.test.ts tests/workflow/draft-chat-turn.explicit-reset.integration.test.ts tests/workflow/prod-draft.parity.integration.test.ts`
+- `npm run ci:local`
+
+## Acceptance criteria
+- draft/playground が PAD を session across turns で持ち越す
+- draft/playground が pair metrics を持ち越す
+- draft/playground が sandbox working memory を持ち越す
+- draft の `phaseIdAfter` が固定ではない
+- parity test が green
+
+## Deliverables
+- sandbox repo CRUD
+- `draft-chat-turn.ts` 修正
+- parity tests
+- reset semantics 明確化
+
+## Dependencies / Next-ticket prerequisites
+- **T5 green**
+- **T7 は T6 が green になるまで開始しない**
+
+## Stop conditions / Blockers
+- sandbox tables が delete でしか使われない
+- continuing session でも baseline reset が残る
+- prod/draft で別 core を呼ぶ
+- parity test が未実装または red
+
+---
+
+# T7. generator / ranker の memory path と deterministic gates を完成させる
+
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
+
+## Goal
+generator と ranker に retrieved memory を正しく通し、LLM ranker の前に deterministic reject を置く。
+
+## Non-goals
+- prompt 文体の微調整
+- provider/model 変更
+- publish/versioning 修正
+- UI 改修
+
+## Invariants
+- generator/ranker の memory 入力は prod/draft で同じ shape にする
+- deterministic gates は model scoring より前に走る
+- `memoryGrounding` を、見えていない memory で採点させない
+- hard reject は prompt 文章ではなく code path として実装する
+
+## Required tests
+### 追加するテスト
+- `tests/contracts/generator-memory-context.contract.test.ts`
+- `tests/contracts/ranker-memory-context.contract.test.ts`
+- `tests/unit/ranker-gates.phase-violation.test.ts`
+- `tests/unit/ranker-gates.intimacy-violation.test.ts`
+- `tests/unit/ranker-gates.memory-contradiction.test.ts`
+- `tests/unit/ranker-gates.coe-contradiction.test.ts`
+- `tests/unit/ranker-gates.hard-safety.test.ts`
+- `tests/workflow/ranker.integration.test.ts`
+
+### 検証内容
+- generator が facts / events / threads /必要なら observations summary を見ている
+- ranker が memoryGrounding に必要な memory context を実際に見ている
+- gate で落ちる候補が model 判定に進まない
+- surviving candidate だけが model-based ranking に進む
+
+### 実行するコマンド
+- `npm run test:unit -- tests/contracts/generator-memory-context.contract.test.ts tests/contracts/ranker-memory-context.contract.test.ts`
+- `npm run test:unit -- tests/unit/ranker-gates.*.test.ts`
+- `npm run test:workflow -- tests/workflow/ranker.integration.test.ts`
+- `npm run ci:local`
+
+## Acceptance criteria
+- generator prompt/context が retrieved memory を使う
+- ranker input が memoryGrounding に必要な context を持つ
+- deterministic gates が code path として存在する
+- reject された候補は model judgement 前に落ちる
+- required tests が green
+
+## Deliverables
+- generator memory-context 修正
+- ranker deterministic gate layer
+- prompt-context contract tests
+- ranker tests
+
+## Dependencies / Next-ticket prerequisites
+- **T6 green**
+- **T8 は T7 が green になるまで開始しない**
+
+## Stop conditions / Blockers
+- generator/ranker が memoryGrounding を名乗りつつ facts/events を見ない
+- deterministic gates が prompt 文面にしか存在しない
+- gate coverage が不足する
+- prod/draft で入力 shape がずれる
+
+---
+
+# T8. publish/versioning を DB-backed workspace path に統一する
+
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
+
+## Goal
+workspace draft を唯一の canonical authoring source にし、in-memory draft/publish path を整理する。
+
+## Non-goals
+- runtime chat behavior の変更
+- editor UI redesign
+- CoE / PAD の再調整
+- prompt 文体変更
+
+## Invariants
+- fresh DB を壊さない
+- workspace DB draft -> immutable version -> release の流れを canonical にする
+- 旧 path を残すなら inactive/deprecated を明示する
+- docs と code の canonical path を一致させる
+
+## Required tests
+### 追加するテスト
+- `tests/workflow/publish.from-workspace.integration.test.ts`
+- `tests/workflow/versioning.create-version.integration.test.ts`
+- `tests/workflow/release.activate.integration.test.ts`
+- `tests/db/fresh-db.publish-smoke.test.ts`
+
+### 検証内容
+- workspace draft から publish して immutable version を作れる
+- release activation ができる
+- fresh DB で publish flow が通る
+- in-memory path が active code path から外れる
+
+### 実行するコマンド
+- `npm run test:workflow -- tests/workflow/publish.from-workspace.integration.test.ts tests/workflow/versioning.create-version.integration.test.ts tests/workflow/release.activate.integration.test.ts`
+- `npm run test:db -- tests/db/fresh-db.publish-smoke.test.ts`
+- `npm run ci:local`
+
+## Acceptance criteria
+- active code path に in-memory `drafts.ts` / `publish.ts` 依存の publish flow が残っていない
+- workspace draft から publish できる
+- fresh DB publish smoke が green
+- docs に canonical publish flow が明記されている
+
+## Deliverables
+- publish path 整理
+- deprecated path の削除または quarantine
+- publish integration tests
+- docs 更新
+
+## Dependencies / Next-ticket prerequisites
+- **T7 green**
+- **T9 は T8 が green になるまで開始しない**
+
+## Stop conditions / Blockers
+- workspace と in-memory publish が並立したまま
+- canonical path が docs と code で一致しない
+- publish が fresh DB で通らない
+- compatibility 方針が未定義
+
+---
+
+# T9. 最終 eval と rollout 判定を閉じる
+
+**Status**
+- [ ] Not started
+- [ ] In progress
+- [ ] Blocked
+- [ ] Green
+
+## Goal
+local gate を全部回し、legacy/new emotion path の切替と rollout default を最終決定する。
+
+## Non-goals
+- 新アーキテクチャの追加
+- 大規模 prompt 再設計
+- model/provider 再選定
+- 新しい feature の追加
+
+## Invariants
+- hidden blocker を「今後対応」に逃がさない
+- final report は pass/fail で書く
+- legacy path を残すなら feature flag 管理する
+- 完了判定はテストと gate の結果に基づく
+
+## Required tests
+### 実行するコマンド
+- `npm run test`
+- `npm run test:db`
+- `npm run test:workflow`
+- `npm run eval:smoke`
+- `npm run ci:local`
+
+### 検証内容
+- full regression harness
+- full DB smoke
+- full workflow smoke/integration
+- final prod/draft parity
+- rollout flag behavior
+
+## Acceptance criteria
+- 上記コマンドがすべて green
+- final markdown report が生成される
+- legacy/new emotion path の default flag が決まっている
+- remaining blockers がある場合は report に明示されている
+- “complete / not complete” を pass/fail で宣言できる
+
+## Deliverables
+- final regression report
+- rollout recommendation
+- feature-flag default decision
+- engineering note / release note
+
+## Dependencies / Next-ticket prerequisites
+- **T8 green**
+- これが最後
+
+## Stop conditions / Blockers
+- local gate のいずれか 1 つでも red
+- hidden blocker が report に載っていない
+- legacy/new path の切替条件が未定義
+- final parity が red
+
+---
+
+## 推奨チケット運用テンプレート
+
+各チケットを AI に渡すときは、毎回このテンプレートで始めること。
 
 ```text
 You are working on exactly one ticket in yumekano-agent.
 
-Global rules:
-- Read PLAN.md and CLAUDE.md first.
-- Work on only one ticket at a time.
+Rules:
+- Read only the files relevant to this ticket.
 - Do not widen scope.
 - Write failing tests first.
 - After each change, run the smallest relevant test set.
-- If schema, repository, migration, seed, prompt bundle, or workflow can drift, add a contract test.
-- If DB schema is changed, verify fresh DB behavior.
-- If draft/prod parity matters, add or run parity tests.
-- Update `.claude/state/current-ticket.json` before claiming completion.
-- Do not mark `ready_to_stop` true unless:
-  - required tests passed
-  - acceptance criteria passed
-  - review passed
+- If schema, repository, and migration can drift, add a contract test.
+- If a ticket requires fresh DB safety, verify on a fresh DB.
 - Do not remove legacy behavior unless the ticket explicitly says so.
 - At the end, report:
   1. files changed
   2. tests added
   3. commands run
-  4. acceptance criteria pass/fail
+  4. pass/fail per acceptance criterion
   5. remaining risks
 ```
 
----
-
-## 10. 共通監査ルール
-
-各 ticket の後に、監査 AI へ渡す。
+監査役 AI には次を渡す。
 
 ```text
-You are auditing a patch for yumekano-agent.
+You are auditing one ticket for yumekano-agent.
 Do not edit code.
 
 Check only:
 - ticket acceptance criteria
 - schema/repository/migration consistency
-- prod/draft parity impact
-- source-of-truth drift
-- missing tests
+- fresh DB safety where required
+- prod/draft parity impact where required
+- missing required tests
 - hidden regression risk
 
 Output:
 - pass/fail for each acceptance criterion
-- blocking issues only
-- missing coverage only if it blocks ticket completion
+- concrete blocking issues only
+- no redesign suggestions unless they are blockers
 ```
 
 ---
 
-# Ticket 一覧
+## 最後に
 
-## T0: test / eval / DB smoke の実行導線を作る
-
-### Goal
-repo に標準のローカル品質ゲートを作る。  
-以後の ticket はこの基盤の上で進める。
-
-### Non-goals
-- emotion logic の変更
-- planner/generator/ranker の意味変更
-- workflow の振る舞い変更
-
-### Invariants
-- runtime behavior を変えない
-- fresh DB で migrate + seed できる
-- 最低限の smoke gate がある
-
-### Required tests
-- DB smoke test
-- placeholder workflow smoke test
-- package scripts の存在確認
-
-### Acceptance criteria
-- `test` script がある
-- `test:unit` script がある
-- `test:db` script がある
-- `test:workflow` script がある
-- `eval:smoke` script がある
-- `ci:local` script がある
-- fresh DB migrate + seed を通す smoke test がある
-
-### Deliverables
-- test runner setup
-- package scripts
-- minimal smoke tests
-- local gate documentation
-
-### Prerequisites for next ticket
-- T0 acceptance criteria がすべて green
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T1: prompt persistence の migration / repo / schema 整合を直す
-
-### Goal
-`generatorIntimacyMd` を含む prompt persistence を **fresh DB でも確実に round-trip** させる。
-
-### Non-goals
-- prompt の文面改善
-- planner/generator/ranker の意味変更
-- CoE/PAD の改善
-
-### Invariants
-- schema と repo と migration が一致する
-- prompt bundle と workspace draft の両方で round-trip する
-- SQL column error を出さない
-
-### Required tests
-- prompt bundle round-trip contract test
-- workspace draft round-trip contract test
-- fresh DB smoke test
-
-### Acceptance criteria
-- prompt bundle persistence で `generatorIntimacyMd` が保存・取得される
-- workspace draft persistence で `generatorIntimacyMd` が保存・取得される
-- fresh DB migrate + seed + draft init が通る
-- read path / write path / migration に drift がない
-
-### Deliverables
-- migration fix
-- repository mapping fix
-- contract tests
-- fresh DB verification
-
-### Prerequisites for next ticket
-- T1 acceptance criteria がすべて green
-- T1 review が pass
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T2: prompt source-of-truth を一本化する
-
-### Goal
-planner / generator / ranker の prompt contract を runtime schema に一致させる。
-
-### Non-goals
-- emotion core の設計変更
-- ranking behavior の redesign
-- phase logic の変更
-
-### Invariants
-- runtime schema が canonical
-- checked-in prompt assets は schema に一致する
-- seed/default prompts も schema に一致する
-- drift を contract test で検出できる
-
-### Required tests
-- planner prompt contract test
-- generator prompt contract test
-- ranker prompt contract test
-- seed/default prompt contract test
-
-### Acceptance criteria
-- planner prompt examples が `TurnPlanSchema` と一致する
-- generator prompt examples が generator output schema と一致する
-- ranker prompt examples が ranker output schema と一致する
-- checked-in prompts と seed/default prompts の drift を検知する test がある
-- 古い field 名が active path に残っていない
-
-### Deliverables
-- prompt asset correction
-- seed/default prompt correction
-- contract tests
-- canonical prompt contract note
-
-### Prerequisites for next ticket
-- T2 acceptance criteria がすべて green
-- drift が監査で指摘されない
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T3: emotion contracts を先に定義する
-
-### Goal
-CoE-driven emotion core のための型契約と fixture 群を追加する。  
-この段階では production wiring はまだしない。
-
-### Non-goals
-- production の wiring
-- sandbox の wiring
-- ranking redesign
-
-### Invariants
-- 現行 runtime はまだ動き続ける
-- 新 contracts は deterministic test 可能
-- live model call に依存しない
-
-### Required contracts
-- `CoEEvidence`
-- `RelationalAppraisal`
-- `EmotionUpdateProposal`
-- `PairMetricDelta`
-- `EmotionTrace`
-
-### Required fixtures
-- compliment
-- mild rejection
-- explicit insult
-- apology
-- repair
-- repeated pressure
-- intimacy escalation with positive context
-- intimacy escalation across a boundary
-- topic shift after tension
-- two-turn carry-over
-- five-turn progression
-
-### Required assertions per fixture
-- evidence shape
-- appraisal axes
-- PAD delta band
-- pair metric delta band
-
-### Acceptance criteria
-- 必須型契約が定義される
-- 必須 fixture がすべて存在する
-- fixture は live model なしで再現可能
-- この段階では runtime wiring を変えない
-
-### Deliverables
-- typed schemas
-- fixture set
-- regression harness
-- adapter seams for later tickets
-
-### Prerequisites for next ticket
-- T3 fixtures が安定して green
-- runtime wiring に accidental change がない
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T4: CoE Evidence Extractor を作る
-
-### Goal
-パターンマッチではなく、構造化 evidence を取り出す新経路を作る。
-
-### Non-goals
-- production の main path 切り替え
-- old heuristic path の削除
-- PAD integration 変更
-
-### Invariants
-- malformed model output を安全に扱える
-- 必須入力コンテキストを受け取る
-- mocked tests で CI 可能
-- old path はまだ残す
-
-### Required input
-- user message
-- recent dialogue
-- current phase
-- pair state
-- working memory
-- retrieved facts
-- retrieved events
-- retrieved threads
-- open threads
-
-### Required output
-- interaction acts
-- target
-- polarity
-- intensity
-- evidence spans
-- confidence
-- uncertainty notes
-
-### Required tests
-- valid extraction
-- malformed output repair / reject
-- partial output handling
-- deterministic mock-based tests
-
-### Acceptance criteria
-- dedicated CoE evidence module がある
-- required input をすべて受ける
-- required output をすべて返す
-- invalid model output を predictably 処理する
-- old heuristic path は残っている
-
-### Deliverables
-- evidence module
-- parsing/validation layer
-- mocked tests
-- documented output schema
-
-### Prerequisites for next ticket
-- T4 mocked tests が green
-- old path coexistence が確認済み
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T5: PAD / pair integrator を pure module として実装する
-
-### Goal
-CoE appraisal から PAD と pair-state delta を決める deterministic integrator を作る。
-
-### Non-goals
-- production wiring
-- sandbox wiring
-- prompt redesign
-
-### Invariants
-- regex pattern matching を main path にしない
-- pure module としてテストできる
-- config / spec 駆動の重みを使う
-- safety / consent / abuse だけ narrow override を許す
-
-### Required capabilities
-- decay
-- inertia
-- clamps
-- phase modifiers
-- open-thread bias
-- multi-turn carry-over
-
-### Required tests
-- insult shock
-- apology repair
-- sustained pressure
-- affectionate carry-over
-- decay over quiet turns
-- open-thread bias
-
-### Acceptance criteria
-- integrator は pure module
-- input は CoE appraisal
-- output は PAD delta + pair metric delta
-- required fixtures が green
-- legacy path と比較できる seam がある
-
-### Deliverables
-- integrator module
-- config/spec-driven mapping
-- fixture tests
-- legacy comparison seam
-
-### Prerequisites for next ticket
-- T5 fixture tests が green
-- legacy comparison seam が存在する
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T6: production `chat_turn` を新 emotion core へ配線する
-
-### Goal
-prod の本線を `CoE evidence -> appraisal -> integrator` に置き換える。
-
-### Non-goals
-- sandbox 修正
-- ranker redesign
-- prompt redesign
-
-### Invariants
-- fixed placeholder をできるだけ排除する
-- pair metrics を実際に更新する
-- trace で evidence / appraisal / state delta を観測できる
-- one-turn と three-turn integration tests がある
-
-### Required changes
-- heuristic appraisal 直結を main path から外す
-- elapsed-turn / elapsed-time を実値で扱う
-- phase context に real events/topics を渡す
-- `pairRepo.updateState` で PAD 以外も更新する
-- trace に CoE evidence / appraisal / deltas を保存する
-
-### Required tests
-- one-turn integration test
-- three-turn integration test
-- trace shape test
-- pair-state persistence test
-
-### Acceptance criteria
-- prod `chat_turn` は新 path を使う
-- trust / affinity / conflict / intimacyReadiness / PAD を一貫更新する
-- placeholders が減り、実値が使われる
-- trace が debugging に十分な粒度を持つ
-- integration tests が green
-
-### Deliverables
-- rewired `chat_turn`
-- new trace payload
-- integration tests
-- migration note if needed
-
-### Prerequisites for next ticket
-- T6 integration tests が green
-- pair-state update が確認済み
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T7: draft / sandbox を stateful にして prod parity を取る
-
-### Goal
-draft/playground を本当に stateful にし、prod と同じ emotion core を呼ばせる。
-
-### Non-goals
-- ranking redesign
-- prompt redesign
-- prod storage の変更
-
-### Invariants
-- sandbox は prod data と分離する
-- ただし自分の session state は持ち越す
-- baseline から毎回再出発しない
-- reset は明示操作のみ
-
-### Required changes
-- `sandbox_pair_state` を実際に使う
-- `sandbox_working_memory` を実際に使う
-- draft workflow が current phase / PAD / pair metrics を引き継ぐ
-- `phaseIdAfter` 固定をやめる
-- prod と同じ CoE / integrator path を使う
-
-### Required tests
-- multi-turn PAD carry-over
-- multi-turn pair metric carry-over
-- sandbox memory persistence
-- phase progression in sandbox
-- prod/sandbox parity test
-
-### Acceptance criteria
-- draft で PAD が持ち越される
-- draft で pair metrics が持ち越される
-- draft で sandbox memory が持ち越される
-- draft で phase progression が起こる
-- same fixture sequence で prod/sandbox parity test が green
-
-### Deliverables
-- stateful sandbox implementation
-- sandbox repo CRUD if needed
-- parity tests
-- explicit reset mechanism
-
-### Prerequisites for next ticket
-- T7 parity test が green
-- draft baseline reset が除去済み
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T8: deterministic ranker gates を前段に入れる
-
-### Goal
-LLM ranker の前に deterministic reject layer を入れる。
-
-### Non-goals
-- prompt wording polish
-- emotion core redesign
-- phase redesign
-
-### Invariants
-- reject すべきものは model に委ねない
-- valid candidates 間の選好だけ model に委ねる
-- traceability を失わない
-
-### Required gates
-- hard safety violation
-- phase violation
-- intimacy-decision violation
-- memory contradiction
-- contradiction with CoE state
-
-### Required tests
-- each gate category has at least one failing candidate test
-- valid candidates proceed to model scoring
-- scorecards and winner remain inspectable
-
-### Acceptance criteria
-- deterministic gates が model scoring より前に走る
-- reject は deterministic
-- model ranker は valid candidates のみ扱う
-- tests が各 gate category をカバーする
-- output / trace が inspectable
-
-### Deliverables
-- gate layer
-- ranker tests
-- traceability note
-- compatibility note if output shape changes
-
-### Prerequisites for next ticket
-- T8 gate tests が green
-- traceability が確認済み
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-## T9: full eval と rollout gate を閉じる
-
-### Goal
-local gate と eval を仕上げて、残りの弱点を明示した rollout 判断ができる状態にする。
-
-### Non-goals
-- architecture redesign
-- large-scale refactor
-- new product behavior
-
-### Invariants
-- この段階では config / thresholds / flags の tuning のみ
-- blocker を future improvement として隠さない
-- report は repo 内で再生成可能
-
-### Required outputs
-- `ci:local` が機能する
-- `eval:smoke` が機能する
-- legacy/new emotion path の rollout switch がある
-- final markdown report が生成される
-
-### Final report must include
-- pass/fail counts
-- biggest remaining weak cases
-- rollout recommendation
-- default flag recommendation
-- known blockers
-
-### Acceptance criteria
-- `ci:local` が通る
-- `eval:smoke` が通る
-- rollout switch がある
-- final report が生成される
-- hidden blocker がない
-
-### Deliverables
-- local quality gate
-- eval runner wiring
-- rollout flag
-- final report
-
-### Prerequisites for completion
-- T9 acceptance criteria がすべて green
-- rollout recommendation が明文化されている
-- current-ticket state file が `ready_to_stop: true`
-
----
-
-# 実行順序
-
-次の順番を崩さない。
-
-1. T0
-2. T1
-3. T2
-4. T3
-5. T4
-6. T5
-7. T6
-8. T7
-9. T8
-10. T9
-
-## 理由
-- T0 がないと以降の改善を測れない
-- T1/T2 がないと prompt / persistence の土台が壊れたままになる
-- T3/T4/T5 で emotion core を先に pure にする
-- T6/T7 で prod と draft に配線する
-- T8 で ranker を安定化する
-- T9 で初めて rollout 判断ができる
-
----
-
-# チケット完了の定義
-
-各 ticket は次を満たしたときのみ完了とみなす。
-
-1. Required tests がすべて存在する
-2. Acceptance criteria がすべて pass
-3. 監査 AI が blocking issue なしと判定する
-4. report に remaining risks が明示されている
-5. 次の ticket へ進む理由が説明できる
-6. `.claude/state/current-ticket.json` が完了状態である
-7. `ready_to_stop` が `true`
-
----
-
-# 途中で止める条件
-
-次のどれかが起きたら、次の ticket に進まずその場で止める。
-
-- fresh DB test が落ちる
-- schema / repository / migration drift が監査で見つかる
-- prod/draft parity が破れる
-- checked-in prompt / seed / runtime contract drift が見つかる
-- scope widening が発生する
-- required tests を書かずに実装だけ進んでいる
-- state file が未更新または incomplete
-- review に blocking issue がある
-
----
-
-# 推奨ワークフロー
-
-## 実装
-- Claude Code または Codex に ticket 本文を渡す
-- 実装方針は AI に決めさせる
-- ただし scope は ticket で固定する
-- state file を更新しながら進める
-
-## 監査
-- 別の AI に diff と ticket を渡して監査させる
-- 同じ AI に実装と監査を両方やらせない
-
-## 人間の役割
-- この PLAN.md を維持する
-- acceptance criteria を固定する
-- green/red を判定する
-- 本当に次へ進むべきか最終判断する
-
----
-
-# Claude Code 運用ルール
-
-Claude Code を使う場合、次を前提とする。
-
-1. `CLAUDE.md` を project memory として読む
-2. `.claude/settings.json` で hooks を有効にする
-3. `.claude/hooks/check-stop.py` で stop block を行う
-4. `.claude/state/current-ticket.json` を ticket 状態の唯一の機械可読ソースとする
-
-## Claude の自律性に関する方針
-- Claude は実装方法を自律的に決めてよい
-- Claude は ticket の prerequisite が満たされていれば次 ticket を選んでよい
-- Claude は acceptance criteria や required tests を緩和してはならない
-- Claude は不確実なら進まず報告する
-
----
-
-# 最後に
-
-この計画の本質は、**AI の自律性を活かしつつ、壊してはいけない契約を厳密に固定すること** にある。
-
-- 実装方法は AI に考えさせる
-- 成功条件は人間が固定する
-- test / eval / fresh DB / prod-draft parity を gate にする
-- ticket state file と hooks で自律遷移を制御する
-
-この運用なら、手順を細かくマイクロマネジメントするより成功率が高く、  
-同時に「雰囲気で直った」ことも防げる。
+このプランの本質は、**広く直すのではなく、契約を固定し、テストで gate を作り、green になったら次へ進む**ことです。  
+今度こそ崩さないために、必ず **1 ticket = 1 subsystem** を守ること。
