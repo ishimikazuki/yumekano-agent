@@ -78,6 +78,18 @@ function parseJsonWithFallback<T>(
 /**
  * Repository for trace and chat turn operations.
  */
+/**
+ * Safely parse JSON string with error context
+ */
+function parseJsonSafely<T = unknown>(jsonString: string, context: string): T {
+  try {
+    return JSON.parse(jsonString) as T;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    throw new Error('Failed to parse JSON in ' + context + ': ' + errorMsg);
+  }
+}
+
 export const traceRepo = {
   /**
    * Create a turn trace.
@@ -223,11 +235,11 @@ export const traceRepo = {
       pairId: row.pair_id,
       characterVersionId: row.character_version_id,
       promptBundleVersionId: row.prompt_bundle_version_id,
-      modelIds: JSON.parse(row.model_ids_json as string),
+      modelIds: parseJsonSafely<unknown>(row.model_ids_json as string, 'trace-repo'),
       phaseIdBefore: row.phase_id_before,
       phaseIdAfter: row.phase_id_after,
-      emotionBefore: JSON.parse(row.emotion_before_json as string),
-      emotionAfter: JSON.parse(row.emotion_after_json as string),
+      emotionBefore: parseJsonSafely<unknown>(row.emotion_before_json as string, 'trace-repo'),
+      emotionAfter: parseJsonSafely<unknown>(row.emotion_after_json as string, 'trace-repo'),
       emotionStateBefore: parseRuntimeEmotionState(
         row.emotion_state_before_json as string | null | undefined,
         row.emotion_before_json as string
@@ -256,8 +268,8 @@ export const traceRepo = {
         row.prompt_assembly_hashes_json as string | null | undefined,
         DEFAULT_PROMPT_HASHES
       ),
-      appraisal: JSON.parse(row.appraisal_json as string),
-      retrievedMemoryIds: JSON.parse(row.retrieved_memory_ids_json as string),
+      appraisal: parseJsonSafely<unknown>(row.appraisal_json as string, 'trace-repo'),
+      retrievedMemoryIds: parseJsonSafely<unknown>(row.retrieved_memory_ids_json as string, 'trace-repo'),
       coeExtraction: parseJsonWithFallback(
         row.coe_extraction_json as string | null | undefined,
         null
@@ -270,12 +282,12 @@ export const traceRepo = {
         row.legacy_comparison_json as string | null | undefined,
         null
       ),
-      memoryThresholdDecisions: JSON.parse((row.memory_threshold_decisions_json ?? '[]') as string),
-      coeContributions: JSON.parse((row.coe_contributions_json ?? '[]') as string),
-      plan: JSON.parse(row.plan_json as string),
-      candidates: JSON.parse(row.candidates_json as string),
+      memoryThresholdDecisions: parseJsonSafely<unknown>((row.memory_threshold_decisions_json ?? '[]') as string, 'trace-repo'),
+      coeContributions: parseJsonSafely<unknown>((row.coe_contributions_json ?? '[]') as string, 'trace-repo'),
+      plan: parseJsonSafely<unknown>(row.plan_json as string, 'trace-repo'),
+      candidates: parseJsonSafely<unknown>(row.candidates_json as string, 'trace-repo'),
       winnerIndex: row.winner_index,
-      memoryWrites: JSON.parse(row.memory_writes_json as string),
+      memoryWrites: parseJsonSafely<unknown>(row.memory_writes_json as string, 'trace-repo'),
       userMessage: row.user_message,
       assistantMessage: row.assistant_message,
       createdAt: row.created_at,
@@ -298,11 +310,11 @@ export const traceRepo = {
         pairId: row.pair_id,
         characterVersionId: row.character_version_id,
         promptBundleVersionId: row.prompt_bundle_version_id,
-        modelIds: JSON.parse(row.model_ids_json as string),
+        modelIds: parseJsonSafely<unknown>(row.model_ids_json as string, 'trace-repo'),
         phaseIdBefore: row.phase_id_before,
         phaseIdAfter: row.phase_id_after,
-        emotionBefore: JSON.parse(row.emotion_before_json as string),
-        emotionAfter: JSON.parse(row.emotion_after_json as string),
+        emotionBefore: parseJsonSafely<unknown>(row.emotion_before_json as string, 'trace-repo'),
+        emotionAfter: parseJsonSafely<unknown>(row.emotion_after_json as string, 'trace-repo'),
         emotionStateBefore: parseRuntimeEmotionState(
           row.emotion_state_before_json as string | null | undefined,
           row.emotion_before_json as string
@@ -331,8 +343,8 @@ export const traceRepo = {
           row.prompt_assembly_hashes_json as string | null | undefined,
           DEFAULT_PROMPT_HASHES
         ),
-        appraisal: JSON.parse(row.appraisal_json as string),
-        retrievedMemoryIds: JSON.parse(row.retrieved_memory_ids_json as string),
+        appraisal: parseJsonSafely<unknown>(row.appraisal_json as string, 'trace-repo'),
+        retrievedMemoryIds: parseJsonSafely<unknown>(row.retrieved_memory_ids_json as string, 'trace-repo'),
         coeExtraction: parseJsonWithFallback(
           row.coe_extraction_json as string | null | undefined,
           null
@@ -345,12 +357,12 @@ export const traceRepo = {
           row.legacy_comparison_json as string | null | undefined,
           null
         ),
-        memoryThresholdDecisions: JSON.parse((row.memory_threshold_decisions_json ?? '[]') as string),
-        coeContributions: JSON.parse((row.coe_contributions_json ?? '[]') as string),
-        plan: JSON.parse(row.plan_json as string),
-        candidates: JSON.parse(row.candidates_json as string),
+        memoryThresholdDecisions: parseJsonSafely<unknown>((row.memory_threshold_decisions_json ?? '[]') as string, 'trace-repo'),
+        coeContributions: parseJsonSafely<unknown>((row.coe_contributions_json ?? '[]') as string, 'trace-repo'),
+        plan: parseJsonSafely<unknown>(row.plan_json as string, 'trace-repo'),
+        candidates: parseJsonSafely<unknown>(row.candidates_json as string, 'trace-repo'),
         winnerIndex: row.winner_index,
-        memoryWrites: JSON.parse(row.memory_writes_json as string),
+        memoryWrites: parseJsonSafely<unknown>(row.memory_writes_json as string, 'trace-repo'),
         userMessage: row.user_message,
         assistantMessage: row.assistant_message,
         createdAt: row.created_at,
@@ -422,8 +434,8 @@ export const traceRepo = {
         threadId: row.thread_id,
         userMessageText: row.user_message_text,
         assistantMessageText: row.assistant_message_text,
-        plannerJson: row.planner_json ? JSON.parse(row.planner_json as string) : null,
-        rankerJson: row.ranker_json ? JSON.parse(row.ranker_json as string) : null,
+        plannerJson: row.planner_json ? parseJsonSafely<unknown>(row.planner_json as string, 'trace-repo') : null,
+        rankerJson: row.ranker_json ? parseJsonSafely<unknown>(row.ranker_json as string, 'trace-repo') : null,
         traceId: row.trace_id,
         createdAt: row.created_at,
       })
