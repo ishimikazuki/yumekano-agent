@@ -1,37 +1,25 @@
 {
   "ticket_id": "T1",
-  "status": "ready_to_stop",
-  "ready_to_stop": true,
+  "status": "in_progress",
+  "ready_to_stop": false,
   "tests": {
     "required": [
       "`npm run test` 全体が通る",
       "`npx tsc --noEmit` が通る"
     ],
-    "passed": [
-      "npm run test: 145 tests passed"
-    ],
+    "passed": [],
     "failed": [],
-    "all_passed": true
+    "all_passed": false
   },
   "acceptance": {
-    "required": [
-      "`JSON.parse()` 呼び出しが try-catch で保護されている",
-      "`as any` が適切な型に置き換えられている",
-      "Background eval の失敗がログに記録される",
-      "`request.json()` のエラーハンドリングが統一されている",
-      "TypeScript strict チェックが通る (`npx tsc --noEmit`)"
-    ],
-    "passed": [
-      "request.json() エラーハンドリング統一: 2ファイル (rollback/route.ts, playground-session/route.ts) を try-catch で修正",
-      "execute-turn.ts のタイプアサーション: const agentEmotionContext: AgentEmotionContext に修正",
-      "Background eval: 既に .catch() でエラーが記録されているため問題なし"
-    ],
+    "required": [],
+    "passed": [],
     "failed": [],
-    "all_passed": true
+    "all_passed": false
   },
   "review": {
-    "pass": true,
+    "pass": false,
     "blocking_issues": []
   },
-  "notes": "T1完了: request.json()エラーハンドリング2ファイルを修正, execute-turn.tsのタイプアサーション修正, 全テスト145個合格"
+  "notes": ""
 }
