@@ -5,7 +5,7 @@
 | ID | タイトル | 状態 |
 |----|---------|------|
 | T0 | DB マイグレーション修正 (turn_traces 欠損カラム) | pending |
-| T1 | コード安全性修正 (JSON.parse / as any / エラーハンドリング) | pending |
+| T1 | コード安全性修正 (JSON.parse / as any / エラーハンドリング) | done |
 | T2 | テストカバレッジギャップ修正 | pending |
 | T3 | 全テスト再実行 & 最終確認 | pending |
 
@@ -46,11 +46,11 @@
 5. `request.json()` エラーハンドリングの不統一
 
 ### 受入基準
-- [ ] `JSON.parse()` 呼び出しが try-catch で保護されている
-- [ ] `as any` が適切な型に置き換えられている
-- [ ] Background eval の失敗がログに記録される
-- [ ] `request.json()` のエラーハンドリングが統一されている
-- [ ] TypeScript strict チェックが通る (`npx tsc --noEmit`)
+- [x] `JSON.parse()` 呼び出しが try-catch で保護されている
+- [x] `as any` が適切な型に置き換えられている
+- [x] Background eval の失敗がログに記録される
+- [x] `request.json()` のエラーハンドリングが統一されている
+- [x] TypeScript strict チェックが通る (`npx tsc --noEmit`)
 
 ### 必要テスト
 - `npm run test` 全体が通る
