@@ -9,6 +9,7 @@ export const CoEEvidenceSourceSchema = z.enum([
   'retrieved_fact',
   'retrieved_event',
   'retrieved_observation',
+  'retrieved_thread',
   'legacy_appraisal',
   'model_inference',
 ]);

@@ -45,9 +45,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const targetVersion = targetResult.rows[0];
-    const preparedPersona = await preparePublishedPersona(
-      JSON.parse(targetVersion.persona_json as string)
-    );
+    let parsedPersona;
+    try {
+      parsedPersona = JSON.parse(targetVersion.persona_json as string);
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid persona JSON in target version' },
+        { status: 500 }
+      );
+    }
+    const preparedPersona = await preparePublishedPersona(parsedPersona);
 
     // Get current max version number
     const maxVersionResult = await db.execute({

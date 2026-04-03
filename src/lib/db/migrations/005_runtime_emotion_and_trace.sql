@@ -29,3 +29,6 @@ ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS phase_transition_evaluation_jso
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS prompt_assembly_hashes_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS memory_threshold_decisions_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_contributions_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_extraction_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_trace_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS legacy_comparison_json TEXT;

@@ -191,8 +191,13 @@ export async function POST(request: NextRequest) {
       evalRunId: evalRun.id,
       characterVersionId: currentVersion.id,
       scenarioSetId: scenarioSet.id,
-    }).catch((error) => {
+    }).catch(async (error) => {
       console.error('Background eval run failed:', error);
+      try {
+        await evalRepo.updateRunStatus(evalRun.id, 'failed');
+      } catch (updateError) {
+        console.error('Failed to update eval run status to failed:', updateError);
+      }
     });
 
     return NextResponse.json({

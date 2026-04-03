@@ -716,8 +716,11 @@ export const workspaceRepo = {
     if (result.rows.length === 0) return null;
 
     const row = result.rows[0];
-    const appraisalRaw =
-      JSON.parse((row.appraisal_json as string) || '{}') as Record<string, unknown>;
+    const safeJsonParse = (raw: unknown, fallback: Record<string, unknown> = {}) => {
+      try { return JSON.parse(String(raw)); } catch { return fallback; }
+    };
+    const defaultPad = { pleasure: 0, arousal: 0, dominance: 0 };
+    const appraisalRaw = safeJsonParse(row.appraisal_json || '{}') as Record<string, unknown>;
 
     return SandboxPairStateSchema.parse({
       sessionId: row.session_id,
@@ -727,12 +730,12 @@ export const workspaceRepo = {
       intimacyReadiness: row.intimacy_readiness,
       conflict: row.conflict,
       emotion: {
-        fastAffect: JSON.parse(String(row.pad_fast_json ?? row.pad_json)),
-        slowMood: JSON.parse(String(row.pad_slow_json ?? row.pad_json)),
-        combined: JSON.parse(String(row.pad_combined_json ?? row.pad_json)),
+        fastAffect: safeJsonParse(row.pad_fast_json ?? row.pad_json, defaultPad),
+        slowMood: safeJsonParse(row.pad_slow_json ?? row.pad_json, defaultPad),
+        combined: safeJsonParse(row.pad_combined_json ?? row.pad_json, defaultPad),
         lastUpdatedAt: row.last_emotion_updated_at ?? row.updated_at,
       },
-      pad: JSON.parse(String(row.pad_combined_json ?? row.pad_json)),
+      pad: safeJsonParse(row.pad_combined_json ?? row.pad_json, defaultPad),
       appraisal: {
         goalCongruence: asNumber(appraisalRaw.goalCongruence, NEUTRAL_APPRAISAL.goalCongruence),
         controllability: asNumber(appraisalRaw.controllability, NEUTRAL_APPRAISAL.controllability),

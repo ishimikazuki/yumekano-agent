@@ -263,12 +263,12 @@ function buildEmotionTrace(input: {
     summary:
       input.extraction.interactionActs.map((act) => act.act).join(', ') ||
       'no_interaction_acts',
-    source: 'model',
+    source: 'model' as const,
     confidence: input.extraction.confidence,
     evidence,
   };
   const proposal = {
-    source: 'model',
+    source: 'model' as const,
     rationale: 'CoE appraisal integrated into PAD and pair metrics.',
     appraisal: relationalAppraisal,
     padDelta: toPadDelta(input.emotionBefore, input.emotionAfter),
@@ -281,6 +281,7 @@ function buildEmotionTrace(input: {
   };
 
   return {
+    source: 'model' as const,
     evidence,
     relationalAppraisal,
     proposal,
@@ -361,6 +362,9 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     guardrailOverrides: integratedEmotion.appliedGuardrails,
   });
   const legacyComparison = null;
+  // AgentEmotionContext uses legacy evidence source types while buildEmotionTrace
+  // uses CoE source types — these are structurally compatible at runtime but differ
+  // in their union members, so a type assertion is needed at this boundary.
   const agentEmotionContext = {
     coeExtraction,
     emotionTrace,
@@ -577,7 +581,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
       threads: retrievalResult.threads.map((thread) => thread.id),
     },
     coeExtraction,
-    emotionTrace: emotionTrace as any,
+    emotionTrace,
     legacyComparison,
     memoryThresholdDecisions: memoryWriteResult.thresholdDecisions,
     coeContributions,
