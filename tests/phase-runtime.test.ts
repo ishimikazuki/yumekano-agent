@@ -5,7 +5,6 @@ import {
   buildPhaseEngineRuntimeContext,
   deriveSandboxPhaseTiming,
   resolvePhaseTransition,
-  updateRelationshipMetrics,
 } from '@/lib/rules/phase-runtime';
 import {
   createEmotion,
@@ -72,35 +71,6 @@ test('sandbox phase timing counts turns since the last transition into the activ
 
   assert.equal(timing.turnsSinceLastTransition, 1);
   assert.equal(timing.daysSinceEntry, 0);
-});
-
-test('relationship metrics warm on reciprocal kindness and reduce conflict pressure-free', () => {
-  const next = updateRelationshipMetrics({
-    current: {
-      affinity: 50,
-      trust: 50,
-      intimacyReadiness: 0,
-      conflict: 10,
-    },
-    appraisal: {
-      goalCongruence: 0.35,
-      controllability: 0.5,
-      certainty: 0.6,
-      normAlignment: 0.2,
-      attachmentSecurity: 0.65,
-      reciprocity: 0.4,
-      pressureIntrusiveness: 0,
-      novelty: 0.5,
-      selfRelevance: 0.7,
-    },
-    emotionBefore: { pleasure: 0.1, arousal: 0.1, dominance: 0 },
-    emotionAfter: { pleasure: 0.2, arousal: 0.1, dominance: 0 },
-  });
-
-  assert.ok(next.trust > 50);
-  assert.ok(next.affinity > 50);
-  assert.ok(next.intimacyReadiness > 0);
-  assert.ok(next.conflict < 10);
 });
 
 test('phase transition falls back to engine result when planner does not nominate a target', () => {

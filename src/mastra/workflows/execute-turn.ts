@@ -361,14 +361,12 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     pairMetricDelta: integratedEmotion.pairDelta,
     guardrailOverrides: integratedEmotion.appliedGuardrails,
   });
-  const legacyComparison = null;
   // AgentEmotionContext uses legacy evidence source types while buildEmotionTrace
   // uses CoE source types — these are structurally compatible at runtime but differ
   // in their union members, so a type assertion is needed at this boundary.
   const agentEmotionContext = {
     coeExtraction,
     emotionTrace,
-    legacyComparison,
   } as any;
 
   const pairStateAfterUpdate: PairState = {
@@ -582,7 +580,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     },
     coeExtraction,
     emotionTrace,
-    legacyComparison,
+    legacyComparison: null,
     memoryThresholdDecisions: memoryWriteResult.thresholdDecisions,
     coeContributions,
     plan,

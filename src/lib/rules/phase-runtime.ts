@@ -266,53 +266,6 @@ export function deriveSandboxPhaseTiming(input: {
   };
 }
 
-export function updateRelationshipMetrics(input: {
-  current: RelationshipMetrics;
-  appraisal: AppraisalVector;
-  emotionBefore: PADState;
-  emotionAfter: PADState;
-}): RelationshipMetrics {
-  const { current, appraisal, emotionBefore, emotionAfter } = input;
-  const pleasureDelta = emotionAfter.pleasure - emotionBefore.pleasure;
-
-  const trustDelta =
-    appraisal.goalCongruence * 3.5 +
-    appraisal.reciprocity * 2.5 +
-    (appraisal.attachmentSecurity - 0.5) * 6 +
-    (appraisal.certainty - 0.5) * 2 -
-    appraisal.pressureIntrusiveness * 7 -
-    Math.max(0, -appraisal.normAlignment) * 3.5;
-
-  const affinityDelta =
-    appraisal.goalCongruence * 4 +
-    appraisal.reciprocity * 3 +
-    appraisal.normAlignment * 2.5 +
-    pleasureDelta * 10 -
-    appraisal.pressureIntrusiveness * 6;
-
-  const intimacyDelta =
-    Math.max(0, appraisal.goalCongruence) * 2.5 +
-    Math.max(0, appraisal.reciprocity) * 2.5 +
-    Math.max(0, emotionAfter.pleasure) * 2 +
-    (appraisal.selfRelevance - 0.5) * 3 -
-    appraisal.pressureIntrusiveness * 8 -
-    Math.max(0, -appraisal.normAlignment) * 5;
-
-  const conflictDelta =
-    appraisal.pressureIntrusiveness * 9 +
-    Math.max(0, -appraisal.goalCongruence) * 4 +
-    Math.max(0, -appraisal.normAlignment) * 4 -
-    Math.max(0, appraisal.reciprocity) * 2 -
-    Math.max(0, appraisal.goalCongruence) * 2;
-
-  return {
-    trust: clampMetric(current.trust + trustDelta),
-    affinity: clampMetric(current.affinity + affinityDelta),
-    intimacyReadiness: clampMetric(current.intimacyReadiness + intimacyDelta),
-    conflict: clampMetric(current.conflict + conflictDelta),
-  };
-}
-
 export function resolvePhaseTransition(
   transitionResult: PhaseTransitionResult,
   proposedTargetPhaseId: string | null

@@ -1,7 +1,6 @@
 import {
   PADState,
   AppraisalVector,
-  EmotionSpec,
   RuntimeEmotionState,
   PADTransitionContribution,
 } from '../schemas';
@@ -13,22 +12,6 @@ import {
  * - Fast affect: Strong turn-by-turn reactions
  * - Slow mood: Smoothed carry-over state
  */
-
-export type PADInput = {
-  currentEmotion: RuntimeEmotionState;
-  appraisal: AppraisalVector;
-  emotionSpec: EmotionSpec;
-  hasOpenThreads: boolean;
-  turnsSinceLastUpdate: number;
-  now?: Date;
-};
-
-export type PADUpdate = {
-  before: RuntimeEmotionState;
-  after: RuntimeEmotionState;
-  contributions: PADTransitionContribution[];
-  blendFactor: number;
-};
 
 export type PADContributionFactorKey = keyof AppraisalVector | 'uncertainty';
 
@@ -72,108 +55,6 @@ export function createRuntimeEmotionState(
     combined: clamped,
     lastUpdatedAt: at,
   };
-}
-
-/**
- * Update PAD state based on appraisal.
- */
-export function updatePAD(input: PADInput): PADUpdate {
-  const {
-    currentEmotion,
-    appraisal,
-    emotionSpec,
-    hasOpenThreads,
-    turnsSinceLastUpdate,
-    now = new Date(),
-  } = input;
-  const baseline = emotionSpec.baselinePAD;
-
-  const contributions: PADTransitionContribution[] = [];
-  const rawFastAffect = computeFastAffect(appraisal, baseline);
-  const fastAffect = clampPAD(rawFastAffect);
-
-  for (const contribution of getPADContributions(appraisal)) {
-    contributions.push({
-      source: 'appraisal',
-      axis: contribution.axis,
-      delta: contribution.contribution,
-      reason: `${contribution.factorKey} -> ${contribution.axis}`,
-    });
-  }
-
-  const decayedMood = applyDecay(
-    currentEmotion.slowMood,
-    baseline,
-    emotionSpec.recovery,
-    turnsSinceLastUpdate
-  );
-  pushAxisDeltas(contributions, 'decay', currentEmotion.slowMood, decayedMood, 'baseline recovery');
-
-  const openThreadBiasedMood: PADState = {
-    pleasure: decayedMood.pleasure - (hasOpenThreads ? 0.05 : 0),
-    arousal: decayedMood.arousal,
-    dominance: decayedMood.dominance - (hasOpenThreads ? 0.03 : 0),
-  };
-  pushAxisDeltas(
-    contributions,
-    'open_thread_bias',
-    decayedMood,
-    openThreadBiasedMood,
-    'unresolved threads slow recovery'
-  );
-
-  const blendFactor = 0.3;
-  const rawSlowMood: PADState = {
-    pleasure:
-      openThreadBiasedMood.pleasure + (fastAffect.pleasure - baseline.pleasure) * blendFactor,
-    arousal:
-      openThreadBiasedMood.arousal + (fastAffect.arousal - baseline.arousal) * blendFactor,
-    dominance:
-      openThreadBiasedMood.dominance + (fastAffect.dominance - baseline.dominance) * blendFactor,
-  };
-  pushAxisDeltas(
-    contributions,
-    'blend',
-    openThreadBiasedMood,
-    rawSlowMood,
-    'fast affect blended into slow mood'
-  );
-
-  const slowMood = clampPAD(rawSlowMood);
-  pushAxisDeltas(contributions, 'clamp', rawSlowMood, slowMood, 'slow mood clamped to PAD range');
-
-  const rawCombined: PADState = {
-    pleasure: fastAffect.pleasure * 0.6 + slowMood.pleasure * 0.4,
-    arousal: fastAffect.arousal * 0.6 + slowMood.arousal * 0.4,
-    dominance: fastAffect.dominance * 0.6 + slowMood.dominance * 0.4,
-  };
-  const combined = clampPAD(rawCombined);
-  pushAxisDeltas(contributions, 'clamp', rawCombined, combined, 'combined state clamped to PAD range');
-
-  return {
-    before: currentEmotion,
-    after: {
-      fastAffect,
-      slowMood,
-      combined,
-      lastUpdatedAt: now,
-    },
-    contributions,
-    blendFactor,
-  };
-}
-
-/**
- * Compute fast affect from appraisal.
- */
-function computeFastAffect(appraisal: AppraisalVector, baseline: PADState): PADState {
-  const next: PADState = { ...baseline };
-
-  for (const contribution of getPADContributions(appraisal)) {
-    next[contribution.axis] += contribution.contribution;
-  }
-
-  return next;
 }
 
 export function getPADContributions(appraisal: AppraisalVector): PADContribution[] {
@@ -256,27 +137,6 @@ export function getPADContributions(appraisal: AppraisalVector): PADContribution
 }
 
 /**
- * Apply exponential decay toward baseline.
- */
-function applyDecay(
-  current: PADState,
-  baseline: PADState,
-  recovery: { pleasureHalfLifeTurns: number; arousalHalfLifeTurns: number; dominanceHalfLifeTurns: number },
-  turns: number
-): PADState {
-  const decayToward = (current: number, target: number, halfLife: number, t: number): number => {
-    const decayFactor = Math.pow(0.5, t / halfLife);
-    return target + (current - target) * decayFactor;
-  };
-
-  return {
-    pleasure: decayToward(current.pleasure, baseline.pleasure, recovery.pleasureHalfLifeTurns, turns),
-    arousal: decayToward(current.arousal, baseline.arousal, recovery.arousalHalfLifeTurns, turns),
-    dominance: decayToward(current.dominance, baseline.dominance, recovery.dominanceHalfLifeTurns, turns),
-  };
-}
-
-/**
  * Clamp PAD values to valid range.
  */
 export function clampPAD(pad: PADState): PADState {
@@ -285,28 +145,6 @@ export function clampPAD(pad: PADState): PADState {
     arousal: Math.max(-1, Math.min(1, pad.arousal)),
     dominance: Math.max(-1, Math.min(1, pad.dominance)),
   };
-}
-
-function pushAxisDeltas(
-  contributions: PADTransitionContribution[],
-  source: PADTransitionContribution['source'],
-  before: PADState,
-  after: PADState,
-  reason: string
-) {
-  for (const axis of ['pleasure', 'arousal', 'dominance'] as const) {
-    const delta = after[axis] - before[axis];
-    if (Math.abs(delta) < 0.0001) {
-      continue;
-    }
-
-    contributions.push({
-      source,
-      axis,
-      delta,
-      reason,
-    });
-  }
 }
 
 /**
@@ -449,25 +287,3 @@ export function getPADEmotionLabel(pad: PADState): PADEmotionLabel {
       };
 }
 
-/**
- * Compute emotion externalization weights.
- * These affect how the character expresses themselves.
- */
-export function computeExternalization(
-  pad: PADState,
-  emotionSpec: EmotionSpec
-): {
-  warmthMod: number;
-  tersenessMod: number;
-  directnessMod: number;
-  teasingMod: number;
-} {
-  const ext = emotionSpec.externalization;
-
-  return {
-    warmthMod: pad.pleasure * ext.warmthWeight,
-    tersenessMod: -pad.pleasure * ext.tersenessWeight + pad.arousal * 0.2,
-    directnessMod: pad.dominance * ext.directnessWeight,
-    teasingMod: pad.pleasure * ext.teasingWeight * (1 - Math.abs(pad.arousal) * 0.5),
-  };
-}
