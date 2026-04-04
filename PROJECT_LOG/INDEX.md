@@ -1,5 +1,6 @@
 # PROJECT_LOG INDEX
 
+- issue-0011-2026-04-04-plan-ticket-loop-t5-t9-audit.md — T5-T9完了、全体照合、テストglob修正(159→357)
 - issue-0010-2026-04-03-plan-ticket-loop-t0-t4.md — PLAN.md T0-T4テスト整備、チケットループ正式運用
 - issue-0009-2026-03-24-main-sync-and-live-debug-wrapup.md — live debug修正の取り込み、main同期、wrapup整理
 - issue-0008-2026-03-23-persona-runtime-and-pad-tuning.md — persona authoring簡素化、compiledPersona対応、PAD appraisal tuning

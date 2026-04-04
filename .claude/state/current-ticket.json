@@ -1,1 +1,46 @@
-{"ticket_id":"T9","status":"in_progress","ready_to_stop":false,"tests":{"required":[],"passed":[],"failed":[],"all_passed":false},"acceptance":{"required":[],"passed":[],"failed":[],"all_passed":false},"review":{"pass":false,"blocking_issues":["npm run test がサブディレクトリのテストを実行していない","ci:local に test:db と test:workflow が含まれていない"]},"notes":"照合で抜け漏れ発見。修正中。"}
+{
+  "ticket_id": "T9",
+  "status": "ready_to_stop",
+  "ready_to_stop": true,
+  "tests": {
+    "required": [
+      "`npm run test` が green",
+      "`npm run test:db` が green",
+      "`npm run test:workflow` が green",
+      "`npm run eval:smoke` が green",
+      "`npm run ci:local` が green"
+    ],
+    "passed": [
+      "`npm run test` 357/357 passed",
+      "`npm run test:db` green",
+      "`npm run test:workflow` green",
+      "`npm run eval:smoke` 10/10 passed",
+      "`npm run ci:local` green"
+    ],
+    "failed": [],
+    "all_passed": true
+  },
+  "acceptance": {
+    "required": [
+      "`npm run test`, `npm run test:db`, `npm run test:workflow`, `npm run eval:smoke`, `npm run ci:local` がすべて green",
+      "final markdown report が生成される",
+      "legacy/new emotion path の default flag が決まっている",
+      "remaining blockers がある場合は report に明示されている",
+      "\"complete / not complete\" を pass/fail で宣言できる"
+    ],
+    "passed": [
+      "全コマンド green (357テスト, 10/10 eval)",
+      "tests/evals/emotion-relationship-final-report.md 生成済み",
+      "CoE integrator がデフォルト、legacy path 除去済み (commit 02b13cd)",
+      "blockers なし (final report に明記)",
+      "COMPLETE: T0-T9 全チケット pass"
+    ],
+    "failed": [],
+    "all_passed": true
+  },
+  "review": {
+    "pass": true,
+    "blocking_issues": []
+  },
+  "notes": "T9完了。照合で発見した抜け漏れ(npm run testのglob, ci:localのgate不足)も修正済み。357テスト全パス。"
+}

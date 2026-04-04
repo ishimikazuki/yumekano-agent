@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>MVP Phase 6 完了 / CoE emotion pipeline 統合完了 / PLAN.md T0-T4 テスト整備完了 (T5-T9 残) / legacy heuristic emotion path 除去済み / チケットループ正式運用中</phase>
+    <phase>MVP Phase 6 完了 / PLAN.md T0-T9 全チケット完了 / CoE emotion pipeline 統合・テスト整備完了 (357テスト) / legacy heuristic emotion path 除去済み / rollout ready</phase>
   </project_overview>
 
   <architecture>
