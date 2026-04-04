@@ -1,25 +1,19 @@
 {
-  "ticket_id": "T1",
-  "status": "in_progress",
-  "ready_to_stop": false,
+  "ticket_id": "T9",
+  "status": "ready_to_stop",
+  "ready_to_stop": true,
   "tests": {
-    "required": [
-      "`npm run test` 全体が通る",
-      "`npx tsc --noEmit` が通る"
-    ],
-    "passed": [],
+    "required": ["`npm run test`","`npm run test:db`","`npm run test:workflow`","`npm run eval:smoke`","`npm run ci:local`"],
+    "passed": ["test 159/159","test:db green","test:workflow green","eval:smoke 10/10","ci:local green"],
     "failed": [],
-    "all_passed": false
+    "all_passed": true
   },
   "acceptance": {
-    "required": [],
-    "passed": [],
+    "required": ["all gates green","final report","default flag","no blockers","pass/fail declaration"],
+    "passed": ["all gates green","final report generated","CoE integrator is default (legacy removed)","no remaining blockers","COMPLETE: all T0-T9 pass"],
     "failed": [],
-    "all_passed": false
+    "all_passed": true
   },
-  "review": {
-    "pass": false,
-    "blocking_issues": []
-  },
-  "notes": ""
+  "review": {"pass": true, "blocking_issues": []},
+  "notes": "T9完了。PLAN.md T0-T9 全チケット完了。"
 }
