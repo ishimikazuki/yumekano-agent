@@ -9,7 +9,7 @@
     "lint": "eslint",
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "db:seed": "tsx src/lib/db/seed.ts",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "tsx --test tests/*.test.ts tests/db/*.test.ts tests/workflow/*.test.ts tests/contracts/*.test.ts tests/unit/*.test.ts tests/evals/emotion/*.test.ts",
     "test:unit": "npm test",
     "test:db": "tsx --test tests/db-smoke.test.ts tests/db/fresh-db.migrate-smoke.test.ts tests/db/fresh-db.seed-smoke.test.ts",
     "test:workflow": "tsx --test tests/workflow-smoke.test.ts tests/workflow/chat-turn.smoke.test.ts",
@@ -25,7 +25,7 @@
     "eval:smoke": "YUMEKANO_EVAL_MODE=offline npm run evals:emotion-relationship",
     "eval:emotion": "npm run evals:emotion-relationship",
     "eval:full": "npm run evals:emotion-relationship",
-    "ci:local": "npm run test:integration && npm run test:migrations && npm run test:ranker-gates && npm run test:coe-integrator && npm run eval:smoke",
+    "ci:local": "npm run test:db && npm run test:workflow && npm run test:integration && npm run test:migrations && npm run test:ranker-gates && npm run test:coe-integrator && npm run eval:smoke",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
