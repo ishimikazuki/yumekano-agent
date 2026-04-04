@@ -1361,9 +1361,11 @@ ${rows}
 
 ## Missing Legacy Comparison Coverage
 ${
-  missingCases.length > 0
+  missingCases.length > 0 && missingCases.length < results.length
     ? missingCases.map((result) => `- ${result.id}`).join('\n')
-    : '- none'
+    : missingCases.length === results.length
+      ? '> **Note:** Legacy heuristic emotion path was removed in T9. All cases show 0 compared turns because `legacyComparison` is no longer produced. This is expected behavior — the CoE integrator is now the sole emotion path.\n\n' + missingCases.map((result) => `- ${result.id}`).join('\n')
+      : '- none'
 }
 `;
 }

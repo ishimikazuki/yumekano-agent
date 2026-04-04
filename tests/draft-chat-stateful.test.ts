@@ -611,6 +611,7 @@ function createDraftChatDeps(snapshots: ExtractorSnapshot[]): DraftChatTurnDeps 
           extraction: createExtractionForMessage(input.userMessage),
           modelId: 'mock/coe-extractor',
           systemPromptHash: 'mock-coe-prompt',
+          attempts: 1,
         };
       },
       async runPlanner() {
@@ -1051,7 +1052,7 @@ test('sandbox and production show equivalent state progression for the same fixt
       createdAt: sandboxSession.createdAt,
     };
 
-    const productionDeps: ChatTurnDeps = {
+    const productionDeps = {
       now: () => {
         currentProductionNow = new Date(productionNowBase + productionTurnCounter * 60_000);
         productionTurnCounter += 1;
@@ -1068,21 +1069,21 @@ test('sandbox and production show equivalent state progression for the same fixt
           async initState() {
             throw new Error('production parity test should not call initState');
           },
-          async updateState(_pairId, updates) {
-            productionPairState = applyPairUpdates(productionPairState, updates as Record<string, unknown>);
+          async updateState(_pairId: string, updates: Record<string, unknown>) {
+            productionPairState = applyPairUpdates(productionPairState, updates);
           },
         },
         traceRepo: {
-          async getRecentTurns(_pairId, limit = 10) {
+          async getRecentTurns(_pairId: string, limit = 10) {
             return productionTurns.slice(-limit);
           },
-          async countTurnsSince(_pairId, since) {
+          async countTurnsSince(_pairId: string, since: Date | null) {
             if (!since) {
               return productionTurns.length;
             }
             return productionTurns.filter((turn) => turn.createdAt > since).length;
           },
-          async createChatTurn(input) {
+          async createChatTurn(input: { userMessageText: string; assistantMessageText: string }) {
             productionTurns.push({
               userMessageText: input.userMessageText,
               assistantMessageText: input.assistantMessageText,
@@ -1111,10 +1112,10 @@ test('sandbox and production show equivalent state progression for the same fixt
             throw new Error('production parity test uses promptBundle override');
           },
         },
-      },
+      } as unknown as ChatTurnDeps['repos'],
       createMemoryStore: () => productionMemoryStore,
       executeTurnDeps: productionExecuteTurnDeps,
-    };
+    } as ChatTurnDeps;
 
     for (const message of messages) {
       const sandboxResult = await runDraftChatTurn(

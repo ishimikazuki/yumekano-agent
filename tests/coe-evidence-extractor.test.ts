@@ -44,7 +44,8 @@ function createInput() {
           object: 'ゆっくり距離を縮めること',
           confidence: 0.85,
           status: 'active' as const,
-          supersededByFactId: null,
+          supersedesFactId: null,
+          sourceEventId: null,
           createdAt: new Date('2026-03-25T00:00:00.000Z'),
         },
       ],
@@ -52,6 +53,7 @@ function createInput() {
         {
           id: '22222222-2222-4222-8222-222222222222',
           pairId: '55555555-5555-4555-8555-555555555555',
+          sourceTurnId: null,
           eventType: 'support',
           summary: 'User reassured her before the live show.',
           salience: 0.8,
@@ -108,7 +110,7 @@ function createInput() {
 
 function createMockRegistry(): Pick<ProviderRegistry, 'getModel' | 'getModelInfo'> {
   return {
-    getModel: () => ({ mocked: true }),
+    getModel: (() => ({ mocked: true })) as unknown as ProviderRegistry['getModel'],
     getModelInfo: () => ({ provider: 'mock', modelId: 'mock-analysis' }),
   };
 }

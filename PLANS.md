@@ -1,120 +1,256 @@
-# 現在の作業: ランタイムバグ修正 & テストカバレッジ改善
+# 現在の作業: yumekano-agent 改善実装プラン
 
 ## チケット一覧
 
 | ID | タイトル | 状態 |
 |----|---------|------|
-| T0 | DB マイグレーション修正 (turn_traces 欠損カラム) | pending |
-| T1 | コード安全性修正 (JSON.parse / as any / エラーハンドリング) | done |
-| T2 | テストカバレッジギャップ修正 | pending |
-| T3 | 全テスト再実行 & 最終確認 | pending |
+| T0 | ローカル品質ゲートの新設 | done |
+| T1 | generatorIntimacyMd の persistence contract 完全修正 | done |
+| T2 | prompt contract の canonical source 一本化 | done |
+| T3 | CoE 契約と回帰フィクスチャを先に定義 | done |
+| T4 | CoE extractor と pure integrator を作る | done |
+| T5 | production chat_turn を新 core に配線 | pending |
+| T6 | draft/playground を stateful にし prod/draft parity を作る | pending |
+| T7 | generator/ranker の memory path と deterministic gates 完成 | pending |
+| T8 | publish/versioning を DB-backed workspace path に統一 | pending |
+| T9 | 最終 eval と rollout 判定 | pending |
 
 ---
 
-## T0: DB マイグレーション修正
+## T0: ローカル品質ゲートの新設
 
 ### ゴール
-`/api/chat` が `SQLITE_ERROR: table turn_traces has no column named coe_extraction_json` で失敗する問題を修正する。
-
-### 背景
-- `001_initial.sql` に `coe_extraction_json`, `emotion_trace_json`, `legacy_comparison_json` の3カラムが欠けている
-- `migrate.ts` の埋め込みマイグレーションには正しく含まれている
-- `/api/draft-chat` は sandbox テーブルを使うため影響なし
+repo に標準のテスト / eval エントリポイントを追加し、以後の修正をすべて同じ品質ゲートで回せる状態にする。
 
 ### 受入基準
-- [ ] `001_initial.sql` に3つの欠損カラムが追加されている
-- [ ] `migrate.ts` の埋め込みマイグレーションと `001_initial.sql` の整合性が取れている
-- [ ] fresh DB で `/api/chat` が SQLITE_ERROR なく動作する
-- [ ] 既存のマイグレーションテストが全て通る
+- [x] `package.json` に test, test:unit, test:db, test:workflow, eval:smoke, ci:local scripts が存在する
+- [x] テストランナーと設定ファイルがコミットされている
+- [x] `npm run test:db` で fresh DB migrate/seed smoke が実行される
+- [x] `npm run test:workflow` で mocked workflow smoke が最低 1 本通る
+- [x] 本 ticket の diff が emotion / planner / generator / ranker / workflow の本番ロジックを変更していない
 
 ### 必要テスト
-- `npm run test -- --grep "migration"` が通る
-- fresh DB での `/api/chat` 手動確認
+- `tests/db/fresh-db.migrate-smoke.test.ts` が存在し pass
+- `tests/db/fresh-db.seed-smoke.test.ts` が存在し pass
+- `tests/workflow/chat-turn.smoke.test.ts` が存在し pass
+- `npm run test:db` が green
+- `npm run test:workflow` が green
+- `npm run ci:local` が green
 
 ---
 
-## T1: コード安全性修正
+## T1: generatorIntimacyMd の persistence contract 完全修正
 
 ### ゴール
-静的解析で発見されたコード安全性の問題を修正する。
-
-### 背景 (発見 2026-04-03)
-1. `JSON.parse()` 未保護箇所 (rollback route, workspace-repo)
-2. `as any` 型アサーション (execute-turn.ts:368, 580)
-3. Background eval run の silent failure
-4. Draft-chat session の race condition
-5. `request.json()` エラーハンドリングの不統一
+`workspace_draft_state` と `prompt_bundle_versions` を、schema / migration / repository / seed の全層で `generatorIntimacyMd` に一致させる。
 
 ### 受入基準
-- [x] `JSON.parse()` 呼び出しが try-catch で保護されている
-- [x] `as any` が適切な型に置き換えられている
-- [x] Background eval の失敗がログに記録される
-- [x] `request.json()` のエラーハンドリングが統一されている
-- [x] TypeScript strict チェックが通る (`npx tsc --noEmit`)
+- [x] `workspace_draft_state` に `generator_intimacy_md` 列が存在する
+- [x] `prompt_bundle_versions` に `generator_intimacy_md` 列が存在する
+- [x] schema / migration / repository / seed がその列名と意味で一致している
+- [x] fresh DB smoke が green
+- [x] `generatorIntimacyMd` が prod / draft の両方で authored value として取得できる
 
 ### 必要テスト
-- `npm run test` 全体が通る
-- `npx tsc --noEmit` が通る
+- `tests/contracts/prompt-bundle.generator-intimacy.contract.test.ts` が存在し pass
+- `tests/contracts/workspace-draft.generator-intimacy.contract.test.ts` が存在し pass
+- `tests/db/fresh-db.workspace-prompt-contract.test.ts` が存在し pass
+- `npm run ci:local` が green
 
 ---
 
-## T2: テストカバレッジギャップ修正
+## T2: prompt contract の canonical source 一本化
 
 ### ゴール
-テストカバレッジの不足を補い、信頼性を上げる。
-
-### 背景 (発見 2026-04-03)
-1. T6/T8 acceptance tests のフレーミング不足
-2. Shadow report の legacy comparison が 0/15
-3. Regression baseline 9/10 失敗
-4. CoE reason field assertions 欠如
+runtime schema を唯一の canonical contract にし、checked-in prompts / seed prompts / override semantics をそれに揃える。
 
 ### 受入基準
-- [ ] T6/T8 関連のテストが受入基準を正しくカバーしている
-- [ ] Shadow report の legacy comparison が改善されている
-- [ ] Regression baseline テストが通る
-- [ ] CoE reason field の assertion が追加されている
-- [ ] `npm run test` 全体が通る
+- [x] checked-in prompt examples に旧 field 名が active example として残っていない
+- [x] seed prompt 群が runtime schema と一致する
+- [x] planner / generator / ranker の prompt family ごとに drift 防止 contract test がある
+- [x] `promptOverride` の意味論がコードとテストで固定されている
+- [x] canonical contract が runtime schema であることが docs / tests / code で一致している
 
 ### 必要テスト
-- `npm run test` 全体が通る
-- `npm run eval:smoke` が通る
+- `tests/contracts/planner-prompt.contract.test.ts` が存在し pass
+- `tests/contracts/generator-prompt.contract.test.ts` が存在し pass
+- `tests/contracts/ranker-prompt.contract.test.ts` が存在し pass
+- `tests/contracts/seed-prompt.contract.test.ts` が存在し pass
+- `tests/contracts/prompt-override.behavior.test.ts` が存在し pass
+- `npm run ci:local` が green
 
 ---
 
-## T3: 全テスト再実行 & 最終確認
+## T3: CoE 契約と回帰フィクスチャを先に定義
 
 ### ゴール
-B1-B3 の修正後、全テスト・eval を再実行して全グリーンを確認する。
+CoE 主導 emotion system の型契約と fixture corpus を先に作る。本番配線の前に、何を正解とみなすかを test で固定する。
 
 ### 受入基準
-- [ ] `npm run test` 全テスト通過
-- [ ] `npm run eval:smoke` 全ケース通過
-- [ ] `npx tsc --noEmit` 型エラーなし
-- [ ] fresh DB でアプリが正常起動・動作する
+- [x] `CoEEvidence`, `RelationalAppraisal`, `EmotionUpdateProposal`, `PairMetricDelta`, `EmotionTrace` の schema/type が存在する
+- [x] required fixture (11種) がすべてコミットされている
+- [x] 各 fixture が evidence / axes / PAD delta / pair metric delta を検証している
+- [x] テストが deterministic で live model を要求しない
 
 ### 必要テスト
-- `npm run test`
-- `npm run eval:smoke`
-- `npx tsc --noEmit`
+- `tests/contracts/coe-schemas.contract.test.ts` が存在し pass
+- `tests/evals/emotion/compliment.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/mild-rejection.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/explicit-insult.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/apology.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/repair.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/repeated-pressure.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/intimacy-positive-context.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/intimacy-boundary-crossing.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/topic-shift-after-tension.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/two-turn-carry-over.fixture.test.ts` が存在し pass
+- `tests/evals/emotion/five-turn-progression.fixture.test.ts` が存在し pass
+- `npm run ci:local` が green
+
+---
+
+## T4: CoE extractor と pure integrator を作る
+
+### ゴール
+`user text -> CoE evidence -> relational appraisal -> PAD / pair delta` の pure core を実装する。
+
+### 受入基準
+- [x] dedicated CoE extractor module がある
+- [x] dedicated relational integrator module がある
+- [x] new path は regex message matching を main path に使わない
+- [x] malformed model output handling が code と test で定義されている
+- [x] required unit tests が green
+
+### 必要テスト
+- `tests/unit/coe-extractor.mocked.test.ts` が存在し pass
+- `tests/unit/coe-extractor.parse-repair.test.ts` が存在し pass
+- `tests/unit/relational-integrator.insult-shock.test.ts` が存在し pass
+- `tests/unit/relational-integrator.apology-repair.test.ts` が存在し pass
+- `tests/unit/relational-integrator.sustained-pressure.test.ts` が存在し pass
+- `tests/unit/relational-integrator.affectionate-carry-over.test.ts` が存在し pass
+- `tests/unit/relational-integrator.quiet-turn-decay.test.ts` が存在し pass
+- `tests/unit/relational-integrator.open-thread-bias.test.ts` が存在し pass
+- `npm run ci:local` が green
+
+---
+
+## T5: production chat_turn を新 core に配線
+
+### ゴール
+production `runChatTurn` を new CoE path に切り替え、pair metrics / phase inputs / trace を設計どおりに近づける。
+
+### 受入基準
+- [ ] production `chat_turn` の本線が new CoE path を使う
+- [ ] `turnsSinceLastUpdate: 1` の固定がなくなる
+- [ ] `events: new Map()`, `topics: new Map()`, zero counter placeholder が導出可能な実値に置き換わる
+- [ ] pair metrics が DB に保存される
+- [ ] trace に新しい state reasoning が残る
+- [ ] required workflow integration tests が green
+
+### 必要テスト
+- `tests/workflow/prod-chat-turn.one-turn.integration.test.ts` が存在し pass
+- `tests/workflow/prod-chat-turn.three-turn.integration.test.ts` が存在し pass
+- `tests/workflow/prod-chat-turn.phase-transition.integration.test.ts` が存在し pass
+- `tests/workflow/prod-chat-turn.pair-state-persistence.integration.test.ts` が存在し pass
+- `tests/workflow/prod-chat-turn.trace.integration.test.ts` が存在し pass
+- `npm run ci:local` が green
+
+---
+
+## T6: draft/playground を stateful にし prod/draft parity を作る
+
+### ゴール
+sandbox tables を本当に使い、draft/playground を continuing-session ベースの stateful workflow にする。prod と同じ core を使い、prod/draft parity をテストで固定する。
+
+### 受入基準
+- [ ] draft/playground が PAD を session across turns で持ち越す
+- [ ] draft/playground が pair metrics を持ち越す
+- [ ] draft/playground が sandbox working memory を持ち越す
+- [ ] draft の `phaseIdAfter` が固定ではない
+- [ ] parity test が green
+
+### 必要テスト
+- `tests/workflow/draft-chat-turn.sandbox-pair-state.integration.test.ts` が存在し pass
+- `tests/workflow/draft-chat-turn.sandbox-working-memory.integration.test.ts` が存在し pass
+- `tests/workflow/draft-chat-turn.multi-turn.integration.test.ts` が存在し pass
+- `tests/workflow/draft-chat-turn.explicit-reset.integration.test.ts` が存在し pass
+- `tests/workflow/prod-draft.parity.integration.test.ts` が存在し pass
+- `npm run ci:local` が green
+
+---
+
+## T7: generator/ranker の memory path と deterministic gates 完成
+
+### ゴール
+generator と ranker に retrieved memory を正しく通し、LLM ranker の前に deterministic reject を置く。
+
+### 受入基準
+- [ ] generator prompt/context が retrieved memory を使う
+- [ ] ranker input が memoryGrounding に必要な context を持つ
+- [ ] deterministic gates が code path として存在する
+- [ ] reject された候補は model judgement 前に落ちる
+- [ ] required tests が green
+
+### 必要テスト
+- `tests/contracts/generator-memory-context.contract.test.ts` が存在し pass
+- `tests/contracts/ranker-memory-context.contract.test.ts` が存在し pass
+- `tests/unit/ranker-gates.phase-violation.test.ts` が存在し pass
+- `tests/unit/ranker-gates.intimacy-violation.test.ts` が存在し pass
+- `tests/unit/ranker-gates.memory-contradiction.test.ts` が存在し pass
+- `tests/unit/ranker-gates.coe-contradiction.test.ts` が存在し pass
+- `tests/unit/ranker-gates.hard-safety.test.ts` が存在し pass
+- `tests/workflow/ranker.integration.test.ts` が存在し pass
+- `npm run ci:local` が green
+
+---
+
+## T8: publish/versioning を DB-backed workspace path に統一
+
+### ゴール
+workspace draft を唯一の canonical authoring source にし、in-memory draft/publish path を整理する。
+
+### 受入基準
+- [ ] active code path に in-memory drafts.ts / publish.ts 依存の publish flow が残っていない
+- [ ] workspace draft から publish できる
+- [ ] fresh DB publish smoke が green
+- [ ] docs に canonical publish flow が明記されている
+
+### 必要テスト
+- `tests/workflow/publish.from-workspace.integration.test.ts` が存在し pass
+- `tests/workflow/versioning.create-version.integration.test.ts` が存在し pass
+- `tests/workflow/release.activate.integration.test.ts` が存在し pass
+- `tests/db/fresh-db.publish-smoke.test.ts` が存在し pass
+- `npm run ci:local` が green
+
+---
+
+## T9: 最終 eval と rollout 判定
+
+### ゴール
+local gate を全部回し、legacy/new emotion path の切替と rollout default を最終決定する。
+
+### 受入基準
+- [ ] `npm run test`, `npm run test:db`, `npm run test:workflow`, `npm run eval:smoke`, `npm run ci:local` がすべて green
+- [ ] final markdown report が生成される
+- [ ] legacy/new emotion path の default flag が決まっている
+- [ ] remaining blockers がある場合は report に明示されている
+- [ ] "complete / not complete" を pass/fail で宣言できる
+
+### 必要テスト
+- `npm run test` が green
+- `npm run test:db` が green
+- `npm run test:workflow` が green
+- `npm run eval:smoke` が green
+- `npm run ci:local` が green
 
 ---
 
 ## 発見・予想外のこと
 
-- 2026-04-03: 本番チャットの致命的バグ — `001_initial.sql` に3カラム欠損
-- 2026-04-03: CoE Extractor のパース精度問題 — safe fallback で confidence: 0.1
-- 2026-04-03: ブラウザ Loading 問題 — browser-use ヘッドレスの制限の可能性
-- 2026-04-03: コード静的解析で5つの安全性問題を発見
-- 2026-04-03: テストカバレッジギャップ4件を発見
+- 2026-04-03: PLAN.md指定のテストファイルが1つも存在しない。機能実装は進んでいるが別ファイル名でテストされている
+- 2026-04-03: PLANS.md (旧バグ修正チケット T0-T3) は全完了済み
 
 ## 決定したこと
 
-- 2026-04-03: DBマイグレーション不整合は `001_initial.sql` を修正して対応
-- 2026-04-03: バグ修正をチケット形式（T0-T3）に分割して順次対応
-
-## メモ
-
-- テスト(142件)、ビルド、eval(10/10)は全グリーン（T0-T2 修正前の時点）
-- xAI API 呼び出しは約50-70秒かかる（正常動作）
-- draft-chat の返事品質は良好（蒼井セイラが適切に応答）
+- 2026-04-03: PLAN.mdのチケット体系で正式にチケットループを回す
+- 2026-04-03: 既存テストを活かしつつ、PLAN.md指定のファイル名でテストを整備する

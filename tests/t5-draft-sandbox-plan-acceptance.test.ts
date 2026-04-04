@@ -405,12 +405,12 @@ function createDraftChatDeps(input: {
         input.plannerSawCanonicalCoE.push(
           Boolean(
             inputArg.emotionContext?.coeExtraction?.interactionActs?.length &&
-              inputArg.emotionContext?.emotionTrace?.proposal?.pairMetricDelta &&
+              inputArg.emotionContext?.emotionTrace?.proposal?.pairDelta &&
               inputArg.emotionContext?.emotionTrace?.relationalAppraisal
           )
         );
 
-        let phaseTransitionProposal = {
+        let phaseTransitionProposal: { shouldTransition: boolean; targetPhaseId: string | null; reason: string } = {
           shouldTransition: false,
           targetPhaseId: null,
           reason: 'まだこの phase を維持する',
@@ -776,7 +776,7 @@ test('Task T5 two-turn carry-over and five-turn progression keep sandbox PAD, ph
   try {
     const deps = createDraftChatDeps({ snapshots, plannerSawCanonicalCoE });
     const userId = 'sandbox-user';
-    const results = [];
+    const results: Awaited<ReturnType<typeof runDraftChatTurn>>[] = [];
 
     for (const message of TURN_MESSAGES) {
       const result = await runDraftChatTurn(

@@ -137,7 +137,8 @@ function createMemoryStoreFixture(input?: {
         object: input.object,
         confidence: input.confidence,
         status: 'active',
-        supersededByFactId: null,
+        supersedesFactId: null,
+        sourceEventId: null,
         createdAt: new Date('2026-03-25T00:00:00.000Z'),
       };
       state.facts.push(fact);
@@ -338,7 +339,7 @@ test('Task T4 one-turn production flow injects canonical CoE context and persist
     persistence: {
       async createTurnRecord() {},
       async persistTrace() {},
-      async updatePairState(nextState) {
+      async updatePairState(nextState: PairState) {
         persistedPairState = nextState;
       },
     },
@@ -597,7 +598,7 @@ test('Task T4 three-turn production progression keeps canonical CoE state and no
         persistence: {
           async createTurnRecord() {},
           async persistTrace() {},
-          async updatePairState(nextState) {
+          async updatePairState(nextState: PairState) {
             pairState = nextState;
           },
         },

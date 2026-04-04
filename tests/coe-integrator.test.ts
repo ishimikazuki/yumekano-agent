@@ -319,13 +319,16 @@ for (const fixture of fixtureCases) {
   test(`fixture: ${fixture.id}`, () => {
     const result = integrateCoEAppraisal({
       ...fixture.input,
+      interactionActs: [...fixture.input.interactionActs],
+      openThreads: [...fixture.input.openThreads],
       emotionSpec: DEFAULT_EMOTION_SPEC,
     });
 
-    if (fixture.expected.guardrail) {
-      assert.ok(result.appliedGuardrails.includes(fixture.expected.guardrail));
+    if ('guardrail' in fixture.expected) {
+      const expected = fixture.expected as { guardrail: string };
+      assert.ok(result.appliedGuardrails.some((g) => g === expected.guardrail));
     }
-    if (fixture.expected.quietTurn !== undefined) {
+    if ('quietTurn' in fixture.expected) {
       assert.equal(result.quietTurn, fixture.expected.quietTurn);
     }
 

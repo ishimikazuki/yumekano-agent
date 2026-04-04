@@ -421,7 +421,7 @@ test('runChatTurn one-turn integration uses CoE pipeline and persists full pair 
     },
     {
       now: () => new Date('2026-03-25T00:00:00.000Z'),
-      repos: repos as ChatTurnDeps['repos'],
+      repos: repos as unknown as ChatTurnDeps['repos'],
       createMemoryStore: () => memoryStore,
       getOrCreateWorkingMemory: async () => workingMemory,
       executeTurn: async (input) => {
@@ -705,7 +705,7 @@ test('runChatTurn three-turn integration keeps CoE pipeline and non-placeholder 
       },
       {
         now: () => nowValues[nowIndex++] ?? nowValues[nowValues.length - 1],
-        repos: repos as ChatTurnDeps['repos'],
+        repos: repos as unknown as ChatTurnDeps['repos'],
         createMemoryStore: () => memoryStore,
         getOrCreateWorkingMemory: async () => workingMemory,
         executeTurn: async (input) => {

@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>MVP Phase 6 完了 / shared executeTurn 導入 / mixed ranker runtime 配線 / sandbox durable memory parity 対応 / prompt fragment assembly + fast/slow/combined PAD trace 対応 / 処理フロー視覚化LP公開済み / live debug修正をmainへ同期済み</phase>
+    <phase>MVP Phase 6 完了 / CoE emotion pipeline 統合完了 / PLAN.md T0-T4 テスト整備完了 (T5-T9 残) / legacy heuristic emotion path 除去済み / チケットループ正式運用中</phase>
   </project_overview>
 
   <architecture>

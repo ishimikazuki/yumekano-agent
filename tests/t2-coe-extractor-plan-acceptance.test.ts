@@ -13,7 +13,7 @@ import {
 
 function createMockRegistry(): Pick<ProviderRegistry, 'getModel' | 'getModelInfo'> {
   return {
-    getModel: () => ({ mocked: true }),
+    getModel: (() => ({ mocked: true })) as unknown as ProviderRegistry['getModel'],
     getModelInfo: () => ({ provider: 'mock', modelId: 'mock-analysis' }),
   };
 }
