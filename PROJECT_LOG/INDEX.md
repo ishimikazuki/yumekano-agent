@@ -1,5 +1,6 @@
 # PROJECT_LOG INDEX
 
+- issue-0014-2026-04-07-plan-tdd-full-pass.md — plan_tdd.md T0-T9全完了、hook自動進行、legacy cleanup、Vercelデプロイ
 - issue-0013-2026-04-07-hotfix-undefined-value.md — PostgreSQL UNDEFINED_VALUE エラー修正（playground チャット）
 - issue-0012-2026-04-07-plan-tdd-t0-t1.md — plan_tdd.md T0-T1実施、テストゲート修正、migration二重定義解消
 - issue-0011-2026-04-04-plan-ticket-loop-t5-t9-audit.md — T5-T9完了、全体照合、テストglob修正(159→357)
