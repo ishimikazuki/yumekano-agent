@@ -988,7 +988,7 @@ export const workspaceRepo = {
         input.sessionId,
         input.subject,
         input.predicate,
-        JSON.stringify(input.object),
+        JSON.stringify(input.object ?? null),
         input.confidence,
         input.supersedesFactId ?? null,
         input.sourceEventId ?? null,
