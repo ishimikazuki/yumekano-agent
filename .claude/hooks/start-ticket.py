@@ -5,9 +5,10 @@ Usage:
   python3 .claude/hooks/start-ticket.py <ticket_id>
 
 Example:
-  python3 .claude/hooks/start-ticket.py B1
+  python3 .claude/hooks/start-ticket.py T1
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -18,7 +19,12 @@ PLANS_PATH = ROOT / "PLANS.md"
 
 
 def parse_ticket_from_plans(ticket_id: str) -> dict:
-    """Parse acceptance criteria and required tests from PLANS.md."""
+    """Parse acceptance criteria and required tests from PLANS.md.
+
+    Supports two formats:
+      - Old: ## T1: Title / ### 受入基準 / ### 必要テスト
+      - New: # T1. Title / ## Acceptance criteria / ## Required tests
+    """
     if not PLANS_PATH.exists():
         return {"acceptance_criteria": [], "required_tests": []}
 
@@ -31,37 +37,57 @@ def parse_ticket_from_plans(ticket_id: str) -> dict:
     in_acceptance = False
     in_tests = False
 
+    # Build patterns for ticket header detection
+    # Matches: "# T1." or "## T1:" or "## T1 "
+    ticket_header_re = re.compile(
+        rf"^#+\s+{re.escape(ticket_id)}[\.\:\s]"
+    )
+    # Next ticket header (any heading that starts a new ticket section)
+    next_section_re = re.compile(r"^#\s+T\d+[\.\:\s]")
+
     for line in lines:
-        # Find ticket section header (e.g., "## B1: ...")
-        if line.startswith(f"## {ticket_id}:") or line.startswith(f"## {ticket_id} "):
+        # Find ticket section header
+        if not in_ticket and ticket_header_re.match(line):
             in_ticket = True
             continue
 
-        # Exit ticket section at next ## header
-        if in_ticket and line.startswith("## ") and not line.startswith(f"## {ticket_id}"):
+        # Exit ticket section at next ticket header
+        if in_ticket and next_section_re.match(line) and not ticket_header_re.match(line):
             break
 
         if not in_ticket:
             continue
 
-        # Detect sub-sections
-        if line.strip() == "### 受入基準":
+        stripped = line.strip()
+
+        # Detect sub-sections (both old and new format)
+        if stripped in ("### 受入基準", "## Acceptance criteria"):
             in_acceptance = True
             in_tests = False
             continue
-        elif line.strip() == "### 必要テスト":
+        elif stripped in ("### 必要テスト", "## Required tests"):
             in_tests = True
             in_acceptance = False
             continue
-        elif line.startswith("### "):
+        elif stripped.startswith("## "):
+            # A new ## section ends the current section
             in_acceptance = False
             in_tests = False
             continue
+        elif stripped.startswith("### "):
+            # ### subheaders within Required tests / Acceptance criteria
+            # don't break out — just continue collecting items
+            continue
 
         # Collect items
-        stripped = line.strip()
-        if in_acceptance and stripped.startswith("- [ ] "):
-            acceptance_criteria.append(stripped[6:])
+        if in_acceptance and stripped.startswith("- "):
+            # Strip checkbox prefix if present
+            text = stripped[2:]
+            if text.startswith("[ ] "):
+                text = text[4:]
+            elif text.startswith("[x] "):
+                text = text[4:]
+            acceptance_criteria.append(text)
         elif in_tests and stripped.startswith("- "):
             required_tests.append(stripped[2:])
 

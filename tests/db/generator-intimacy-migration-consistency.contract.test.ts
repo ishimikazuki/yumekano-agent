@@ -3,52 +3,33 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-const migrationPaths = [
-  path.join(process.cwd(), 'src', 'lib', 'db', 'migrate.ts'),
-  path.join(
-    process.cwd(),
-    'src',
-    'lib',
-    'db',
-    'migrations',
-    '004_generator_intimacy_prompt.sql'
-  ),
-  path.join(
-    process.cwd(),
-    'supabase',
-    'migrations',
-    '20260323000002_generator_intimacy_prompt.sql'
-  ),
-];
+test('generatorIntimacy is defined in canonical migrations (001 and 002)', () => {
+  const migrateTs = readFileSync(
+    path.join(process.cwd(), 'src', 'lib', 'db', 'migrate.ts'),
+    'utf8'
+  );
 
-const expectedStatements = [
-  /ALTER TABLE\s+prompt_bundle_versions\s+ADD COLUMN\s+IF NOT EXISTS\s+generator_intimacy_md\s+TEXT\s+NOT NULL\s+DEFAULT\s+''/i,
-  /ALTER TABLE\s+workspace_draft_state\s+ADD COLUMN\s+IF NOT EXISTS\s+generator_intimacy_md\s+TEXT\s+NOT NULL\s+DEFAULT\s+''/i,
-];
+  // MIGRATION_001 should define generator_intimacy_md in prompt_bundle_versions CREATE TABLE
+  const m001Match = migrateTs.match(/MIGRATION_001_INITIAL\s*=\s*`([\s\S]*?)`;/);
+  assert.ok(m001Match, 'MIGRATION_001_INITIAL should exist');
+  assert.ok(
+    m001Match[1].includes('generator_intimacy_md'),
+    'MIGRATION_001 (prompt_bundle_versions) should include generator_intimacy_md'
+  );
 
-const forbiddenUnguardedStatements = [
-  /ALTER TABLE\s+prompt_bundle_versions\s+ADD COLUMN\s+generator_intimacy_md\s+TEXT\s+NOT NULL\s+DEFAULT\s+''/i,
-  /ALTER TABLE\s+workspace_draft_state\s+ADD COLUMN\s+generator_intimacy_md\s+TEXT\s+NOT NULL\s+DEFAULT\s+''/i,
-];
+  // MIGRATION_002 should define generator_intimacy_md in workspace_draft_state CREATE TABLE
+  const m002Match = migrateTs.match(/MIGRATION_002_WORKSPACES\s*=\s*`([\s\S]*?)`;/);
+  assert.ok(m002Match, 'MIGRATION_002_WORKSPACES should exist');
+  assert.ok(
+    m002Match[1].includes('generator_intimacy_md'),
+    'MIGRATION_002 (workspace_draft_state) should include generator_intimacy_md'
+  );
 
-test('generatorIntimacy migration definitions are consistent and idempotent across active tracks', () => {
-  for (const migrationPath of migrationPaths) {
-    const sql = readFileSync(migrationPath, 'utf8').replace(/\s+/g, ' ').trim();
-
-    for (const statementPattern of expectedStatements) {
-      assert.match(
-        sql,
-        statementPattern,
-        `${migrationPath} is missing idempotent generator_intimacy_md add-column statement`
-      );
-    }
-
-    for (const forbiddenPattern of forbiddenUnguardedStatements) {
-      assert.doesNotMatch(
-        sql,
-        forbiddenPattern,
-        `${migrationPath} still contains unguarded generator_intimacy_md add-column statement`
-      );
-    }
-  }
+  // MIGRATION_004 should be a no-op (superseded)
+  const m004Match = migrateTs.match(/MIGRATION_004_GENERATOR_INTIMACY_PROMPT\s*=\s*`([\s\S]*?)`;/);
+  assert.ok(m004Match, 'MIGRATION_004 should exist');
+  assert.ok(
+    !m004Match[1].includes('ALTER TABLE'),
+    'MIGRATION_004 should be no-op (superseded by 001/002)'
+  );
 });

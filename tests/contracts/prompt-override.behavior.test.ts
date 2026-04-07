@@ -51,3 +51,56 @@ test('T2 prompt-override: execute-turn passes promptOverride to all agents', () 
   assert.match(source, /promptOverride:\s*input\.promptBundle\.rankerMd/, 'Ranker should get override');
   assert.match(source, /promptOverride:\s*input\.promptBundle\.extractorMd/, 'Extractor should get override');
 });
+
+test('T2 prompt-override: all agents use formatDesignerFragment (not raw assignment)', () => {
+  const agentFiles = [
+    'src/mastra/agents/planner.ts',
+    'src/mastra/agents/generator.ts',
+    'src/mastra/agents/ranker.ts',
+    'src/mastra/agents/coe-evidence-extractor.ts',
+    'src/mastra/agents/memory-extractor.ts',
+  ];
+  for (const file of agentFiles) {
+    const source = readFileSync(path.join(process.cwd(), file), 'utf8');
+    assert.match(
+      source,
+      /formatDesignerFragment\(promptOverride\)/,
+      `${file} must use formatDesignerFragment(promptOverride), not raw assignment`
+    );
+  }
+});
+
+test('T2 prompt-override: mandatory rules survive after designer fragment injection', () => {
+  // Generator: mandatory rules come after formatDesignerFragment
+  const generatorSource = readFileSync(
+    path.join(process.cwd(), 'src/mastra/agents/generator.ts'),
+    'utf8'
+  );
+  const fragmentIndex = generatorSource.indexOf('formatDesignerFragment(promptOverride)');
+  const rulesIndex = generatorSource.indexOf('## Rules', fragmentIndex);
+  assert.ok(fragmentIndex > 0, 'Generator should have formatDesignerFragment');
+  assert.ok(rulesIndex > fragmentIndex, 'Generator mandatory rules must come AFTER designer fragment');
+
+  // Planner: same pattern
+  const plannerSource = readFileSync(
+    path.join(process.cwd(), 'src/mastra/agents/planner.ts'),
+    'utf8'
+  );
+  const pFragmentIndex = plannerSource.indexOf('formatDesignerFragment(promptOverride)');
+  const pRulesIndex = plannerSource.indexOf('## Rules', pFragmentIndex);
+  assert.ok(pFragmentIndex > 0, 'Planner should have formatDesignerFragment');
+  assert.ok(pRulesIndex > pFragmentIndex, 'Planner mandatory rules must come AFTER designer fragment');
+});
+
+test('T2 prompt-override: prod and draft use same prompt path via executeTurn', () => {
+  const draftSource = readFileSync(
+    path.join(process.cwd(), 'src/mastra/workflows/draft-chat-turn.ts'),
+    'utf8'
+  );
+  // Draft should pass promptBundle to executeTurn
+  assert.match(draftSource, /promptBundle/, 'Draft must pass promptBundle');
+  // Draft should NOT have its own agent calls — it uses executeTurn
+  assert.doesNotMatch(draftSource, /runPlanner\(/, 'Draft must not call planner directly');
+  assert.doesNotMatch(draftSource, /runGenerator\(/, 'Draft must not call generator directly');
+  assert.doesNotMatch(draftSource, /runRanker\(/, 'Draft must not call ranker directly');
+});

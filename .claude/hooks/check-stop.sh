@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""Stop hook: blocks stop unless ticket is complete.
+
+If the current ticket is complete and there's a next ticket in the sequence,
+auto-advances to the next ticket and blocks stop so Claude continues working.
+"""
 import json
 import subprocess
 import sys
@@ -6,6 +11,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STATE_PATH = ROOT / ".claude" / "state" / "current-ticket.json"
+START_TICKET = ROOT / ".claude" / "hooks" / "start-ticket.py"
+
+# Fixed ticket order — matches plan_tdd.md
+TICKET_ORDER = ["T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9"]
+
 
 def git_dirty() -> bool:
     try:
@@ -20,6 +30,7 @@ def git_dirty() -> bool:
     except Exception:
         return False
 
+
 def block(reason: str) -> None:
     print(json.dumps({
         "decision": "block",
@@ -27,13 +38,43 @@ def block(reason: str) -> None:
     }))
     sys.exit(0)
 
+
+def auto_advance(current_id: str, next_id: str) -> None:
+    """Start next ticket and block stop so Claude continues."""
+    subprocess.run(
+        [sys.executable, str(START_TICKET), next_id],
+        cwd=ROOT,
+        capture_output=True,
+    )
+    print(json.dumps({
+        "decision": "block",
+        "reason": (
+            f"{current_id} complete. Auto-advancing to {next_id}. "
+            f"Continue working on {next_id} following the ticket loop in PLANS.md."
+        ),
+    }))
+    sys.exit(0)
+
+
 def allow() -> None:
     sys.exit(0)
+
+
+def get_next_ticket(current_id: str) -> str | None:
+    """Return the next ticket ID, or None if current is the last."""
+    try:
+        idx = TICKET_ORDER.index(current_id)
+        if idx + 1 < len(TICKET_ORDER):
+            return TICKET_ORDER[idx + 1]
+    except ValueError:
+        pass
+    return None
+
 
 def main() -> None:
     dirty = git_dirty()
 
-    # 1) 状態ファイルがない
+    # 1) No state file
     if not STATE_PATH.exists():
         if dirty:
             block(
@@ -42,7 +83,7 @@ def main() -> None:
             )
         allow()
 
-    # 2) 状態ファイルが壊れている
+    # 2) Invalid state file
     try:
         state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except Exception:
@@ -65,7 +106,7 @@ def main() -> None:
     review = state.get("review", {})
     review_passed = review.get("pass", False)
 
-    # 3) 状態ファイルの必須項目不足
+    # 3) Missing required fields
     if not ticket_id:
         block("Current ticket state is missing `ticket_id`.")
     if status not in {"planned", "in_progress", "ready_to_stop"}:
@@ -77,7 +118,7 @@ def main() -> None:
     if "review" not in state:
         block("Current ticket state is missing `review`.")
 
-    # 4) ticket 完了前に止まろうとしている
+    # 4) Ticket not complete
     if not ready_to_stop:
         block(
             f"{ticket_id} is not marked ready_to_stop. "
@@ -86,22 +127,22 @@ def main() -> None:
         )
 
     if not tests_all_passed:
-        block(
-            f"{ticket_id} is marked ready_to_stop, but tests.all_passed is false."
-        )
+        block(f"{ticket_id} is marked ready_to_stop, but tests.all_passed is false.")
 
     if not acceptance_all_passed:
-        block(
-            f"{ticket_id} is marked ready_to_stop, but acceptance.all_passed is false."
-        )
+        block(f"{ticket_id} is marked ready_to_stop, but acceptance.all_passed is false.")
 
     if not review_passed:
-        block(
-            f"{ticket_id} is marked ready_to_stop, but review.pass is false."
-        )
+        block(f"{ticket_id} is marked ready_to_stop, but review.pass is false.")
 
-    # 5) ここまで通れば停止を許可
+    # 5) Ticket is complete — check for auto-advance
+    next_ticket = get_next_ticket(ticket_id)
+    if next_ticket:
+        auto_advance(ticket_id, next_ticket)
+
+    # 6) Last ticket — allow stop
     allow()
+
 
 if __name__ == "__main__":
     main()

@@ -1,41 +1,53 @@
 {
-  "ticket_id": "T1",
+  "ticket_id": "T9",
   "status": "ready_to_stop",
   "ready_to_stop": true,
   "tests": {
     "required": [
-      "tests/contracts/sandbox-memory.persistence.contract.test.ts (migration dedup)",
+      "npm run test",
       "npm run test:db",
+      "npm run test:workflow",
+      "npm run test:integration",
       "npm run test:migrations",
+      "npm run test:ranker-gates",
+      "npm run test:coe-integrator",
+      "npm run test:emotion-regression",
+      "npm run eval:smoke",
       "npm run ci:local"
     ],
     "passed": [
-      "sandbox-memory.persistence — 8/8 pass (3 new RED→GREEN)",
-      "test:db — 10/10 pass",
-      "test:migrations — 5/5 pass",
-      "ci:local — all green"
+      "npm run test — 417/417",
+      "npm run test:db — 10/10",
+      "npm run test:workflow — 12/12",
+      "npm run test:integration — 5/5",
+      "npm run test:migrations — 5/5",
+      "npm run test:ranker-gates — 12/12",
+      "npm run test:coe-integrator — 12/12",
+      "npm run test:emotion-regression — 91/91",
+      "npm run eval:smoke — 10/10",
+      "npm run ci:local — all green"
     ],
     "failed": [],
     "all_passed": true
   },
   "acceptance": {
     "required": [
-      "generator_intimacy_md と emotion_appraiser_md の永続化が schema / migration / repository / seed で一致する",
-      "sandbox memory tables の二重定義が解消される",
-      "fresh DB migrate -> seed -> workspace init が green",
-      "fresh DB で sandbox session / pair state / working memory を保存できる",
-      "contract tests が red -> green を確認している"
+      "上記コマンドがすべて green",
+      "final markdown report が生成される",
+      "legacy/new emotion path の default flag が決まっている",
+      "remaining blockers がある場合は report に明示されている",
+      "complete / not complete を pass/fail で宣言できる"
     ],
     "passed": [
-      "MIGRATION_001/002 が canonical。004/008 を no-op 化",
-      "MIGRATION_006 を no-op 化。002 が canonical for sandbox tables",
-      "fresh DB test:db 10/10 pass",
-      "sandbox CRUD tests pass",
-      "3テスト RED→GREEN (006 duplication, 004 duplication, 008 duplication)"
+      "全10コマンド green (417テスト)",
+      "tests/evals/final-gate-report.md 更新済み",
+      "CoE integrator デフォルト、enableLegacyComparison 削除済み",
+      "blockers なし (report に明記)",
+      "COMPLETE: T0-T9 全チケット PASS"
     ],
     "failed": [],
     "all_passed": true
   },
   "review": { "pass": true, "blocking_issues": [] },
-  "notes": "T1実修正: migrate.ts MIGRATION_004/006/008 を no-op 化。二重定義解消。"
+  "notes": "T9完了。旧テスト競合修正(SQLITE_BUSY)、migration consistency テスト更新。417テスト全パス。"
 }

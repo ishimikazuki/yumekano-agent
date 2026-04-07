@@ -57,7 +57,6 @@ export type ExecuteTurnInput = {
   turnsSinceLastTransition: number;
   daysSinceEntry: number;
   turnsSinceLastEmotionUpdate: number;
-  enableLegacyComparison?: boolean;
   memoryStore: MemoryStore;
   persistence: {
     createTurnRecord(input: {

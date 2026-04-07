@@ -928,7 +928,6 @@ async function runFixtureLive(
         turnsSinceLastTransition: index + 1,
         daysSinceEntry: 0,
         turnsSinceLastEmotionUpdate: 1,
-        enableLegacyComparison: shadowEnabled,
         memoryStore,
         persistence: {
           createTurnRecord: async ({

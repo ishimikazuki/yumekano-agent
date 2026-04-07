@@ -13,22 +13,20 @@ Fallback reason: none
 
 ## Local Validation
 - command: `npm run test`
-- status: FAIL
-- failing tests: 3
+- status: PASS
+- failing tests: 0
 
 ## Biggest Remaining Weak Cases
 - none
 
 ## Rollout Recommendation
-Do not widen rollout yet. Local validation still has unresolved failing tests that must be addressed first.
+Safe for an internal or designer-only rollout, but still watch the remaining weak cases before broader exposure.
 
 ## Feature-Flag Default Recommendation
-`YUMEKANO_USE_COE_INTEGRATOR=false` by default until local validation failures are resolved. Do not widen runtime exposure yet.
+`YUMEKANO_USE_COE_INTEGRATOR=false` by default. Legacy comparison is removed in T9; rollback uses deployment rollback steps in `docs/COE_ROLLBACK_PLAN.md`, not runtime flag switching.
 
 ## Named Blockers
-- tests/contracts/workspace-draft.generator-intimacy.contract.test.ts:2:997 — T1 workspace_draft_state table has generator_intimacy_md column (3.263042ms): Error [LibsqlError]: SQLITE_BUSY: database is locked
-- tests/contracts/workspace-draft.persistence.contract.test.ts:2:2277 — T1: workspaceRepo.updatePrompt round-trips emotionAppraiserMd (11.244ms): Error [LibsqlError]: SQLITE_BUSY: database is locked
-- tests/db/generator-intimacy-migration-consistency.contract.test.ts:2:1846 — generatorIntimacy migration definitions are consistent and idempotent across active tracks (1.917791ms): AssertionError [ERR_ASSERTION]: /Users/akimare/Ikigai/yumekano-agent/yumekano-agent-CoE/src/lib/db/migrate.ts is missing idempotent generator_intimacy_md add-column statement
+- no known blockers
 
 ## compliment — PASS
 
