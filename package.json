@@ -10,7 +10,7 @@
     "db:migrate": "tsx src/lib/db/migrate.ts",
     "db:seed": "tsx src/lib/db/seed.ts",
     "test": "tsx --test tests/*.test.ts tests/db/*.test.ts tests/workflow/*.test.ts tests/contracts/*.test.ts tests/unit/*.test.ts tests/evals/emotion/*.test.ts",
-    "test:unit": "npm test",
+    "test:unit": "tsx --test tests/contracts/*.test.ts tests/unit/*.test.ts",
     "test:db": "tsx --test tests/db-smoke.test.ts tests/db/fresh-db.migrate-smoke.test.ts tests/db/fresh-db.seed-smoke.test.ts",
     "test:workflow": "tsx --test tests/workflow-smoke.test.ts tests/workflow/chat-turn.smoke.test.ts",
     "test:integration": "tsx --test tests/execute-turn-coe-integration.test.ts tests/draft-chat-stateful.test.ts",
@@ -20,12 +20,12 @@
     "test:prompt-bundles": "tsx --test tests/draft-persistence.test.ts tests/prompt-bundle-persistence.test.ts",
     "test:ranker-gates": "tsx --test tests/ranker-gates.test.ts",
     "test:coe-integrator": "tsx --test tests/coe-integrator.test.ts tests/feature-flags.test.ts tests/legacy-config-normalization.test.ts",
-    "test:emotion-regression": "tsx --test tests/regression/*.test.ts",
+    "test:emotion-regression": "tsx --test tests/evals/emotion/*.test.ts",
     "evals:emotion-relationship": "tsx src/scripts/run-emotion-relationship-evals.ts",
     "eval:smoke": "YUMEKANO_EVAL_MODE=offline npm run evals:emotion-relationship",
     "eval:emotion": "npm run evals:emotion-relationship",
     "eval:full": "npm run evals:emotion-relationship",
-    "ci:local": "npm run test:db && npm run test:workflow && npm run test:integration && npm run test:migrations && npm run test:ranker-gates && npm run test:coe-integrator && npm run eval:smoke",
+    "ci:local": "npm run test:db && npm run test:workflow && npm run test:integration && npm run test:migrations && npm run test:ranker-gates && npm run test:coe-integrator && npm run test:emotion-regression && npm run eval:smoke",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

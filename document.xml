@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>MVP Phase 6 完了 / PLAN.md T0-T9 全チケット完了 / CoE emotion pipeline 統合・テスト整備完了 (357テスト) / legacy heuristic emotion path 除去済み / rollout ready</phase>
+    <phase>plan_tdd.md による再検証中 / T0-T1 完了 (test gate 修正 + migration 二重定義解消) / T2-T9 未着手 / 400テスト / 残課題: legacyComparison null固定, prod/draft trace parity</phase>
   </project_overview>
 
   <architecture>

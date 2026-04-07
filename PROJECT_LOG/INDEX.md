@@ -1,5 +1,6 @@
 # PROJECT_LOG INDEX
 
+- issue-0012-2026-04-07-plan-tdd-t0-t1.md — plan_tdd.md T0-T1実施、テストゲート修正、migration二重定義解消
 - issue-0011-2026-04-04-plan-ticket-loop-t5-t9-audit.md — T5-T9完了、全体照合、テストglob修正(159→357)
 - issue-0010-2026-04-03-plan-ticket-loop-t0-t4.md — PLAN.md T0-T4テスト整備、チケットループ正式運用
 - issue-0009-2026-03-24-main-sync-and-live-debug-wrapup.md — live debug修正の取り込み、main同期、wrapup整理

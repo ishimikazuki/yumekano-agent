@@ -27,6 +27,8 @@ Shadow enabled: `true`
 | five-turn-progression | 0/5 | 0.000 | 0.000 |
 
 ## Missing Legacy Comparison Coverage
+> **Note:** Legacy heuristic emotion path was removed in T9. All cases show 0 compared turns because `legacyComparison` is no longer produced. This is expected behavior — the CoE integrator is now the sole emotion path.
+
 - compliment
 - mild-rejection
 - explicit-insult
