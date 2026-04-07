@@ -357,7 +357,7 @@ export const memoryRepo = {
     });
   },
 
-  async resolveThread(pairId: string, key: string, resolvedByEventId?: string): Promise<void> {
+  async resolveThread(pairId: string, key: string, resolvedByEventId?: string | null): Promise<void> {
     const db = getDb();
     const now = new Date().toISOString();
 

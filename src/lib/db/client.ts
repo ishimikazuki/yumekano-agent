@@ -109,7 +109,10 @@ async function executeWithPostgres(sqlString: string, args: unknown[]): Promise<
   let paramIndex = 0;
   const pgSql = sqlString.replace(/\?/g, () => `$${++paramIndex}`);
 
-  const result = await client.unsafe(pgSql, args as postgres.SerializableParameter[]);
+  // Guard: postgres package rejects undefined values — coerce to null
+  const safeArgs = args.map(v => v === undefined ? null : v);
+
+  const result = await client.unsafe(pgSql, safeArgs as postgres.SerializableParameter[]);
   return {
     rows: result as Record<string, unknown>[],
     rowsAffected: result.count,

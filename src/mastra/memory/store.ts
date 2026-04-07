@@ -92,7 +92,7 @@ export function createProductionMemoryStore(): MemoryStore {
     createOrUpdateThread: ({ scopeId, ...rest }) =>
       memoryRepo.createOrUpdateThread({ pairId: scopeId, ...rest }),
     resolveThread: (scopeId, key, resolvedByEventId) =>
-      memoryRepo.resolveThread(scopeId, key, resolvedByEventId ?? undefined),
+      memoryRepo.resolveThread(scopeId, key, resolvedByEventId ?? null),
     updateEventQuality: (eventId, qualityScore) => memoryRepo.updateEventQuality(eventId, qualityScore),
     updateFactStatus: (factId, status) => memoryRepo.updateFactStatus(factId, status),
     updateObservationQuality: (observationId, qualityScore) =>
@@ -118,7 +118,7 @@ export function createSandboxMemoryStore(): MemoryStore {
     createOrUpdateThread: ({ scopeId, ...rest }) =>
       workspaceRepo.createOrUpdateSandboxThread({ sessionId: scopeId, ...rest }),
     resolveThread: (scopeId, key, resolvedByEventId) =>
-      workspaceRepo.resolveSandboxThread(scopeId, key, resolvedByEventId ?? undefined),
+      workspaceRepo.resolveSandboxThread(scopeId, key, resolvedByEventId ?? null),
     updateEventQuality: (eventId, qualityScore) =>
       workspaceRepo.updateSandboxEventQuality(eventId, qualityScore),
     updateFactStatus: (factId, status) => workspaceRepo.updateSandboxFactStatus(factId, status),
