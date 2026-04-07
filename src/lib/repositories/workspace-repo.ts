@@ -1177,7 +1177,7 @@ export const workspaceRepo = {
   async resolveSandboxThread(
     sessionId: string,
     key: string,
-    resolvedByEventId?: string
+    resolvedByEventId?: string | null
   ): Promise<void> {
     const db = getDb();
     const now = new Date().toISOString();
