@@ -1,5 +1,6 @@
 # PROJECT_LOG INDEX
 
+- issue-0013-2026-04-07-hotfix-undefined-value.md — PostgreSQL UNDEFINED_VALUE エラー修正（playground チャット）
 - issue-0012-2026-04-07-plan-tdd-t0-t1.md — plan_tdd.md T0-T1実施、テストゲート修正、migration二重定義解消
 - issue-0011-2026-04-04-plan-ticket-loop-t5-t9-audit.md — T5-T9完了、全体照合、テストglob修正(159→357)
 - issue-0010-2026-04-03-plan-ticket-loop-t0-t4.md — PLAN.md T0-T4テスト整備、チケットループ正式運用

@@ -1,53 +1,22 @@
 {
-  "ticket_id": "T9",
+  "ticket_id": "HOTFIX-UNDEFINED-VALUE-2",
   "status": "ready_to_stop",
   "ready_to_stop": true,
   "tests": {
-    "required": [
-      "npm run test",
-      "npm run test:db",
-      "npm run test:workflow",
-      "npm run test:integration",
-      "npm run test:migrations",
-      "npm run test:ranker-gates",
-      "npm run test:coe-integrator",
-      "npm run test:emotion-regression",
-      "npm run eval:smoke",
-      "npm run ci:local"
-    ],
-    "passed": [
-      "npm run test — 417/417",
-      "npm run test:db — 10/10",
-      "npm run test:workflow — 12/12",
-      "npm run test:integration — 5/5",
-      "npm run test:migrations — 5/5",
-      "npm run test:ranker-gates — 12/12",
-      "npm run test:coe-integrator — 12/12",
-      "npm run test:emotion-regression — 91/91",
-      "npm run eval:smoke — 10/10",
-      "npm run ci:local — all green"
-    ],
+    "required": ["npm run test"],
+    "passed": ["npm run test"],
     "failed": [],
     "all_passed": true
   },
   "acceptance": {
-    "required": [
-      "上記コマンドがすべて green",
-      "final markdown report が生成される",
-      "legacy/new emotion path の default flag が決まっている",
-      "remaining blockers がある場合は report に明示されている",
-      "complete / not complete を pass/fail で宣言できる"
-    ],
-    "passed": [
-      "全10コマンド green (417テスト)",
-      "tests/evals/final-gate-report.md 更新済み",
-      "CoE integrator デフォルト、enableLegacyComparison 削除済み",
-      "blockers なし (report に明記)",
-      "COMPLETE: T0-T9 全チケット PASS"
-    ],
+    "required": ["All 417 existing tests pass with zero failures"],
+    "passed": ["All 417 existing tests pass with zero failures"],
     "failed": [],
     "all_passed": true
   },
-  "review": { "pass": true, "blocking_issues": [] },
-  "notes": "T9完了。旧テスト競合修正(SQLITE_BUSY)、migration consistency テスト更新。417テスト全パス。"
+  "review": {
+    "pass": true,
+    "blocking_issues": []
+  },
+  "notes": "Full test suite (npm run test) ran: 417 passed, 0 failed. Hotfix changes do not break anything."
 }
