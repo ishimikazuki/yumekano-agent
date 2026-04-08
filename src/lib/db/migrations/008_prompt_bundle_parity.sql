@@ -1,11 +1,5 @@
-ALTER TABLE prompt_bundle_versions
-  ADD COLUMN emotion_appraiser_md TEXT NOT NULL DEFAULT '';
-
-ALTER TABLE workspace_draft_state
-  ADD COLUMN emotion_appraiser_md TEXT NOT NULL DEFAULT '';
-
-UPDATE prompt_bundle_versions
-SET emotion_appraiser_md = COALESCE(emotion_appraiser_md, '');
-
-UPDATE workspace_draft_state
-SET emotion_appraiser_md = COALESCE(emotion_appraiser_md, '');
+-- Migration 008: Canonical prompt bundle parity for emotion appraiser prompt
+-- SUPERSEDED: emotion_appraiser_md is now in 001_initial (prompt_bundle_versions)
+-- and 002_workspaces (workspace_draft_state) as part of the canonical schema.
+-- Kept as no-op to preserve _migrations tracking.
+SELECT 1;

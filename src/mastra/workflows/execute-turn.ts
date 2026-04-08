@@ -6,6 +6,11 @@ import {
   buildPhaseEngineRuntimeContext,
   resolvePhaseTransition,
 } from '@/lib/rules/phase-runtime';
+import {
+  buildLegacyRelationalAppraisalFromExtraction,
+  adaptLegacyRelationalAppraisalToLegacyAppraisal,
+  mapLegacyToCanonicalRelational,
+} from '@/lib/adapters/coe-emotion-contract';
 import { retrieveMemory } from '../memory/retrieval';
 import { processMemoryWrites, recordMemoryUsage } from '../memory/writeback';
 import type { MemoryStore } from '../memory/store';
@@ -18,6 +23,8 @@ import type {
   AppraisalVector,
   CharacterVersion,
   CoEEvidenceExtractorResult,
+  LegacyEmotionComparison,
+  OpenThread,
   PADState,
   PairMetricDelta,
   PairState,
@@ -26,6 +33,7 @@ import type {
   PromptBundleVersion,
   RelationshipMetrics,
   RelationalAppraisal,
+  RuntimeEmotionState,
   TurnTrace,
   WorkingMemory,
 } from '@/lib/schemas';
@@ -77,6 +85,7 @@ export type ExecuteTurnInput = {
       characterVersion: CharacterVersion;
     }): Promise<void>;
   };
+  computeLegacyComparison?: boolean;
   deps?: ExecuteTurnDeps;
 };
 
@@ -290,6 +299,43 @@ function buildEmotionTrace(input: {
     pairMetricsBefore: input.relationshipBefore,
     pairMetricsAfter: input.relationshipAfter,
     pairMetricDelta: input.pairMetricDelta,
+  };
+}
+
+function buildLegacyComparisonResult(input: {
+  extraction: CoEEvidenceExtractorResult;
+  currentEmotion: RuntimeEmotionState;
+  currentMetrics: RelationshipMetrics;
+  emotionSpec: CharacterVersion['emotion'];
+  currentPhase: PhaseNode;
+  openThreads: OpenThread[];
+  turnsSinceLastUpdate: number;
+  now: Date;
+}): LegacyEmotionComparison {
+  const legacyRA = buildLegacyRelationalAppraisalFromExtraction({
+    extraction: input.extraction,
+  });
+  const canonicalRA = mapLegacyToCanonicalRelational(legacyRA);
+  const legacyResult = integrateCoEAppraisal({
+    currentEmotion: input.currentEmotion,
+    currentMetrics: input.currentMetrics,
+    appraisal: canonicalRA,
+    emotionSpec: input.emotionSpec,
+    currentPhase: input.currentPhase,
+    openThreads: input.openThreads,
+    turnsSinceLastUpdate: input.turnsSinceLastUpdate,
+    interactionActs: input.extraction.interactionActs,
+    now: input.now,
+  });
+  const legacyAppraisal = adaptLegacyRelationalAppraisalToLegacyAppraisal(legacyRA);
+
+  return {
+    appraisal: legacyAppraisal,
+    emotionAfter: legacyResult.after.combined,
+    emotionStateAfter: legacyResult.after,
+    relationshipAfter: legacyResult.relationshipAfter,
+    relationshipDeltas: legacyResult.pairDelta,
+    coeContributions: legacyResult.contributions,
   };
 }
 
@@ -580,7 +626,18 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     },
     coeExtraction,
     emotionTrace,
-    legacyComparison: null,
+    legacyComparison: input.computeLegacyComparison
+      ? buildLegacyComparisonResult({
+          extraction: coeExtraction,
+          currentEmotion: input.pairState.emotion,
+          currentMetrics: relationshipBefore,
+          emotionSpec: input.characterVersion.emotion,
+          currentPhase: input.currentPhase,
+          openThreads: retrievalResult.threads,
+          turnsSinceLastUpdate: input.turnsSinceLastEmotionUpdate,
+          now,
+        })
+      : null,
     memoryThresholdDecisions: memoryWriteResult.thresholdDecisions,
     coeContributions,
     plan,

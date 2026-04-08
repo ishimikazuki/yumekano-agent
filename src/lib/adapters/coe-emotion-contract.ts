@@ -377,7 +377,7 @@ function derivePairMetricDelta(
   });
 }
 
-function mapLegacyToCanonicalRelational(
+export function mapLegacyToCanonicalRelational(
   appraisal: LegacyRelationalAppraisal
 ): RelationalAppraisal {
   return RelationalAppraisalSchema.parse({

@@ -28,18 +28,18 @@ test('T4: TurnTraceSchema includes legacyComparison as nullable optional', () =>
   assert.ok(result.success, 'null should be valid for legacyComparison');
 });
 
-test('T4: enableLegacyComparison flag is removed from execute-turn input', () => {
+test('T4: old enableLegacyComparison flag is removed (replaced by computeLegacyComparison)', () => {
   const source = readFileSync(
     path.join(process.cwd(), 'src/mastra/workflows/execute-turn.ts'),
     'utf8'
   );
   assert.ok(
     !source.includes('enableLegacyComparison'),
-    'enableLegacyComparison should be removed — legacy path was deleted (commit 02b13cd)'
+    'enableLegacyComparison should be removed — replaced by computeLegacyComparison in T2'
   );
 });
 
-test('T4: no vestigial legacy comparison references in call sites', () => {
+test('T4: no vestigial enableLegacyComparison references in call sites', () => {
   const files = [
     'src/mastra/workflows/draft-chat-turn.ts',
     'src/mastra/workflows/chat-turn.ts',

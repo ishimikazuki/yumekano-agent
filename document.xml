@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>plan_tdd.md T0-T9 全完了 / 417テスト / migration二重定義解消・enableLegacyComparison削除・hook自動進行・Vercelデプロイ済み / 前回評価の指摘事項すべて対応完了</phase>
+    <phase>残件修正プラン T0-T5 全完了 / 458テスト / legacy comparison実装(computeLegacyComparison)・migration SQL同期・trace parity固定・publish path docs追記 / RELEASE-READY</phase>
   </project_overview>
 
   <architecture>

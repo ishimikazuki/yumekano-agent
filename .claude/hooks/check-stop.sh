@@ -14,7 +14,7 @@ STATE_PATH = ROOT / ".claude" / "state" / "current-ticket.json"
 START_TICKET = ROOT / ".claude" / "hooks" / "start-ticket.py"
 
 # Fixed ticket order — matches plan_tdd.md
-TICKET_ORDER = ["T0", "T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8", "T9"]
+TICKET_ORDER = ["T0", "T1", "T2", "T3", "T4", "T5"]
 
 
 def git_dirty() -> bool:
