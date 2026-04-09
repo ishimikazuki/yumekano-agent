@@ -7,6 +7,7 @@ import { getDb } from '@/lib/db/client';
 import { traceRepo } from '@/lib/repositories/trace-repo';
 import { EmotionNarrativeSchema } from '@/lib/schemas/narrative';
 import { runEmotionNarrator } from '@/mastra/agents/emotion-narrator';
+import { generateNarrativeAsync } from '@/mastra/workflows/execute-turn';
 
 test('EmotionNarrativeSchema accepts valid narrative', () => {
   const valid = {
@@ -221,4 +222,77 @@ test('runEmotionNarrator returns valid EmotionNarrative (stubbed LLM)', async ()
   assert.equal(result.characterNarrative, fakeNarrative.characterNarrative);
   assert.equal(result.relationshipNarrative, fakeNarrative.relationshipNarrative);
   assert.deepEqual(result.drivers, fakeNarrative.drivers);
+});
+
+test('generateNarrativeAsync does not throw on narrator failure', async () => {
+  const failingNarrator = async () => {
+    throw new Error('LLM unavailable');
+  };
+  const logs: string[] = [];
+  const fakeConsoleError = (...args: unknown[]) => logs.push(String(args[0]));
+
+  await generateNarrativeAsync(
+    {
+      traceId: 'test-trace-id',
+      userMessage: 'hello',
+      assistantMessage: 'hi',
+      interactionActs: [],
+      relationalAppraisal: {
+        warmthImpact: 0, rejectionImpact: 0, respectImpact: 0,
+        threatImpact: 0, pressureImpact: 0, repairImpact: 0,
+        reciprocityImpact: 0, intimacySignal: 0, boundarySignal: 0, certainty: 0,
+      },
+      emotionBefore: { pleasure: 0, arousal: 0, dominance: 0 },
+      emotionAfter: { pleasure: 0, arousal: 0, dominance: 0 },
+      relationshipBefore: { affinity: 50, trust: 50, intimacyReadiness: 0, conflict: 0 },
+      relationshipAfter: { affinity: 50, trust: 50, intimacyReadiness: 0, conflict: 0 },
+      characterName: 'test',
+      currentPhaseId: 'test',
+    },
+    {
+      runNarrator: failingNarrator,
+      updateNarrative: async () => {},
+      logError: fakeConsoleError,
+    }
+  );
+
+  assert.ok(logs.some((l) => l.includes('Narrative generation failed')));
+});
+
+test('generateNarrativeAsync calls updateNarrative on success', async () => {
+  const narrative = {
+    characterNarrative: 'test',
+    relationshipNarrative: 'test',
+    drivers: ['test'],
+  };
+  let savedTraceId = '';
+  let savedNarrative: unknown = null;
+
+  await generateNarrativeAsync(
+    {
+      traceId: 'abc-123',
+      userMessage: 'hi',
+      assistantMessage: 'hello',
+      interactionActs: [],
+      relationalAppraisal: {
+        warmthImpact: 0, rejectionImpact: 0, respectImpact: 0,
+        threatImpact: 0, pressureImpact: 0, repairImpact: 0,
+        reciprocityImpact: 0, intimacySignal: 0, boundarySignal: 0, certainty: 0,
+      },
+      emotionBefore: { pleasure: 0, arousal: 0, dominance: 0 },
+      emotionAfter: { pleasure: 0, arousal: 0, dominance: 0 },
+      relationshipBefore: { affinity: 50, trust: 50, intimacyReadiness: 0, conflict: 0 },
+      relationshipAfter: { affinity: 50, trust: 50, intimacyReadiness: 0, conflict: 0 },
+      characterName: 'test',
+      currentPhaseId: 'test',
+    },
+    {
+      runNarrator: async () => narrative,
+      updateNarrative: async (id, n) => { savedTraceId = id; savedNarrative = n; },
+      logError: () => {},
+    }
+  );
+
+  assert.equal(savedTraceId, 'abc-123');
+  assert.deepEqual(savedNarrative, narrative);
 });

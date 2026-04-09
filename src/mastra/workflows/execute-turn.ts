@@ -39,6 +39,8 @@ import type {
 } from '@/lib/schemas';
 
 import type { AgentEmotionContext } from '../agents/emotion-context';
+import type { EmotionNarrative } from '@/lib/schemas/narrative';
+import type { EmotionNarratorInput } from '../agents/emotion-narrator';
 export type ExecuteTurnDeps = {
   runCoEEvidenceExtractor?: typeof runCoEEvidenceExtractor;
   runPlanner?: typeof runPlanner;
@@ -84,6 +86,7 @@ export type ExecuteTurnInput = {
       pairState: PairState;
       characterVersion: CharacterVersion;
     }): Promise<void>;
+    updateTraceNarrative?(traceId: string, narrative: EmotionNarrative): Promise<void>;
   };
   computeLegacyComparison?: boolean;
   deps?: ExecuteTurnDeps;
@@ -674,6 +677,30 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     });
   }
 
+  // Fire-and-forget: generate narrative asynchronously
+  if (input.persistence.updateTraceNarrative) {
+    const { runEmotionNarrator: narratorFn } = await import('../agents/emotion-narrator');
+    generateNarrativeAsync(
+      {
+        traceId,
+        userMessage: input.userMessage,
+        assistantMessage,
+        interactionActs: coeExtraction.interactionActs,
+        relationalAppraisal: coeExtraction.relationalAppraisal,
+        emotionBefore,
+        emotionAfter,
+        relationshipBefore,
+        relationshipAfter,
+        characterName: input.characterVersion.name,
+        currentPhaseId: phaseIdAfter,
+      },
+      {
+        runNarrator: narratorFn,
+        updateNarrative: input.persistence.updateTraceNarrative,
+      }
+    ).catch(() => {}); // Double safety — generateNarrativeAsync already catches internally
+  }
+
   return {
     text: assistantMessage,
     traceId,
@@ -684,4 +711,28 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     trace,
     pairState: finalPairState,
   };
+}
+
+export type GenerateNarrativeAsyncInput = EmotionNarratorInput & {
+  traceId: string;
+};
+
+type GenerateNarrativeAsyncDeps = {
+  runNarrator: (input: EmotionNarratorInput) => Promise<EmotionNarrative>;
+  updateNarrative: (traceId: string, narrative: EmotionNarrative) => Promise<void>;
+  logError?: (...args: unknown[]) => void;
+};
+
+export async function generateNarrativeAsync(
+  input: GenerateNarrativeAsyncInput,
+  deps: GenerateNarrativeAsyncDeps
+): Promise<void> {
+  const log = deps.logError ?? console.error;
+  try {
+    const { traceId, ...narratorInput } = input;
+    const narrative = await deps.runNarrator(narratorInput);
+    await deps.updateNarrative(traceId, narrative);
+  } catch (err) {
+    log('Narrative generation failed:', err);
+  }
 }

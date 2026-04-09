@@ -24,7 +24,7 @@ type ChatTurnRepos = {
   pairRepo: Pick<typeof pairRepo, 'getOrCreate' | 'getState' | 'initState' | 'updateState'>;
   traceRepo: Pick<
     typeof traceRepo,
-    'getRecentTurns' | 'countTurnsSince' | 'createChatTurn' | 'createTrace'
+    'getRecentTurns' | 'countTurnsSince' | 'createChatTurn' | 'createTrace' | 'updateTraceNarrative'
   >;
   releaseRepo: Pick<typeof releaseRepo, 'getCurrent'>;
   phaseGraphRepo: Pick<typeof phaseGraphRepo, 'getById'>;
@@ -180,6 +180,9 @@ export async function runChatTurn(
             characterVersion,
           });
         }
+      },
+      updateTraceNarrative: async (traceId, narrative) => {
+        await repos.traceRepo.updateTraceNarrative(traceId, narrative);
       },
     },
   });
