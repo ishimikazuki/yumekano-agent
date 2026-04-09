@@ -297,3 +297,28 @@ test('generateNarrativeAsync calls updateNarrative on success', async () => {
   assert.equal(savedTraceId, 'abc-123');
   assert.deepEqual(savedNarrative, narrative);
 });
+
+test('narrative_json column exists and defaults to NULL', async () => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'yumekano-narrator-col-'));
+  const dbPath = path.join(tempDir, 'col-test.db');
+  const prevDb = process.env.DATABASE_URL;
+  const prevLocal = process.env.LOCAL_DATABASE_URL;
+  delete process.env.DATABASE_URL;
+  process.env.LOCAL_DATABASE_URL = `file:${dbPath}`;
+  await getDb().close();
+
+  try {
+    const db = getDb();
+    await db.execute(TRACE_TABLE_DDL);
+
+    const result = await db.execute(`PRAGMA table_info(turn_traces)`);
+    const narrativeCol = result.rows.find((r) => r.name === 'narrative_json');
+    assert.ok(narrativeCol, 'narrative_json column should exist');
+    assert.equal(narrativeCol.dflt_value, 'NULL');
+  } finally {
+    process.env.DATABASE_URL = prevDb;
+    process.env.LOCAL_DATABASE_URL = prevLocal;
+    await getDb().close();
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
