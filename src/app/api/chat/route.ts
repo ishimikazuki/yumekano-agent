@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runChatTurn, type ChatTurnInput } from '@/mastra/workflows/chat-turn';
 import { z } from 'zod';
 
+export const maxDuration = 120;
+
 const ChatRequestSchema = z.object({
   userId: z.string().min(1),
   characterId: z.string().uuid(),

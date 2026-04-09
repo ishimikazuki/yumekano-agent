@@ -1,5 +1,10 @@
 import { getDb } from './client';
 
+function isPostgresBackend(): boolean {
+  const url = process.env.DATABASE_URL;
+  return !!url && (url.startsWith('postgres://') || url.startsWith('postgresql://'));
+}
+
 /**
  * Initial migration SQL - PostgreSQL compatible
  */
@@ -538,6 +543,36 @@ SELECT 1
 `;
 
 /**
+ * Migration 009: Repair — re-apply column additions from 005 that failed on PostgreSQL
+ * Migration 005 used PRAGMA (SQLite-only) to check column existence, which silently
+ * failed on PostgreSQL. This migration uses IF NOT EXISTS which PostgreSQL supports natively.
+ */
+const MIGRATION_009_REPAIR_PG_COLUMNS = `
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_fast_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_slow_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS pad_combined_json TEXT;
+ALTER TABLE pair_state ADD COLUMN IF NOT EXISTS last_emotion_updated_at TEXT;
+
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_fast_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_slow_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS pad_combined_json TEXT;
+ALTER TABLE sandbox_pair_state ADD COLUMN IF NOT EXISTS last_emotion_updated_at TEXT;
+
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_state_before_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_state_after_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_before_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_after_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS relationship_deltas_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS phase_transition_evaluation_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS prompt_assembly_hashes_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_extraction_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_trace_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS legacy_comparison_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS memory_threshold_decisions_json TEXT;
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_contributions_json TEXT;
+`;
+
+/**
  * Run all migrations.
  */
 export async function runMigrations() {
@@ -587,15 +622,24 @@ export async function runMigrations() {
 
         if (addColumnMatch) {
           const [, tableName, columnName, columnDefinition] = addColumnMatch;
-          const tableInfo = await db.execute(`PRAGMA table_info(${tableName})`);
-          const hasColumn = tableInfo.rows.some(
-            (row) => String(row.name) === columnName
-          );
 
-          if (!hasColumn) {
+          if (isPostgresBackend()) {
+            // PostgreSQL supports ALTER TABLE ... ADD COLUMN IF NOT EXISTS natively
             await db.execute(
-              `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`
+              `ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS ${columnName} ${columnDefinition}`
             );
+          } else {
+            // libSQL/SQLite: use PRAGMA to check column existence
+            const tableInfo = await db.execute(`PRAGMA table_info(${tableName})`);
+            const hasColumn = tableInfo.rows.some(
+              (row) => String(row.name) === columnName
+            );
+
+            if (!hasColumn) {
+              await db.execute(
+                `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`
+              );
+            }
           }
 
           continue;
@@ -638,6 +682,10 @@ export async function runMigrations() {
   await runMigration(
     '008_prompt_bundle_parity.sql',
     MIGRATION_008_PROMPT_BUNDLE_PARITY
+  );
+  await runMigration(
+    '009_repair_pg_columns.sql',
+    MIGRATION_009_REPAIR_PG_COLUMNS
   );
 
   console.log('All migrations completed');

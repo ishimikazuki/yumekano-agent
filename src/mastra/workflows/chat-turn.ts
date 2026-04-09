@@ -123,6 +123,7 @@ export async function runChatTurn(
     turnsSinceLastTransition,
     daysSinceEntry,
     turnsSinceLastEmotionUpdate,
+    computeLegacyComparison: true,
     deps: executeTurnDeps,
     memoryStore,
     persistence: {
