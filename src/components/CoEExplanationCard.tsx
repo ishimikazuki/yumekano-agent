@@ -1,10 +1,12 @@
 'use client';
 
 import type { CoEExplanation } from '@/lib/rules/coe';
+import type { EmotionNarrative } from '@/lib/schemas/narrative';
 import { PAD_DELTA_NOTICE_THRESHOLD } from '@/lib/rules/pad';
 
 type CoEExplanationCardProps = {
   coe: CoEExplanation;
+  narrative?: EmotionNarrative | null;
   variant?: 'compact' | 'detailed';
   className?: string;
 };
@@ -19,34 +21,34 @@ function deltaTone(value: number): string {
   return 'bg-gray-100 text-gray-600';
 }
 
-export function CoEExplanationCard({
-  coe,
-  variant = 'compact',
-  className = '',
-}: CoEExplanationCardProps) {
+function NarrativeView({ narrative }: { narrative: EmotionNarrative }) {
   return (
-    <div className={`rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 ${className}`.trim()}>
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-semibold tracking-wide text-indigo-700">PAD 感情変化の説明</p>
-        <div className="flex gap-1">
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${deltaTone(coe.delta.pleasure)}`}
-          >
-            P {formatSigned(coe.delta.pleasure)}
-          </span>
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${deltaTone(coe.delta.arousal)}`}
-          >
-            A {formatSigned(coe.delta.arousal)}
-          </span>
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${deltaTone(coe.delta.dominance)}`}
-          >
-            D {formatSigned(coe.delta.dominance)}
-          </span>
-        </div>
+    <>
+      <div className="mt-2 rounded bg-white/70 px-2 py-2 text-[11px] text-gray-700">
+        <p className="font-medium text-gray-800">感情変化</p>
+        <p className="mt-1 leading-relaxed">{narrative.characterNarrative}</p>
       </div>
+      <div className="mt-2 rounded bg-white/70 px-2 py-2 text-[11px] text-gray-700">
+        <p className="font-medium text-gray-800">関係性への影響</p>
+        <p className="mt-1 leading-relaxed">{narrative.relationshipNarrative}</p>
+      </div>
+      {narrative.drivers.length > 0 && (
+        <div className="mt-2 rounded bg-white/70 px-2 py-2 text-[11px] text-gray-700">
+          <p className="font-medium text-gray-800">主要ドライバー</p>
+          <ul className="mt-1 space-y-1">
+            {narrative.drivers.map((driver, index) => (
+              <li key={`driver-${index}`}>・{driver}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
 
+function FallbackView({ coe, variant }: { coe: CoEExplanation; variant: 'compact' | 'detailed' }) {
+  return (
+    <>
       <p className="mt-1 text-xs leading-relaxed text-indigo-900">{coe.summary}</p>
 
       <div className="mt-2 rounded bg-white/70 px-2 py-2 text-[11px] text-gray-700">
@@ -108,6 +110,44 @@ export function CoEExplanationCard({
             </div>
           ))}
         </div>
+      )}
+    </>
+  );
+}
+
+export function CoEExplanationCard({
+  coe,
+  narrative,
+  variant = 'compact',
+  className = '',
+}: CoEExplanationCardProps) {
+  return (
+    <div className={`rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 ${className}`.trim()}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold tracking-wide text-indigo-700">PAD 感情変化の説明</p>
+        <div className="flex gap-1">
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${deltaTone(coe.delta.pleasure)}`}
+          >
+            P {formatSigned(coe.delta.pleasure)}
+          </span>
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${deltaTone(coe.delta.arousal)}`}
+          >
+            A {formatSigned(coe.delta.arousal)}
+          </span>
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] font-mono ${deltaTone(coe.delta.dominance)}`}
+          >
+            D {formatSigned(coe.delta.dominance)}
+          </span>
+        </div>
+      </div>
+
+      {narrative ? (
+        <NarrativeView narrative={narrative} />
+      ) : (
+        <FallbackView coe={coe} variant={variant} />
       )}
     </div>
   );

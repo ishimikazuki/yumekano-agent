@@ -79,6 +79,11 @@ interface TurnTrace {
   candidates: Candidate[];
   winnerIndex: number;
   memoryWrites: Array<{ type: string; summary: string }>;
+  narrativeJson?: {
+    characterNarrative: string;
+    relationshipNarrative: string;
+    drivers: string[];
+  } | null;
   userMessage: string;
   assistantMessage: string;
   createdAt: string;
@@ -238,7 +243,7 @@ export default function TraceViewerPage() {
               </span>
             </div>
           </div>
-          <CoEExplanationCard coe={coe} variant="detailed" className="mt-4" />
+          <CoEExplanationCard coe={coe} narrative={trace.narrativeJson ?? null} variant="detailed" className="mt-4" />
         </div>
 
         {/* Appraisal */}
