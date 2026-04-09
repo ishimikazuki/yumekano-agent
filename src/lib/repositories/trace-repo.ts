@@ -230,7 +230,7 @@ export const traceRepo = {
     if (result.rows.length === 0) return null;
 
     const row = result.rows[0];
-    return TurnTraceSchema.parse({
+    const parsed = TurnTraceSchema.parse({
       id: row.id,
       pairId: row.pair_id,
       characterVersionId: row.character_version_id,
@@ -292,6 +292,11 @@ export const traceRepo = {
       assistantMessage: row.assistant_message,
       createdAt: row.created_at,
     });
+    const narrativeRaw = row.narrative_json as string | null;
+    return {
+      ...parsed,
+      narrativeJson: narrativeRaw ? (JSON.parse(narrativeRaw) as { characterNarrative: string; relationshipNarrative: string; drivers: string[] }) : null,
+    };
   },
 
   /**
@@ -304,8 +309,8 @@ export const traceRepo = {
       args: [pairId, limit],
     });
 
-    return result.rows.map((row) =>
-      TurnTraceSchema.parse({
+    return result.rows.map((row) => {
+      const parsed = TurnTraceSchema.parse({
         id: row.id,
         pairId: row.pair_id,
         characterVersionId: row.character_version_id,
@@ -366,8 +371,13 @@ export const traceRepo = {
         userMessage: row.user_message,
         assistantMessage: row.assistant_message,
         createdAt: row.created_at,
-      })
-    );
+      });
+      const narrativeRaw = row.narrative_json as string | null;
+      return {
+        ...parsed,
+        narrativeJson: narrativeRaw ? (JSON.parse(narrativeRaw) as { characterNarrative: string; relationshipNarrative: string; drivers: string[] }) : null,
+      };
+    });
   },
 
   /**
@@ -440,6 +450,20 @@ export const traceRepo = {
         createdAt: row.created_at,
       })
     );
+  },
+
+  /**
+   * Update a trace's narrative_json column (written asynchronously after chat response).
+   */
+  async updateTraceNarrative(
+    traceId: string,
+    narrative: { characterNarrative: string; relationshipNarrative: string; drivers: string[] }
+  ): Promise<void> {
+    const db = getDb();
+    await db.execute({
+      sql: `UPDATE turn_traces SET narrative_json = ? WHERE id = ?`,
+      args: [JSON.stringify(narrative), traceId],
+    });
   },
 
   /**

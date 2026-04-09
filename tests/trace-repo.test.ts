@@ -50,6 +50,7 @@ test('createTrace persists the expanded runtime trace payload', async () => {
         memory_writes_json TEXT NOT NULL,
         user_message TEXT NOT NULL,
         assistant_message TEXT NOT NULL,
+        narrative_json TEXT DEFAULT NULL,
         created_at TEXT NOT NULL
       )
     `);
