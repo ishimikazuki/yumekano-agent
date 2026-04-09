@@ -691,7 +691,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
         emotionAfter,
         relationshipBefore,
         relationshipAfter,
-        characterName: input.characterVersion.name,
+        characterName: input.characterVersion.persona.summary.split('。')[0] || 'キャラクター',
         currentPhaseId: phaseIdAfter,
       },
       {

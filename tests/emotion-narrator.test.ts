@@ -6,6 +6,7 @@ import test from 'node:test';
 import { getDb } from '@/lib/db/client';
 import { traceRepo } from '@/lib/repositories/trace-repo';
 import { EmotionNarrativeSchema } from '@/lib/schemas/narrative';
+import type { TurnPlan } from '@/lib/schemas/plan';
 import { runEmotionNarrator } from '@/mastra/agents/emotion-narrator';
 import { generateNarrativeAsync } from '@/mastra/workflows/execute-turn';
 
@@ -94,7 +95,7 @@ function makeMinimalTraceInput(id: string) {
     pairId: '11111111-1111-4111-8111-111111111111',
     characterVersionId: '22222222-2222-4222-8222-222222222222',
     promptBundleVersionId: '33333333-3333-4333-8333-333333333333',
-    modelIds: { planner: 'm', generator: 'm', ranker: 'm', extractor: 'm' },
+    modelIds: { planner: 'm', generator: 'm', ranker: 'm', extractor: 'm' as string | null },
     phaseIdBefore: 'p1',
     phaseIdAfter: 'p1',
     emotionBefore: pad,
@@ -127,7 +128,7 @@ function makeMinimalTraceInput(id: string) {
       emotionDeltaIntent: { pleasureDelta: 0, arousalDelta: 0, dominanceDelta: 0, reason: 'none' },
       plannerReasoning: 'test',
       mustAvoid: [],
-    },
+    } satisfies TurnPlan,
     candidates: [{
       index: 0, text: 'hi', toneTags: [], memoryRefsUsed: [], riskFlags: [],
       scores: {
@@ -195,7 +196,7 @@ test('runEmotionNarrator returns valid EmotionNarrative (stubbed LLM)', async ()
       assistantMessage: 'うん、私も',
       interactionActs: [{
         act: 'affection',
-        target: 'partner',
+        target: 'relationship',
         polarity: 'positive',
         intensity: 0.7,
         evidenceSpans: [{ source: 'user_message', sourceId: null, text: '一緒にいたいな', start: 0, end: 7 }],
