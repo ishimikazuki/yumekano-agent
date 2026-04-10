@@ -184,6 +184,22 @@ export async function runDraftChatTurn(
           openThreadCount: nextState.openThreadCount,
         });
       },
+      updateTraceNarrative: async (traceId, narrative) => {
+        // For draft/sandbox: store narrative inside the playground_turns trace_json
+        // We find the turn by matching the traceId in the session's turns
+        const turns = await workspaceRepo.getTurns(session.id);
+        const matchingTurn = turns.find((t) => {
+          const trace = t.traceJson as Record<string, unknown> | null;
+          return trace && trace.id === traceId;
+        });
+        if (matchingTurn) {
+          const existingTrace = matchingTurn.traceJson as Record<string, unknown>;
+          await workspaceRepo.updateTurnTrace(matchingTurn.id, {
+            ...existingTrace,
+            narrativeJson: narrative,
+          });
+        }
+      },
       maybeConsolidate: async ({ pairState, characterVersion }) => {
         if (
           await shouldTriggerConsolidation({
