@@ -1,56 +1,22 @@
 {
-  "ticket_id": "T5",
-  "status": "ready_to_stop",
-  "ready_to_stop": true,
+  "ticket_id": "CLEANUP-T7",
+  "status": "in_progress",
+  "ready_to_stop": false,
   "tests": {
-    "required": [
-      "`npm run test`",
-      "`npm run test:db`",
-      "`npm run test:workflow`",
-      "`npm run test:integration`",
-      "`npm run test:migrations`",
-      "`npm run test:ranker-gates`",
-      "`npm run test:coe-integrator`",
-      "`npm run test:emotion-regression`",
-      "`npm run eval:smoke`",
-      "`npm run ci:local`"
-    ],
-    "passed": [
-      "`npm run test`",
-      "`npm run test:db`",
-      "`npm run test:workflow`",
-      "`npm run test:integration`",
-      "`npm run test:migrations`",
-      "`npm run test:ranker-gates`",
-      "`npm run test:coe-integrator`",
-      "`npm run test:emotion-regression`",
-      "`npm run eval:smoke`",
-      "`npm run ci:local`"
-    ],
+    "required": [],
+    "passed": [],
     "failed": [],
-    "all_passed": true
+    "all_passed": false
   },
   "acceptance": {
-    "required": [
-      "上記コマンドがすべて green",
-      "final markdown report が生成される",
-      "release-ready / not-release-ready を pass/fail で宣言できる",
-      "残 blocker があれば report に列挙されている",
-      "rollout default と comparison mode の扱いが決まっている"
-    ],
-    "passed": [
-      "上記コマンドがすべて green",
-      "final markdown report が生成される",
-      "release-ready / not-release-ready を pass/fail で宣言できる",
-      "残 blocker があれば report に列挙されている",
-      "rollout default と comparison mode の扱いが決まっている"
-    ],
+    "required": [],
+    "passed": [],
     "failed": [],
-    "all_passed": true
+    "all_passed": false
   },
   "review": {
-    "pass": true,
+    "pass": false,
     "blocking_issues": []
   },
-  "notes": "T5 is the FINAL ticket. All T0-T5 GREEN. 458 tests pass. RELEASE-READY."
+  "notes": ""
 }

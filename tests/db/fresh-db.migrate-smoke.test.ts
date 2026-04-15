@@ -109,13 +109,13 @@ test(
 );
 
 test(
-  'fresh DB: all 8 migrations are tracked',
+  'fresh DB: all 10 migrations are tracked',
   withFreshDb(async (getDb) => {
     const { runMigrations } = await import('@/lib/db/migrate');
     await runMigrations();
 
     const db = getDb();
     const migrations = await db.execute('SELECT name FROM _migrations ORDER BY name');
-    assert.equal(migrations.rows.length, 8, `Expected 8 migrations, got ${migrations.rows.length}`);
+    assert.equal(migrations.rows.length, 10, `Expected 10 migrations, got ${migrations.rows.length}`);
   })
 );

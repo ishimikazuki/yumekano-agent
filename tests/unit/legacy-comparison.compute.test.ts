@@ -48,7 +48,7 @@ const COMPLIMENT_EXTRACTION: CoEEvidenceExtractorResult = {
       polarity: 'positive',
       intensity: 0.7,
       confidence: 0.85,
-      evidenceSpans: [{ text: 'You look great today', source: 'user_message' }],
+      evidenceSpans: [{ text: 'You look great today', source: 'user_message' as const, sourceId: null, start: 0, end: 20 }],
       uncertaintyNotes: [],
     },
   ],
@@ -65,6 +65,7 @@ const COMPLIMENT_EXTRACTION: CoEEvidenceExtractorResult = {
     certainty: 0.85,
   },
   confidence: 0.85,
+  uncertaintyNotes: [],
 };
 
 const NEUTRAL_EMOTION = createRuntimeEmotionState({ pleasure: 0, arousal: 0, dominance: 0 });

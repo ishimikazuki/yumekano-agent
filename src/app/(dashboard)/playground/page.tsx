@@ -138,8 +138,10 @@ function PlaygroundContent() {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Draft chat request failed');
+          const text = await response.text();
+          let errorMessage = 'Draft chat request failed';
+          try { errorMessage = JSON.parse(text).error || errorMessage; } catch { errorMessage = text.slice(0, 200) || `HTTP ${response.status}`; }
+          throw new Error(errorMessage);
         }
 
         const data = await response.json();
@@ -175,8 +177,10 @@ function PlaygroundContent() {
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Chat request failed');
+          const text = await response.text();
+          let errorMessage = 'Chat request failed';
+          try { errorMessage = JSON.parse(text).error || errorMessage; } catch { errorMessage = text.slice(0, 200) || `HTTP ${response.status}`; }
+          throw new Error(errorMessage);
         }
 
         const data = await response.json();

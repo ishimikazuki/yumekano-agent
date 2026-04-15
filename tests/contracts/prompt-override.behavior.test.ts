@@ -19,7 +19,7 @@ test('T2 prompt-override: selectGeneratorPrompt exists and is a function', () =>
 test('T2 prompt-override: selectGeneratorPrompt returns generatorMd by default', () => {
   const result = selectGeneratorPrompt(
     { generatorMd: 'main prompt', generatorIntimacyMd: 'intimacy prompt' },
-    { intimacyDecision: 'not_applicable', primaryActs: [], secondaryActs: [], mustAvoid: [], plannerReasoning: '' }
+    { intimacyDecision: 'not_applicable' as const, stance: 'neutral' as const, primaryActs: [], secondaryActs: [], mustAvoid: [], memoryFocus: { emphasize: [], suppress: [], reason: '' }, phaseTransitionProposal: { shouldTransition: false as const, targetPhaseId: null, reason: '' }, emotionDeltaIntent: { pleasureDelta: 0, arousalDelta: 0, dominanceDelta: 0, reason: '' }, plannerReasoning: '' }
   );
   assert.equal(result, 'main prompt');
 });
@@ -27,7 +27,7 @@ test('T2 prompt-override: selectGeneratorPrompt returns generatorMd by default',
 test('T2 prompt-override: selectGeneratorPrompt returns intimacyMd when intimacy is accepted', () => {
   const result = selectGeneratorPrompt(
     { generatorMd: 'main prompt', generatorIntimacyMd: 'intimacy prompt' },
-    { intimacyDecision: 'accept', primaryActs: [], secondaryActs: [], mustAvoid: [], plannerReasoning: '' }
+    { intimacyDecision: 'accept' as const, stance: 'neutral' as const, primaryActs: [], secondaryActs: [], mustAvoid: [], memoryFocus: { emphasize: [], suppress: [], reason: '' }, phaseTransitionProposal: { shouldTransition: false as const, targetPhaseId: null, reason: '' }, emotionDeltaIntent: { pleasureDelta: 0, arousalDelta: 0, dominanceDelta: 0, reason: '' }, plannerReasoning: '' }
   );
   assert.equal(result, 'intimacy prompt');
 });
@@ -35,7 +35,7 @@ test('T2 prompt-override: selectGeneratorPrompt returns intimacyMd when intimacy
 test('T2 prompt-override: selectGeneratorPrompt falls back to generatorMd if intimacyMd is empty', () => {
   const result = selectGeneratorPrompt(
     { generatorMd: 'main prompt', generatorIntimacyMd: '' },
-    { intimacyDecision: 'accept', primaryActs: [], secondaryActs: [], mustAvoid: [], plannerReasoning: '' }
+    { intimacyDecision: 'accept' as const, stance: 'neutral' as const, primaryActs: [], secondaryActs: [], mustAvoid: [], memoryFocus: { emphasize: [], suppress: [], reason: '' }, phaseTransitionProposal: { shouldTransition: false as const, targetPhaseId: null, reason: '' }, emotionDeltaIntent: { pleasureDelta: 0, arousalDelta: 0, dominanceDelta: 0, reason: '' }, plannerReasoning: '' }
   );
   assert.equal(result, 'main prompt');
 });

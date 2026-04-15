@@ -165,6 +165,7 @@ export const TurnTraceSchema = z.object({
   userMessage: z.string(),
   assistantMessage: z.string(),
   createdAt: z.coerce.date(),
+  narrativeJson: z.record(z.unknown()).nullable().optional(),
 });
 export type TurnTrace = z.infer<typeof TurnTraceSchema>;
 

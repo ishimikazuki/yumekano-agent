@@ -16,16 +16,16 @@ export type ModelRoleConfig = {
 
 /**
  * Default model role configuration using xAI Grok.
- * This is provisional and can be swapped without changing business logic.
+ * Override via CONVERSATION_MODEL / ANALYSIS_MODEL env vars.
  */
 export const defaultModelRoles: ModelRoleConfig = {
   conversationHigh: {
     provider: 'xai',
-    modelId: 'grok-4.20-reasoning',
+    modelId: process.env.CONVERSATION_MODEL || 'grok-4.20-reasoning',
   },
   analysisMedium: {
     provider: 'xai',
-    modelId: 'grok-4-1-fast-reasoning',
+    modelId: process.env.ANALYSIS_MODEL || 'grok-4-1-fast-reasoning',
   },
   embeddingDefault: {
     provider: 'xai',

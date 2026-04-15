@@ -570,6 +570,35 @@ ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS emotion_trace_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS legacy_comparison_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS memory_threshold_decisions_json TEXT;
 ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS coe_contributions_json TEXT;
+
+ALTER TABLE prompt_bundle_versions ADD COLUMN IF NOT EXISTS generator_intimacy_md TEXT NOT NULL DEFAULT '';
+ALTER TABLE prompt_bundle_versions ADD COLUMN IF NOT EXISTS emotion_appraiser_md TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE workspace_draft_state ADD COLUMN IF NOT EXISTS generator_intimacy_md TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspace_draft_state ADD COLUMN IF NOT EXISTS emotion_appraiser_md TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE character_versions ADD COLUMN IF NOT EXISTS label TEXT;
+ALTER TABLE character_versions ADD COLUMN IF NOT EXISTS parent_version_id TEXT;
+
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS narrative_json TEXT;
+`;
+
+/**
+ * Migration 010: Repair columns from superseded migrations (004, 008) + narrative
+ * Migrations 004 and 008 were made no-ops after their columns were added to
+ * CREATE TABLE in 001/002. But existing PostgreSQL tables never got the columns.
+ */
+const MIGRATION_010_REPAIR_SUPERSEDED_COLUMNS = `
+ALTER TABLE prompt_bundle_versions ADD COLUMN IF NOT EXISTS generator_intimacy_md TEXT NOT NULL DEFAULT '';
+ALTER TABLE prompt_bundle_versions ADD COLUMN IF NOT EXISTS emotion_appraiser_md TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE workspace_draft_state ADD COLUMN IF NOT EXISTS generator_intimacy_md TEXT NOT NULL DEFAULT '';
+ALTER TABLE workspace_draft_state ADD COLUMN IF NOT EXISTS emotion_appraiser_md TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE character_versions ADD COLUMN IF NOT EXISTS label TEXT;
+ALTER TABLE character_versions ADD COLUMN IF NOT EXISTS parent_version_id TEXT;
+
+ALTER TABLE turn_traces ADD COLUMN IF NOT EXISTS narrative_json TEXT;
 `;
 
 /**
@@ -686,6 +715,10 @@ export async function runMigrations() {
   await runMigration(
     '009_repair_pg_columns.sql',
     MIGRATION_009_REPAIR_PG_COLUMNS
+  );
+  await runMigration(
+    '010_repair_superseded_columns.sql',
+    MIGRATION_010_REPAIR_SUPERSEDED_COLUMNS
   );
 
   console.log('All migrations completed');

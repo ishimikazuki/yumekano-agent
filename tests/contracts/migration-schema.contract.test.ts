@@ -61,7 +61,7 @@ test('T1: MIGRATION_001 defines generator_intimacy_md and emotion_appraiser_md i
   assert.ok(m001, 'MIGRATION_001_INITIAL should exist');
 
   // Check prompt_bundle_versions CREATE TABLE has both columns
-  const pbvSection = m001[1].match(/CREATE TABLE[^;]*prompt_bundle_versions[^;]*;/is);
+  const pbvSection = m001[1].match(/CREATE TABLE[^;]*prompt_bundle_versions[^;]*;/i);
   assert.ok(pbvSection, 'prompt_bundle_versions CREATE TABLE should exist in 001');
   assert.ok(
     pbvSection[0].includes('generator_intimacy_md'),
@@ -78,7 +78,7 @@ test('T1: MIGRATION_002 defines generator_intimacy_md and emotion_appraiser_md i
   const m002 = migrateTs.match(/MIGRATION_002_WORKSPACES\s*=\s*`([\s\S]*?)`;/);
   assert.ok(m002, 'MIGRATION_002_WORKSPACES should exist');
 
-  const wdsSection = m002[1].match(/CREATE TABLE[^;]*workspace_draft_state[^;]*;/is);
+  const wdsSection = m002[1].match(/CREATE TABLE[^;]*workspace_draft_state[^;]*;/i);
   assert.ok(wdsSection, 'workspace_draft_state CREATE TABLE should exist in 002');
   assert.ok(
     wdsSection[0].includes('generator_intimacy_md'),

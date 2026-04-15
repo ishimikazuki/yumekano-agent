@@ -58,3 +58,4 @@ video-assets/
 # tutorial video local artifacts
 tutorial-video/node_modules/
 tutorial-video/out/
+.env*.local

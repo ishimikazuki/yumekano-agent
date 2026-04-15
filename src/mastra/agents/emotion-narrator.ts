@@ -107,7 +107,7 @@ ${formatRelDelta(input.relationshipBefore, input.relationshipAfter)}
 
   const { object } = await gen({
     model: registry.getModel('analysisMedium'),
-    schema: EmotionNarrativeSchema,
+    schema: EmotionNarrativeSchema as import('zod').ZodType<import('@/lib/schemas/narrative').EmotionNarrative>,
     system: SYSTEM_PROMPT,
     prompt,
   });
