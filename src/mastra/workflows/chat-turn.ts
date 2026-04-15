@@ -57,6 +57,7 @@ export type ChatTurnOutput = {
   phaseId: string;
   emotion: PADState;
   coe: Awaited<ReturnType<typeof executeTurn>>['coe'];
+  narrativeTask?: Promise<void>;
 };
 
 export type ChatTurnDeps = {
@@ -193,6 +194,7 @@ export async function runChatTurn(
     phaseId: result.phaseId,
     emotion: result.emotion,
     coe: result.coe,
+    narrativeTask: result.narrativeTask,
   };
 }
 

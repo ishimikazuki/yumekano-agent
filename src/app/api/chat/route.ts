@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { runChatTurn, type ChatTurnInput } from '@/mastra/workflows/chat-turn';
 import { z } from 'zod';
 
@@ -30,6 +31,10 @@ export async function POST(request: NextRequest) {
     };
 
     const result = await runChatTurn(input);
+
+    if (result.narrativeTask) {
+      after(result.narrativeTask);
+    }
 
     return NextResponse.json({
       text: result.text,

@@ -101,6 +101,8 @@ export type ExecuteTurnOutput = {
   coe: CoEExplanation;
   trace: TurnTrace;
   pairState: PairState;
+  /** Promise that resolves when async narrative generation completes. Use with after() / waitUntil(). */
+  narrativeTask?: Promise<void>;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -677,10 +679,11 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     });
   }
 
-  // Fire-and-forget: generate narrative asynchronously
+  // Build narrative task — caller is responsible for scheduling via after() / waitUntil()
+  let narrativeTask: Promise<void> | undefined;
   if (input.persistence.updateTraceNarrative) {
     const { runEmotionNarrator: narratorFn } = await import('../agents/emotion-narrator');
-    generateNarrativeAsync(
+    narrativeTask = generateNarrativeAsync(
       {
         traceId,
         userMessage: input.userMessage,
@@ -698,7 +701,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
         runNarrator: narratorFn,
         updateNarrative: input.persistence.updateTraceNarrative,
       }
-    ).catch(() => {}); // Double safety — generateNarrativeAsync already catches internally
+    ).catch(() => {}); // generateNarrativeAsync already catches internally
   }
 
   return {
@@ -710,6 +713,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     coe,
     trace,
     pairState: finalPairState,
+    narrativeTask,
   };
 }
 

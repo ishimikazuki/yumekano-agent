@@ -37,6 +37,7 @@ export type DraftChatTurnOutput = {
   emotion: PADState;
   coe: Awaited<ReturnType<typeof executeTurn>>['coe'];
   trace: TurnTrace;
+  narrativeTask?: Promise<void>;
 };
 
 export type DraftChatTrace = TurnTrace;
@@ -228,6 +229,7 @@ export async function runDraftChatTurn(
     emotion: result.emotion,
     coe: result.coe,
     trace: result.trace,
+    narrativeTask: result.narrativeTask,
   };
 }
 

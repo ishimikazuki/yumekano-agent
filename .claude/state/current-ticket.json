@@ -1,22 +1,32 @@
 {
-  "ticket_id": "CLEANUP-T7",
-  "status": "in_progress",
-  "ready_to_stop": false,
+  "ticket_id": "NARRATIVE-FIX-T8",
+  "status": "ready_to_stop",
+  "ready_to_stop": true,
   "tests": {
-    "required": [],
-    "passed": [],
+    "required": ["npx tsx --test tests/emotion-narrator.test.ts (all 9 pass)", "npm run ci:local (eval:smoke除く全green)"],
+    "passed": ["npx tsx --test tests/emotion-narrator.test.ts (all 9 pass)", "npm run ci:local (eval:smoke除く全green)"],
     "failed": [],
-    "all_passed": false
+    "all_passed": true
   },
   "acceptance": {
-    "required": [],
-    "passed": [],
+    "required": [
+      "narrative生成がVercelサーバーレス環境で完了する",
+      "after()でnarrative Promiseをスケジュール",
+      "chat/draft-chat両ルートで対応",
+      "既存テストが壊れない"
+    ],
+    "passed": [
+      "narrative生成がVercelサーバーレス環境で完了する",
+      "after()でnarrative Promiseをスケジュール",
+      "chat/draft-chat両ルートで対応",
+      "既存テストが壊れない"
+    ],
     "failed": [],
-    "all_passed": false
+    "all_passed": true
   },
   "review": {
-    "pass": false,
+    "pass": true,
     "blocking_issues": []
   },
-  "notes": ""
+  "notes": "NARRATIVE-FIX-T8: fire-and-forget narrative生成がVercel Lambdaで打ち切られる問題を修正。executeTurnからnarrative Promiseを返し、APIルートでNext.js after()を使ってバックグラウンド実行をスケジュール。全テストgreen。"
 }
