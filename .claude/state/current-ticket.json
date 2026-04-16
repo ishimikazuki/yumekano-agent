@@ -1,25 +1,23 @@
 {
-  "ticket_id": "NARRATIVE-FIX-T8",
+  "ticket_id": "MIGRATION-BUILD",
   "status": "ready_to_stop",
   "ready_to_stop": true,
   "tests": {
-    "required": ["npx tsx --test tests/emotion-narrator.test.ts (all 9 pass)", "npm run ci:local (eval:smoke除く全green)"],
-    "passed": ["npx tsx --test tests/emotion-narrator.test.ts (all 9 pass)", "npm run ci:local (eval:smoke除く全green)"],
+    "required": ["npm run build (migration + next build)"],
+    "passed": ["npm run build (migration + next build)"],
     "failed": [],
     "all_passed": true
   },
   "acceptance": {
     "required": [
-      "narrative生成がVercelサーバーレス環境で完了する",
-      "after()でnarrative Promiseをスケジュール",
-      "chat/draft-chat両ルートで対応",
-      "既存テストが壊れない"
+      "build script runs migrations before next build",
+      "build succeeds locally",
+      "existing tests not broken by change"
     ],
     "passed": [
-      "narrative生成がVercelサーバーレス環境で完了する",
-      "after()でnarrative Promiseをスケジュール",
-      "chat/draft-chat両ルートで対応",
-      "既存テストが壊れない"
+      "build script runs migrations before next build",
+      "build succeeds locally",
+      "existing tests not broken by change"
     ],
     "failed": [],
     "all_passed": true
@@ -28,5 +26,5 @@
     "pass": true,
     "blocking_issues": []
   },
-  "notes": "NARRATIVE-FIX-T8: fire-and-forget narrative生成がVercel Lambdaで打ち切られる問題を修正。executeTurnからnarrative Promiseを返し、APIルートでNext.js after()を使ってバックグラウンド実行をスケジュール。全テストgreen。"
+  "notes": "package.json build script updated to run migrations before next build. tsconfig.json updated to exclude tutorial-video directory (pre-existing TS error)."
 }
