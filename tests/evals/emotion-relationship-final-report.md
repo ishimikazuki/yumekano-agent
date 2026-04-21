@@ -13,20 +13,21 @@ Fallback reason: none
 
 ## Local Validation
 - command: `npm run test`
-- status: PASS
-- failing tests: 0
+- status: FAIL
+- failing tests: 2
 
 ## Biggest Remaining Weak Cases
 - none
 
 ## Rollout Recommendation
-Safe for an internal or designer-only rollout, but still watch the remaining weak cases before broader exposure.
+Do not widen rollout yet. Local validation still has unresolved failing tests that must be addressed first.
 
 ## Feature-Flag Default Recommendation
-`YUMEKANO_USE_COE_INTEGRATOR=false` by default. Legacy comparison is removed in T9; rollback uses deployment rollback steps in `docs/COE_ROLLBACK_PLAN.md`, not runtime flag switching.
+`YUMEKANO_USE_COE_INTEGRATOR=false` by default until local validation failures are resolved. Do not widen runtime exposure yet.
 
 ## Named Blockers
-- no known blockers
+- tests/db/existing-db.upgrade-compat.test.ts:2:2020 — T1: existing DB upgrade — full migrate then re-migrate is idempotent (431.48625ms): AssertionError [ERR_ASSERTION]: Should have exactly 8 migration records
+- tests/t7-publish-versioning-migrations.test.ts:2:3605 — Task T7 canonical workspace publish persists prompt bundle, phase graph, release, and workspace base-version updates through one flow (416.472ms): Error [AI_LoadAPIKeyError]: xAI API key API key is missing. Pass it using the 'apiKey' parameter or the XAI_API_KEY environment variable.
 
 ## compliment — PASS
 
