@@ -85,8 +85,8 @@ ${formatBulletList(persona.signatureBehaviors ?? [])}`;
  */
 export async function runPlanner(input: PlannerInput): Promise<PlannerOutput> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
-  const modelInfo = registry.getModelInfo('analysisMedium');
+  const model = registry.getModel('decisionHigh');
+  const modelInfo = registry.getModelInfo('decisionHigh');
 
   const systemPrompt = buildPlannerSystemPrompt(input);
   const userPrompt = buildPlannerUserPrompt(input);

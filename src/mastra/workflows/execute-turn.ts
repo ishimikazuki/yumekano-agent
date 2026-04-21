@@ -103,6 +103,8 @@ export type ExecuteTurnOutput = {
   pairState: PairState;
   /** Promise that resolves when async narrative generation completes. Use with after() / waitUntil(). */
   narrativeTask?: Promise<void>;
+  /** Promise that resolves when post-turn consolidation completes. Use with after() / waitUntil(). */
+  consolidationTask?: Promise<void>;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -345,6 +347,7 @@ function buildLegacyComparisonResult(input: {
 }
 
 export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnOutput> {
+  const turnStartMs = performance.now();
   const phaseEngine = createPhaseEngine(input.phaseGraph);
   const now = input.deps?.now?.() ?? new Date();
   const coeExtractorRunner =
@@ -371,6 +374,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
   };
   const emotionBeforeState = input.pairState.emotion;
   const emotionBefore = emotionBeforeState.combined;
+  const coeExtractorStartMs = performance.now();
   const coeExtractionResult = await coeExtractorRunner({
     userMessage: input.userMessage,
     recentDialogue: input.recentDialogue,
@@ -386,6 +390,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     openThreads: retrievalResult.threads,
     promptOverride: input.promptBundle.emotionAppraiserMd,
   });
+  const coeExtractorMs = performance.now() - coeExtractorStartMs;
   const coeExtraction = coeExtractionResult.extraction;
   const integratedEmotion = integrateCoEAppraisal({
     currentEmotion: input.pairState.emotion,
@@ -430,6 +435,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     updatedAt: now,
   };
 
+  const plannerStartMs = performance.now();
   const plannerResult = await plannerRunner({
     characterVersion: input.characterVersion,
     currentPhase: input.currentPhase,
@@ -447,6 +453,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     emotionContext: agentEmotionContext,
     promptOverride: input.promptBundle.plannerMd,
   });
+  const plannerMs = performance.now() - plannerStartMs;
   const plan = plannerResult.plan;
   const coe = buildCoEExplanation({
     emotionBefore,
@@ -499,6 +506,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     plan
   );
 
+  const generatorStartMs = performance.now();
   const generatorResult = await generatorRunner({
     characterVersion: input.characterVersion,
     currentPhase: activePhase,
@@ -517,7 +525,9 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     emotionContext: agentEmotionContext,
     promptOverride: generatorPrompt,
   });
+  const generatorMs = performance.now() - generatorStartMs;
 
+  const rankerStartMs = performance.now();
   const rankerResult = await rankerRunner({
     characterVersion: input.characterVersion,
     currentPhase: activePhase,
@@ -537,6 +547,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     promptOverride: input.promptBundle.rankerMd,
     recentDialogue: input.recentDialogue,
   });
+  const rankerMs = performance.now() - rankerStartMs;
 
   const winningCandidate = rankerResult.candidates[rankerResult.winnerIndex];
   const assistantMessage = winningCandidate?.text ?? generatorResult.candidates[0]?.text ?? '';
@@ -562,6 +573,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     },
   });
 
+  const memoryExtractorStartMs = performance.now();
   const extractorResult = await memoryExtractorRunner({
     characterVersion: input.characterVersion,
     pairStateBefore: input.pairState,
@@ -572,6 +584,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     recentDialogue: input.recentDialogue,
     promptOverride: input.promptBundle.extractorMd,
   });
+  const memoryExtractorMs = performance.now() - memoryExtractorStartMs;
 
   const memoryWriteResult = await processMemoryWrites({
     memoryStore: input.memoryStore,
@@ -600,6 +613,22 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
       generator: generatorResult.modelId,
       ranker: rankerResult.modelId,
       extractor: extractorResult.modelId,
+      coeExtractor: coeExtractionResult.modelId,
+    },
+    modelAliases: {
+      planner: 'decisionHigh',
+      generator: 'surfaceResponseHigh',
+      ranker: 'decisionHigh',
+      extractor: 'structuredPostturnFast',
+      coeExtractor: 'decisionHigh',
+    },
+    stageLatencies: {
+      coeExtractorMs: Math.round(coeExtractorMs),
+      plannerMs: Math.round(plannerMs),
+      generatorMs: Math.round(generatorMs),
+      rankerMs: Math.round(rankerMs),
+      memoryExtractorMs: Math.round(memoryExtractorMs),
+      totalMs: Math.round(performance.now() - turnStartMs),
     },
     phaseIdBefore,
     phaseIdAfter,
@@ -672,11 +701,26 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     candidates: rankerResult.candidates,
     winnerIndex: rankerResult.winnerIndex,
   });
+  // T3: consolidation is post-turn maintenance — do NOT await here.
+  // Return a task that the caller schedules via Next.js after() / waitUntil().
+  let consolidationTask: Promise<void> | undefined;
   if (input.persistence.maybeConsolidate) {
-    await input.persistence.maybeConsolidate({
-      pairState: finalPairState,
+    const consolidateFn = input.persistence.maybeConsolidate;
+    const finalPair = finalPairState;
+    const startMs = performance.now();
+    consolidationTask = consolidateFn({
+      pairState: finalPair,
       characterVersion: input.characterVersion,
-    });
+    })
+      .then(() => {
+        const elapsed = Math.round(performance.now() - startMs);
+        if (trace.stageLatencies) {
+          trace.stageLatencies.consolidationMs = elapsed;
+        }
+      })
+      // Errors in post-turn work must not crash the request. The caller's
+      // logging layer owns observability for the background task.
+      .catch(() => {});
   }
 
   // Build narrative task — caller is responsible for scheduling via after() / waitUntil()
@@ -714,6 +758,7 @@ export async function executeTurn(input: ExecuteTurnInput): Promise<ExecuteTurnO
     trace,
     pairState: finalPairState,
     narrativeTask,
+    consolidationTask,
   };
 }
 

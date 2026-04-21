@@ -30,7 +30,7 @@ export type ScorerResult = {
  */
 export async function scoreContradictionPenalty(input: ScorerInput): Promise<ScorerResult> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
+  const model = registry.getModel('decisionHigh');
 
   const { trace, activeFacts, openThreads, recentDialogue } = input;
 

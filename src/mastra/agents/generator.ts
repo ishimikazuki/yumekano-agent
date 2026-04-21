@@ -119,8 +119,8 @@ export function selectGeneratorPrompt(
  */
 export async function runGenerator(input: GeneratorInput): Promise<GeneratorOutput> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('conversationHigh');
-  const modelInfo = registry.getModelInfo('conversationHigh');
+  const model = registry.getModel('surfaceResponseHigh');
+  const modelInfo = registry.getModelInfo('surfaceResponseHigh');
 
   const systemPrompt = buildGeneratorSystemPrompt(input);
   const userPrompt = buildGeneratorUserPrompt(input);

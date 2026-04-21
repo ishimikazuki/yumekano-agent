@@ -28,7 +28,7 @@ export type ScorerResult = {
  */
 export async function scoreMemoryGrounding(input: ScorerInput): Promise<ScorerResult> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
+  const model = registry.getModel('decisionHigh');
 
   const { trace, retrievedEvents, retrievedFacts, openThreads } = input;
 

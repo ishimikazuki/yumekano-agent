@@ -528,8 +528,8 @@ export function resolveRankerWinnerWithTieBreak(input: {
 
 export async function runRanker(input: RankerInput): Promise<RankerOutput> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
-  const modelInfo = registry.getModelInfo('analysisMedium');
+  const model = registry.getModel('decisionHigh');
+  const modelInfo = registry.getModelInfo('decisionHigh');
 
   const deterministicJudgments = input.candidates.map((candidate, index) =>
     runDeterministicGuard(input, candidate, index)

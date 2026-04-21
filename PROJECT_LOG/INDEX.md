@@ -1,5 +1,6 @@
 # PROJECT_LOG INDEX
 
+- issue-0016-2026-04-21-remaining-plan-final-complete.md — 残件修正プラン T0-T5 最終確認・アーカイブ（PLANS.mdを最適化プランへ切替）
 - issue-0015-2026-04-08-remaining-plan-t0-t5.md — 残件修正プラン T0-T5全完了、legacy comparison実装、migration同期、trace parity固定
 - issue-0014-2026-04-07-plan-tdd-full-pass.md — plan_tdd.md T0-T9全完了、hook自動進行、legacy cleanup、Vercelデプロイ
 - issue-0013-2026-04-07-hotfix-undefined-value.md — PostgreSQL UNDEFINED_VALUE エラー修正（playground チャット）

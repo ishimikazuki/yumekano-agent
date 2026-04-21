@@ -106,7 +106,7 @@ ${formatRelDelta(input.relationshipBefore, input.relationshipAfter)}
 上記データに基づき、感情変化の要約を生成してください。`;
 
   const { object } = await gen({
-    model: registry.getModel('analysisMedium'),
+    model: registry.getModel('maintenanceFast'),
     schema: EmotionNarrativeSchema as import('zod').ZodType<import('@/lib/schemas/narrative').EmotionNarrative>,
     system: SYSTEM_PROMPT,
     prompt,

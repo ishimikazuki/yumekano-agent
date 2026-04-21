@@ -319,7 +319,7 @@ export async function compilePersonaAuthoring(
   persona: PersonaAuthoring
 ): Promise<CompiledPersona> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
+  const model = registry.getModel('maintenanceFast');
 
   const result = await generateObject({
     model,

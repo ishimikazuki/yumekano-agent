@@ -28,7 +28,7 @@ export type ScorerResult = {
  */
 export async function scoreRefusalNaturalness(input: ScorerInput): Promise<ScorerResult> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
+  const model = registry.getModel('decisionHigh');
 
   const { trace, characterVersion } = input;
 
