@@ -92,7 +92,7 @@ function assertAppraisalBands(
   for (const [axis, band] of Object.entries(turn.expected.appraisalBand) as Array<
     [keyof RelationalAppraisal, NumericBand]
   >) {
-    assertInBand(appraisal[axis], band, `${label} appraisal.${axis}`);
+    assertInBand(appraisal[axis] ?? 0, band, `${label} appraisal.${axis}`);
   }
 }
 

@@ -26,8 +26,8 @@ Do not widen rollout yet. Local validation still has unresolved failing tests th
 `YUMEKANO_USE_COE_INTEGRATOR=false` by default until local validation failures are resolved. Do not widen runtime exposure yet.
 
 ## Named Blockers
-- tests/db/existing-db.upgrade-compat.test.ts:2:2020 — T1: existing DB upgrade — full migrate then re-migrate is idempotent (431.48625ms): AssertionError [ERR_ASSERTION]: Should have exactly 8 migration records
-- tests/t7-publish-versioning-migrations.test.ts:2:3605 — Task T7 canonical workspace publish persists prompt bundle, phase graph, release, and workspace base-version updates through one flow (416.472ms): Error [AI_LoadAPIKeyError]: xAI API key API key is missing. Pass it using the 'apiKey' parameter or the XAI_API_KEY environment variable.
+- tests/db/existing-db.upgrade-compat.test.ts:2:2020 — T1: existing DB upgrade — full migrate then re-migrate is idempotent (540.917333ms): AssertionError [ERR_ASSERTION]: Should have exactly 8 migration records
+- tests/t7-publish-versioning-migrations.test.ts:2:3605 — Task T7 canonical workspace publish persists prompt bundle, phase graph, release, and workspace base-version updates through one flow (805.512708ms): Error [AI_LoadAPIKeyError]: xAI API key API key is missing. Pass it using the 'apiKey' parameter or the XAI_API_KEY environment variable.
 
 ## compliment — PASS
 

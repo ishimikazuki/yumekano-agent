@@ -176,6 +176,10 @@ const RelationalAxisWeightsSchema = z.object({
   pressureSignal: z.number(),
   repairSignal: z.number(),
   intimacySignal: z.number(),
+  // T-B: weight applied to the self-disclosure / vulnerability signal.
+  // Default 0 preserves pre-T-B behavior; non-zero values route self-
+  // disclosure evidence into this axis (e.g. dominance < 0, trust > 0).
+  vulnerabilitySignal: z.number().default(0),
 });
 export type RelationalAxisWeights = z.infer<typeof RelationalAxisWeightsSchema>;
 
@@ -200,6 +204,7 @@ export const DEFAULT_COE_INTEGRATOR_CONFIG = {
       pressureSignal: -0.28,
       repairSignal: 0.14,
       intimacySignal: 0.1,
+      vulnerabilitySignal: 0.04,
     },
     arousal: {
       warmthSignal: 0.04,
@@ -209,6 +214,7 @@ export const DEFAULT_COE_INTEGRATOR_CONFIG = {
       pressureSignal: 0.24,
       repairSignal: -0.12,
       intimacySignal: 0.14,
+      vulnerabilitySignal: 0.06,
     },
     dominance: {
       warmthSignal: 0.04,
@@ -218,6 +224,9 @@ export const DEFAULT_COE_INTEGRATOR_CONFIG = {
       pressureSignal: -0.26,
       repairSignal: 0.12,
       intimacySignal: 0.08,
+      // T-B: self-disclosure drops the character's dominance (the "引く" side
+      // of push-pull — showing weakness invites the partner to step in).
+      vulnerabilitySignal: -0.18,
     },
   },
   pairWeights: {
@@ -229,6 +238,8 @@ export const DEFAULT_COE_INTEGRATOR_CONFIG = {
       pressureSignal: -5.6,
       repairSignal: 3,
       intimacySignal: 0.8,
+      // T-B: genuine self-disclosure builds trust in the dyad.
+      vulnerabilitySignal: 2.2,
     },
     affinity: {
       warmthSignal: 3.4,
@@ -238,6 +249,7 @@ export const DEFAULT_COE_INTEGRATOR_CONFIG = {
       pressureSignal: -4.2,
       repairSignal: 2.2,
       intimacySignal: 1.8,
+      vulnerabilitySignal: 1.2,
     },
     conflict: {
       warmthSignal: -1.6,
@@ -247,6 +259,7 @@ export const DEFAULT_COE_INTEGRATOR_CONFIG = {
       pressureSignal: 6.4,
       repairSignal: -2.8,
       intimacySignal: -0.6,
+      vulnerabilitySignal: -0.8,
     },
     intimacyReadiness: {
       warmthSignal: 1.8,
@@ -256,6 +269,7 @@ export const DEFAULT_COE_INTEGRATOR_CONFIG = {
       pressureSignal: -5,
       repairSignal: 1.2,
       intimacySignal: 3.6,
+      vulnerabilitySignal: 1.4,
     },
   },
   impulse: {

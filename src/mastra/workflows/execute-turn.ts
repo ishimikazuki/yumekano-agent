@@ -172,6 +172,16 @@ function buildRelationalSignals(appraisal: RelationalAppraisal) {
       -1,
       1
     ),
+    // T-B: pass through the extractor's self-disclosure / vulnerability
+    // evidence so the integrator can route it to dominance / trust / etc.
+    // Attenuated slightly by pressure so performative "woe-is-me" under
+    // hostile context doesn't get the full bonus.
+    vulnerabilitySignal: clamp(
+      (appraisal.vulnerabilitySignal ?? 0) -
+        positive(appraisal.pressureImpact) * 0.1,
+      -1,
+      1
+    ),
   };
 }
 

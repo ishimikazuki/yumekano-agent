@@ -1,39 +1,49 @@
 {
-  "ticket_id": "T-C",
+  "ticket_id": "T-D",
   "status": "ready_to_stop",
   "ready_to_stop": true,
   "tests": {
     "required": [
-      "tests/unit/scorer-question-saturation.unit.test.ts",
-      "tests/workflow/ranker-question-penalty.integration.test.ts",
-      "tests/regression/ranker-baseline.regression.test.ts"
+      "tests/integration/planner-push-pull.scenario.test.ts",
+      "npm run ci:local",
+      "npm run typecheck"
     ],
     "passed": [
-      "tests/unit/scorer-question-saturation.unit.test.ts (7/7)",
-      "tests/workflow/ranker-question-penalty.integration.test.ts (7/7)",
-      "tests/regression/ranker-baseline.regression.test.ts (5/5)",
-      "tests/workflow/seira-depth-parameter.sandbox.integration.test.ts (12/12)",
-      "tests/regression/seira-current-version.persona.regression.test.ts (10/10)",
-      "npm run ci:local (all green, 91 emotion + 10 eval:smoke)",
-      "npx tsc --noEmit (clean)"
+      "tests/integration/planner-push-pull.scenario.test.ts (3/3)",
+      "tests/unit/dialogue-act.schema.contract.test.ts (T-A, 3/3)",
+      "tests/integration/planner-self-disclose.test.ts (T-A, 2/2)",
+      "tests/regression/phase-engine.act-compatibility.regression.test.ts (T-A, 3/3)",
+      "tests/unit/coe-integrator.self-disclosure-signal.test.ts (T-B, 6/6)",
+      "tests/integration/coe-extractor.vulnerability-extraction.test.ts (T-B, 3/3)",
+      "npm run ci:local (all green, 91/91 emotion + 10/10 eval:smoke)",
+      "npm run typecheck (clean)"
     ],
     "failed": [],
     "all_passed": true
   },
   "acceptance": {
     "required": [
-      "新 scorer が src/mastra/scorers/ 配下に追加され index で export",
-      "ranker に組み込まれ candidate score を乗算ペナルティで減衰",
-      "saturation 非発生時は 1.0 no-op で後方互換",
-      "既存 evals の baseline を下げない",
-      "regression green"
+      "T-A: DialogueActSchema に self_disclose / show_vulnerability 追加",
+      "T-A: planner system prompt が新 act を説明",
+      "T-A: phase engine backward compat",
+      "T-B: RelationalAxisWeightsSchema に vulnerabilitySignal 追加",
+      "T-B: DEFAULT_COE_INTEGRATOR_CONFIG の全 block に default 値",
+      "T-B: CoE extractor schema が vulnerabilitySignal を受け入れる",
+      "T-D: planner prompt に push-pull 方針が load される",
+      "T-D: seira authored examples に push-pull パターン 3+ 件 (T-E 相乗り)",
+      "全 regression green"
     ],
     "passed": [
-      "src/mastra/scorers/question-saturation.ts 追加、index.ts から export",
-      "ranker.ts 内 scoreCandidate で LLM 呼び出し前に同期実行、baseOverall * saturationScore で乗算",
-      "saturation=1.0 (no question or window 未満) で baseOverall と等価を unit test で確認",
-      "ci:local all green、eval:smoke 10/10、emotion regression 91/91",
-      "T-E 22/22 + T-C 19/19 = 41/41 green"
+      "DialogueActSchema に 2 新 act 追加",
+      "planner prompt に Introspective Acts (T-A) ブロック追加",
+      "phase-engine.act-compatibility.regression.test.ts で legacy phase parse 維持確認",
+      "RelationalAxisWeightsSchema に vulnerabilitySignal 追加",
+      "DEFAULT_COE_INTEGRATOR_CONFIG 全7 block に vulnerabilitySignal 重み",
+      "RelationalAppraisalSchema に vulnerabilitySignal optional (backward compat)",
+      "execute-turn の buildRelationalSignals も passthrough",
+      "planner prompt block に push-pull / D / 引く を明示",
+      "seira warm (2) + guarded (2) の 4 件 (T-E 実装分)",
+      "ci:local all green、typecheck clean"
     ],
     "failed": [],
     "all_passed": true
@@ -42,5 +52,5 @@
     "pass": true,
     "blocking_issues": []
   },
-  "notes": "T-C 完了。deterministic scorer（LLM 不使用）で質問飽和パターンを検知、ranker の deterministicOverall に乗算ペナルティ（windowTurns=3, saturationScore=0.3）を適用。T-A 依存を外して独立実装。T-E と合わせて会話深化ワークストリームの MVP スコープを達成。T-A/T-B/T-D は deferred（PLANS.md 参照）。"
+  "notes": "T-A / T-B / T-D を TDD で順次実装。T-A で DialogueAct enum 拡張 + planner prompt 説明ブロック追加。T-B で CoE integrator に vulnerabilitySignal axis 追加 (schema optional で backward compat、integrator は dominance -0.18 / trust +2.2)。T-D は T-A + T-E の成果物で既に satisfied、scenario test で lock-in。"
 }

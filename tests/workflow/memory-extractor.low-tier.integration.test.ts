@@ -58,7 +58,7 @@ function createMinimalExtraction(): CoEEvidenceExtractorResult {
     relationalAppraisal: {
       warmthImpact: 0.3, rejectionImpact: 0, respectImpact: 0.2, threatImpact: 0,
       pressureImpact: 0, repairImpact: 0, reciprocityImpact: 0.2, intimacySignal: 0,
-      boundarySignal: 0.1, certainty: 0.7,
+      boundarySignal: 0.1, certainty: 0.7, vulnerabilitySignal: 0,
     },
     confidence: 0.8, uncertaintyNotes: [],
   };
