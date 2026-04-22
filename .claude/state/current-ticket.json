@@ -1,35 +1,39 @@
 {
-  "ticket_id": "T6",
+  "ticket_id": "T-C",
   "status": "ready_to_stop",
   "ready_to_stop": true,
   "tests": {
     "required": [
-      "tests/contracts/operational-profiles.contract.test.ts",
-      "npm run ci:local",
-      "npm run typecheck"
+      "tests/unit/scorer-question-saturation.unit.test.ts",
+      "tests/workflow/ranker-question-penalty.integration.test.ts",
+      "tests/regression/ranker-baseline.regression.test.ts"
     ],
     "passed": [
-      "tests/contracts/operational-profiles.contract.test.ts (6/6)",
-      "npm run ci:local (all green, emotion regression 91/91, eval:smoke 10/10)",
-      "npm run typecheck (clean)"
+      "tests/unit/scorer-question-saturation.unit.test.ts (7/7)",
+      "tests/workflow/ranker-question-penalty.integration.test.ts (7/7)",
+      "tests/regression/ranker-baseline.regression.test.ts (5/5)",
+      "tests/workflow/seira-depth-parameter.sandbox.integration.test.ts (12/12)",
+      "tests/regression/seira-current-version.persona.regression.test.ts (10/10)",
+      "npm run ci:local (all green, 91 emotion + 10 eval:smoke)",
+      "npx tsc --noEmit (clean)"
     ],
     "failed": [],
     "all_passed": true
   },
   "acceptance": {
     "required": [
-      "2 つの運用プロファイルが定義されている",
-      "quality-first profile の品質が維持されている",
-      "balanced profile の latency 改善が確認できる",
-      "balanced profile が regression gate を通る",
-      "final report で推奨 default が明示される"
+      "新 scorer が src/mastra/scorers/ 配下に追加され index で export",
+      "ranker に組み込まれ candidate score を乗算ペナルティで減衰",
+      "saturation 非発生時は 1.0 no-op で後方互換",
+      "既存 evals の baseline を下げない",
+      "regression green"
     ],
     "passed": [
-      "operationalProfiles.poc_quality_first / poc_balanced_latency を src/mastra/providers/model-roles.ts に定義",
-      "poc_quality_first は全 analysis stage を decisionHigh に固定 (T0 baseline と同等品質)",
-      "poc_balanced_latency は memory extractor + maintenance を fast tier に降ろし hot path も分離 (T2-B + T3 成果)",
-      "ci:local (regression + eval:smoke) が balanced profile で all green",
-      "tests/evals/t6-final-profile-report.md で RECOMMENDED_PROFILE = poc_balanced_latency を明示"
+      "src/mastra/scorers/question-saturation.ts 追加、index.ts から export",
+      "ranker.ts 内 scoreCandidate で LLM 呼び出し前に同期実行、baseOverall * saturationScore で乗算",
+      "saturation=1.0 (no question or window 未満) で baseOverall と等価を unit test で確認",
+      "ci:local all green、eval:smoke 10/10、emotion regression 91/91",
+      "T-E 22/22 + T-C 19/19 = 41/41 green"
     ],
     "failed": [],
     "all_passed": true
@@ -38,5 +42,5 @@
     "pass": true,
     "blocking_issues": []
   },
-  "notes": "T6 ready_to_stop. parser fix (start-ticket.py next_section_re) で両 stream の境界を正しく認識、numeric stream の T0→T6 優先で完了。T-E persona work の cafe_to_walk edge 変更に伴う draft-chat-stateful.test.ts の assertion を walk_after_cafe に更新 (cross-stream cleanup)。RECOMMENDED_PROFILE 定数 + defaultModelRoles 自動同期。"
+  "notes": "T-C 完了。deterministic scorer（LLM 不使用）で質問飽和パターンを検知、ranker の deterministicOverall に乗算ペナルティ（windowTurns=3, saturationScore=0.3）を適用。T-A 依存を外して独立実装。T-E と合わせて会話深化ワークストリームの MVP スコープを達成。T-A/T-B/T-D は deferred（PLANS.md 参照）。"
 }

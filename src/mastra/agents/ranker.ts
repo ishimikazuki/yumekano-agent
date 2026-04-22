@@ -32,6 +32,7 @@ import {
   scoreMemoryGrounding,
   scoreRefusalNaturalness,
   scoreContradictionPenalty,
+  scoreQuestionSaturation,
 } from '../scorers';
 
 export const ScorecardSchema = z.object({
@@ -104,6 +105,7 @@ type CandidateScorerAggregate = {
   autonomy: number;
   refusalNaturalness: number;
   contradictionPenalty: number;
+  questionSaturation: number;
   deterministicOverall: number;
   hardRejected: boolean;
   hardRejectReason: string | null;
@@ -666,12 +668,18 @@ async function scoreCandidate(
       autonomy: 0,
       refusalNaturalness: 0,
       contradictionPenalty: 0,
+      questionSaturation: 0,
       deterministicOverall: 0,
       hardRejected: true,
       hardRejectReason: deterministic.reason,
       issues: deterministic.reason ? [deterministic.reason] : [],
     };
   }
+
+  const questionSaturationResult = scoreQuestionSaturation({
+    candidate: { text: candidate.text },
+    recentDialogue: input.recentDialogue,
+  });
 
   const [
     personaResult,
@@ -716,6 +724,26 @@ async function scoreCandidate(
     contradictionPenalty: contradictionResult.score,
   });
 
+  const baseOverall = calculateWeightedScore(
+    {
+      personaConsistency: personaResult.score,
+      phaseCompliance: phaseResult.score,
+      memoryGrounding: memoryResult.score,
+      emotionalCoherence: emotionResult.score,
+      autonomy: autonomyResult.score,
+      refusalNaturalness: refusalResult.score,
+      contradictionPenalty: contradictionResult.score,
+    },
+    weights
+  );
+
+  // Apply question-saturation as a multiplicative attenuation (1.0 = full pass,
+  // ~0.3 = strong penalty). This keeps the existing weight-based overall stable
+  // when saturation is absent.
+  const deterministicOverall = Number(
+    (baseOverall * questionSaturationResult.score).toFixed(4)
+  );
+
   return {
     index: candidateIndex(input.candidates, candidate),
     trace: pseudoTrace,
@@ -726,20 +754,8 @@ async function scoreCandidate(
     autonomy: autonomyResult.score,
     refusalNaturalness: refusalResult.score,
     contradictionPenalty: contradictionResult.score,
-    deterministicOverall: Number(
-      calculateWeightedScore(
-        {
-          personaConsistency: personaResult.score,
-          phaseCompliance: phaseResult.score,
-          memoryGrounding: memoryResult.score,
-          emotionalCoherence: emotionResult.score,
-          autonomy: autonomyResult.score,
-          refusalNaturalness: refusalResult.score,
-          contradictionPenalty: contradictionResult.score,
-        },
-        weights
-      ).toFixed(4)
-    ),
+    questionSaturation: questionSaturationResult.score,
+    deterministicOverall,
     hardRejected: hardReject.reject,
     hardRejectReason: hardReject.reason ?? null,
     issues: [
@@ -750,6 +766,7 @@ async function scoreCandidate(
       ...memoryResult.issues,
       ...refusalResult.issues,
       ...contradictionResult.issues,
+      ...questionSaturationResult.issues,
     ],
   };
 }
