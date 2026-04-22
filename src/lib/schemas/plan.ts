@@ -38,6 +38,10 @@ export const DialogueActSchema = z.enum([
   'redirect',
   'continue_topic',
   'change_topic',
+
+  // Introspective acts (T-A: push-pull self-disclosure)
+  'self_disclose',
+  'show_vulnerability',
 ]);
 export type DialogueAct = z.infer<typeof DialogueActSchema>;
 

@@ -85,8 +85,8 @@ export async function runMemoryExtractor(
   input: MemoryExtractorInput
 ): Promise<MemoryExtractorOutput> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
-  const modelInfo = registry.getModelInfo('analysisMedium');
+  const model = registry.getModel('structuredPostturnFast');
+  const modelInfo = registry.getModelInfo('structuredPostturnFast');
 
   const systemPrompt = buildExtractorSystemPrompt(input);
   const userPrompt = buildExtractorUserPrompt(input);

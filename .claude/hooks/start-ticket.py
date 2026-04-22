@@ -42,8 +42,10 @@ def parse_ticket_from_plans(ticket_id: str) -> dict:
     ticket_header_re = re.compile(
         rf"^#+\s+{re.escape(ticket_id)}[\.\:\s]"
     )
-    # Next ticket header (any heading that starts a new ticket section)
-    next_section_re = re.compile(r"^#\s+T\d+[\.\:\s]")
+    # Next ticket header (any heading that starts a new ticket section).
+    # Matches both numeric tickets (T0, T10, ...) and letter tickets (T-A, T-B, ...)
+    # so parsing stops at the next ticket boundary regardless of stream.
+    next_section_re = re.compile(r"^#\s+T(\d+|-[A-Z])[\.\:\s]")
 
     for line in lines:
         # Find ticket section header

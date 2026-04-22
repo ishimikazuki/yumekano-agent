@@ -38,6 +38,7 @@ export type DraftChatTurnOutput = {
   coe: Awaited<ReturnType<typeof executeTurn>>['coe'];
   trace: TurnTrace;
   narrativeTask?: Promise<void>;
+  consolidationTask?: Promise<void>;
 };
 
 export type DraftChatTrace = TurnTrace;
@@ -230,6 +231,7 @@ export async function runDraftChatTurn(
     coe: result.coe,
     trace: result.trace,
     narrativeTask: result.narrativeTask,
+    consolidationTask: result.consolidationTask,
   };
 }
 

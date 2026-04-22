@@ -142,6 +142,13 @@ export async function shouldTriggerConsolidation(input: {
   scopeId?: string;
   memoryStore?: MemoryStore;
   threshold?: number;
+  /**
+   * Minimum average salience of recent events to trigger at the base threshold.
+   * If average salience is below this floor, the effective threshold is
+   * doubled — low-salience activity pays consolidation less often.
+   * Defaults to 0.3.
+   */
+  salienceFloor?: number;
 }): Promise<boolean> {
   const scopeId = input.scopeId ?? input.pairId;
   if (!scopeId) {
@@ -149,7 +156,23 @@ export async function shouldTriggerConsolidation(input: {
   }
 
   const memoryStore = input.memoryStore ?? createProductionMemoryStore();
-  const threshold = input.threshold ?? 30;
-  const recentEvents = await memoryStore.getEvents(scopeId, threshold);
-  return recentEvents.length >= threshold;
+  const baseThreshold = input.threshold ?? 30;
+  const salienceFloor = input.salienceFloor ?? 0.3;
+
+  // Fetch up to 2× the threshold so we can detect the low-salience case.
+  const recentEvents = await memoryStore.getEvents(scopeId, baseThreshold * 2);
+
+  // Nothing meaningful to consolidate yet.
+  if (recentEvents.length < baseThreshold) {
+    return false;
+  }
+
+  const avgSalience =
+    recentEvents.reduce((sum, e) => sum + (e.salience ?? 0.5), 0) /
+    recentEvents.length;
+
+  const effectiveThreshold =
+    avgSalience < salienceFloor ? baseThreshold * 2 : baseThreshold;
+
+  return recentEvents.length >= effectiveThreshold;
 }

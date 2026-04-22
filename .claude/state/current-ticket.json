@@ -1,23 +1,49 @@
 {
-  "ticket_id": "MIGRATION-BUILD",
+  "ticket_id": "T-D",
   "status": "ready_to_stop",
   "ready_to_stop": true,
   "tests": {
-    "required": ["npm run build (migration + next build)"],
-    "passed": ["npm run build (migration + next build)"],
+    "required": [
+      "tests/integration/planner-push-pull.scenario.test.ts",
+      "npm run ci:local",
+      "npm run typecheck"
+    ],
+    "passed": [
+      "tests/integration/planner-push-pull.scenario.test.ts (3/3)",
+      "tests/unit/dialogue-act.schema.contract.test.ts (T-A, 3/3)",
+      "tests/integration/planner-self-disclose.test.ts (T-A, 2/2)",
+      "tests/regression/phase-engine.act-compatibility.regression.test.ts (T-A, 3/3)",
+      "tests/unit/coe-integrator.self-disclosure-signal.test.ts (T-B, 6/6)",
+      "tests/integration/coe-extractor.vulnerability-extraction.test.ts (T-B, 3/3)",
+      "npm run ci:local (all green, 91/91 emotion + 10/10 eval:smoke)",
+      "npm run typecheck (clean)"
+    ],
     "failed": [],
     "all_passed": true
   },
   "acceptance": {
     "required": [
-      "build script runs migrations before next build",
-      "build succeeds locally",
-      "existing tests not broken by change"
+      "T-A: DialogueActSchema に self_disclose / show_vulnerability 追加",
+      "T-A: planner system prompt が新 act を説明",
+      "T-A: phase engine backward compat",
+      "T-B: RelationalAxisWeightsSchema に vulnerabilitySignal 追加",
+      "T-B: DEFAULT_COE_INTEGRATOR_CONFIG の全 block に default 値",
+      "T-B: CoE extractor schema が vulnerabilitySignal を受け入れる",
+      "T-D: planner prompt に push-pull 方針が load される",
+      "T-D: seira authored examples に push-pull パターン 3+ 件 (T-E 相乗り)",
+      "全 regression green"
     ],
     "passed": [
-      "build script runs migrations before next build",
-      "build succeeds locally",
-      "existing tests not broken by change"
+      "DialogueActSchema に 2 新 act 追加",
+      "planner prompt に Introspective Acts (T-A) ブロック追加",
+      "phase-engine.act-compatibility.regression.test.ts で legacy phase parse 維持確認",
+      "RelationalAxisWeightsSchema に vulnerabilitySignal 追加",
+      "DEFAULT_COE_INTEGRATOR_CONFIG 全7 block に vulnerabilitySignal 重み",
+      "RelationalAppraisalSchema に vulnerabilitySignal optional (backward compat)",
+      "execute-turn の buildRelationalSignals も passthrough",
+      "planner prompt block に push-pull / D / 引く を明示",
+      "seira warm (2) + guarded (2) の 4 件 (T-E 実装分)",
+      "ci:local all green、typecheck clean"
     ],
     "failed": [],
     "all_passed": true
@@ -26,5 +52,5 @@
     "pass": true,
     "blocking_issues": []
   },
-  "notes": "package.json build script updated to run migrations before next build. tsconfig.json updated to exclude tutorial-video directory (pre-existing TS error)."
+  "notes": "T-A / T-B / T-D を TDD で順次実装。T-A で DialogueAct enum 拡張 + planner prompt 説明ブロック追加。T-B で CoE integrator に vulnerabilitySignal axis 追加 (schema optional で backward compat、integrator は dominance -0.18 / trust +2.2)。T-D は T-A + T-E の成果物で既に satisfied、scenario test で lock-in。"
 }

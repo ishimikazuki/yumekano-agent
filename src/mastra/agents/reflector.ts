@@ -98,8 +98,8 @@ export type ReflectorOutput = {
  */
 export async function runReflector(input: ReflectorInput): Promise<ReflectorOutput> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
-  const modelInfo = registry.getModelInfo('analysisMedium');
+  const model = registry.getModel('maintenanceFast');
+  const modelInfo = registry.getModelInfo('maintenanceFast');
 
   const systemPrompt = buildReflectorSystemPrompt(input);
   const userPrompt = buildReflectorUserPrompt(input);

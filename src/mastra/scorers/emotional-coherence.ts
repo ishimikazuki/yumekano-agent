@@ -42,7 +42,7 @@ function describePAD(pad: PADState): string {
  */
 export async function scoreEmotionalCoherence(input: ScorerInput): Promise<ScorerResult> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
+  const model = registry.getModel('decisionHigh');
 
   const { trace } = input;
 

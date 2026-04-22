@@ -406,8 +406,8 @@ export async function runCoEEvidenceExtractor(
   const registry = deps.registry ?? getProviderRegistry();
   const generateObjectImpl = deps.generateObjectImpl ?? (generateObject as CoEGenerateObject);
   const maxAttempts = deps.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-  const model = registry.getModel('analysisMedium');
-  const modelInfo = registry.getModelInfo('analysisMedium');
+  const model = registry.getModel('decisionHigh');
+  const modelInfo = registry.getModelInfo('decisionHigh');
   const systemPrompt = buildCoEEvidenceExtractorSystemPrompt(input);
 
   let lastError: unknown;

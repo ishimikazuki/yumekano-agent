@@ -891,7 +891,10 @@ test('runDraftChatTurn resumes the latest sandbox session and carries state acro
     assert.ok((snapshots[1]?.retrievedEventCount ?? 0) >= 1);
     assert.ok((snapshots[1]?.retrievedFactCount ?? 0) >= 1);
 
-    assert.equal(snapshots[2]?.phaseId, 'cafe_thank_you');
+    // T-E: cafe_to_walk edge was relaxed to allMustPass=false with added dominance
+    // + turnsSinceLastTransition conditions, so by turn 3 the session advances to
+    // walk_after_cafe. See src/lib/db/seed-seira.ts (seira PhaseGraph).
+    assert.equal(snapshots[2]?.phaseId, 'walk_after_cafe');
     assert.equal(snapshots[2]?.openThreadCount, 1);
 
     const persistedState = await workspaceRepo.getSandboxPairState(first.sessionId);
@@ -900,7 +903,8 @@ test('runDraftChatTurn resumes the latest sandbox session and carries state acro
     const turns = await workspaceRepo.getTurns(first.sessionId);
 
     assert.ok(persistedState);
-    assert.equal(persistedState?.activePhaseId, 'cafe_thank_you');
+    // T-E: same reason as above — persisted phase follows the new transition.
+    assert.equal(persistedState?.activePhaseId, 'walk_after_cafe');
     assert.ok((persistedState?.trust ?? 0) > 50);
     assert.equal(persistedState?.openThreadCount, 0);
     assert.ok(persistedMemory);

@@ -85,8 +85,8 @@ ${formatBulletList(persona.signatureBehaviors ?? [])}`;
  */
 export async function runPlanner(input: PlannerInput): Promise<PlannerOutput> {
   const registry = getProviderRegistry();
-  const model = registry.getModel('analysisMedium');
-  const modelInfo = registry.getModelInfo('analysisMedium');
+  const model = registry.getModel('decisionHigh');
+  const modelInfo = registry.getModelInfo('decisionHigh');
 
   const systemPrompt = buildPlannerSystemPrompt(input);
   const userPrompt = buildPlannerUserPrompt(input);
@@ -142,6 +142,10 @@ ${currentPhase.disallowedActs.map((a) => `- ${a}`).join('\n')}
 - Conflict Carryover: ${characterVersion.autonomy.conflictCarryover}
 - Intimacy Never On Demand: ${characterVersion.autonomy.intimacyNeverOnDemand}`,
     formatDesignerFragment(promptOverride),
+    `## Introspective Acts (T-A)
+- \`self_disclose\`: share something internal that hasn't been asked (preference, memory, feeling, uncertainty).
+- \`show_vulnerability\`: reveal a weakness, fear, or worry that shifts the character's dominance (D) downward.
+These are the "引く" side of the push-pull rhythm. Use them when trust has built up or when the conversation has stalled on surface questions — they advance depth without needing another ask_question.`,
     `## Rules
 1. Think in **third person**, not as a people-pleasing assistant.
 2. Prioritize character truth over user satisfaction.

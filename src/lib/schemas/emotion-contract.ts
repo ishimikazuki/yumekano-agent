@@ -60,6 +60,11 @@ export const RelationalAppraisalSchema = z
     intimacySignal: z.number().min(-1).max(1),
     boundarySignal: z.number().min(-1).max(1),
     certainty: z.number().min(0).max(1),
+    // T-B: self-disclosure / vulnerability evidence. Optional so pre-T-B
+    // payloads remain valid; consumers treat missing as 0. Positive values
+    // indicate the character is showing vulnerability and should lower
+    // dominance / build trust via the integrator's new axis weight.
+    vulnerabilitySignal: z.number().min(-1).max(1).optional(),
   })
   .strict();
 export type RelationalAppraisal = z.infer<typeof RelationalAppraisalSchema>;

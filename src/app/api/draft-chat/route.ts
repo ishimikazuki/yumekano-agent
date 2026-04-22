@@ -47,6 +47,9 @@ export async function POST(request: NextRequest) {
     if (result.narrativeTask) {
       after(result.narrativeTask);
     }
+    if (result.consolidationTask) {
+      after(result.consolidationTask);
+    }
 
     return NextResponse.json({
       text: result.text,
