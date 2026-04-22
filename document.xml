@@ -11,7 +11,7 @@
       <item>Zod (スキーマ検証)</item>
       <item>Tailwind CSS</item>
     </tech_stack>
-    <phase>残件修正プラン T0-T5 全完了 / 458テスト / legacy comparison実装(computeLegacyComparison)・migration SQL同期・trace parity固定・publish path docs追記 / RELEASE-READY</phase>
+    <phase>最適化プラン T0-T6 + 会話深化 T-A..T-E 全完了（PR #1 main merge 済み）/ latency 最適化: alias split + fast tier + hot-path offload + operational profiles / 会話深化: self_disclose schema + vulnerability CoE axis + push-pull prompt + question-saturation scorer / POC default = poc_balanced_latency</phase>
   </project_overview>
 
   <architecture>
@@ -60,6 +60,10 @@
     <decision date="2026-03-24">executeTurn を canonical turn engine とし、sandbox memory table 群と mixed ranker を追加して production / draft / eval の分岐を adapter 層に閉じ込める</decision>
     <decision date="2026-03-24">live PostgreSQL でも sandbox write path を壊さないよう workspace/sandbox upsert を `ON CONFLICT` に統一し、eval は partial unique index で単一 active run を強制する</decision>
     <decision date="2026-03-24">本番履歴の同期は `origin/main` とデプロイ済み修正ブランチを順に merge して `main` へ取り込む。理由: 履歴分岐を force せずに解消し、既に反映済みの修正と remote 側更新の両方を安全に残すため。</decision>
+    <decision date="2026-04-21">ModelRole を責務別 5 alias に分割（surfaceResponseHigh / decisionHigh / structuredPostturnFast / maintenanceFast / embeddingDefault）。default は poc_balanced_latency プロファイル（memory extractor + maintenance = grok-4-fast-reasoning、他 = grok-4.20 or grok-4-1-fast-reasoning）。quality_first プロファイルは rollback 用に保持。</decision>
+    <decision date="2026-04-21">consolidation を `after()` 経由で request hot path から切り離し、`salienceFloor` で低重要度ターンを抑制。レスポンス latency に consolidation コストが乗らなくなった。</decision>
+    <decision date="2026-04-22">会話深化: DialogueActSchema に self_disclose / show_vulnerability を追加、CoE integrator に vulnerabilitySignal axis（dominance: -0.18 / trust: +2.2）を追加して「押して引く」を構造化。質問連発には question-saturation scorer で乗算ペナルティ。planner prompt に push-pull 方針を明記。</decision>
+    <decision date="2026-04-22">decision stack (planner / ranker / CoE extractor) の tier lowering は offline eval では判断できないため据え置き。live A/B は operator が `STRUCTURED_POSTTURN_MODEL` / `MAINTENANCE_MODEL` env var でロールバック可能な形で T6 profile に集約。</decision>
   </decisions>
 
   <logs>PROJECT_LOG/INDEX.md</logs>

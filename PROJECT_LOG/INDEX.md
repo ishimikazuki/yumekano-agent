@@ -1,5 +1,6 @@
 # PROJECT_LOG INDEX
 
+- issue-0018-2026-04-22-t0-t6-optimization-and-letter-stream.md — T0-T6 latency 最適化 + T-A/T-B/T-D 会話深化完走、PR #1 main merge（alias split / fast tier / hot-path offload / operational profiles / self-disclose schema & CoE axis）
 - issue-0017-2026-04-22-push-pull-character-depth.md — 会話深化 T-E + T-C 完了（押して引く実装、パラメータ調整 + 質問飽和scorer）
 - issue-0016-2026-04-21-remaining-plan-final-complete.md — 残件修正プラン T0-T5 最終確認・アーカイブ（PLANS.mdを最適化プランへ切替）
 - issue-0015-2026-04-08-remaining-plan-t0-t5.md — 残件修正プラン T0-T5全完了、legacy comparison実装、migration同期、trace parity固定
