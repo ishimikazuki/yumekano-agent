@@ -39,6 +39,11 @@ yarn-error.log*
 *.db-journal
 *.db-shm
 *.db-wal
+*.db.backup
+*.db.pre-*.backup
+
+# ticket workflow transient state
+.claude/state/current-ticket.*.backup.json
 
 # playwright logs
 .playwright-mcp/

@@ -26,9 +26,11 @@ test('T-C integration: scoreQuestionSaturation is exported from scorers index', 
 });
 
 test('T-C integration: ranker imports scoreQuestionSaturation', () => {
+  // Imports span multiple lines, so normalize newlines to spaces for matching.
+  const normalized = RANKER_SRC.replace(/\s+/g, ' ');
   assert.match(
-    RANKER_SRC,
-    /import\s*\{[^}]*scoreQuestionSaturation[^}]*\}\s*from\s*['"]..\/scorers['"]/s
+    normalized,
+    /import\s*\{[^}]*scoreQuestionSaturation[^}]*\}\s*from\s*['"]..\/scorers['"]/
   );
 });
 
